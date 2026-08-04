@@ -33,8 +33,10 @@ ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 # Overridable so the supervisor's plumbing can be exercised without a broker.
 BOT_MODULE = os.getenv("BOT_MODULE", "app.bot.strategy")
 
-# Events that are pure UI chatter — broadcast live, never stored.
-EPHEMERAL_KINDS = {"status"}
+# Events that are pure UI chatter — broadcast live, never stored. The chart
+# is a full redraw every 15 seconds; persisting it would bloat the database
+# with data the candles themselves can always reproduce.
+EPHEMERAL_KINDS = {"status", "chart"}
 
 # Restart policy when the process dies unexpectedly mid-session.
 MAX_RESTARTS_PER_SESSION = 5
@@ -59,6 +61,7 @@ class BotSupervisor:
         self.session_date: str = db.today_str()
 
         self.snapshot: dict[str, Any] = {}   # latest `status` payload
+        self.chart: dict[str, Any] = {}      # latest `chart` payload
         self.last_event: dict[str, Any] = {}
         self.tail: list[dict] = []           # in-memory ring of recent lines
 
@@ -148,6 +151,31 @@ class BotSupervisor:
                 "ANGEL_PASSWORD": settings.angel_password,
                 "ANGEL_TOTP_SECRET": settings.angel_totp_secret,
             })
+
+            # Strategy parameters are resolved at launch, so a running bot
+            # never has the rules changed underneath an open position.
+            try:
+                from . import strategy_config
+                params = strategy_config.effective()
+                problems = strategy_config.check_invariants(params)
+                if problems:
+                    msg = "Strategy parameters are inconsistent: " + " ".join(problems)
+                    self.state = "error"
+                    self.last_error = msg
+                    self._emit_local("fatal", msg, level="error")
+                    return {"ok": False, "reason": msg, "state": self.state}
+                env.update(strategy_config.as_env())
+                drift = strategy_config.drift_from_v11(params)
+                if drift:
+                    self._emit_local(
+                        "strategy",
+                        f"Starting with {len(drift)} parameter(s) changed from the v11 baseline",
+                        level="warn", drift=drift)
+            except Exception as exc:
+                self._emit_local(
+                    "strategy",
+                    f"Could not resolve strategy overrides ({exc}); using v11 defaults",
+                    level="warn")
 
             backend_dir = Path(__file__).resolve().parent.parent
             try:
@@ -274,6 +302,9 @@ class BotSupervisor:
         if kind == "status":
             self.snapshot = payload
             self.snapshot["_ts"] = event["ts"]
+        elif kind == "chart":
+            self.chart = payload
+            self.chart["_ts"] = event["ts"]
         else:
             self.last_event = event
             self._remember(event)

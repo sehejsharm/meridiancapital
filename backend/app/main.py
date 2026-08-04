@@ -29,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from . import db, exports
+from . import db, exports, strategy_config
 from .auth import authorise_websocket, require_token, require_token_query
 from .config import settings
 from .runner import supervisor
@@ -42,7 +42,17 @@ logging.basicConfig(
 )
 log = logging.getLogger("meridian")
 
-WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+def _find_web_dir() -> Path:
+    """The dashboard is also a standalone Vercel project, so it lives at the
+    repository root. In the container it is copied next to the backend."""
+    here = Path(__file__).resolve()
+    for candidate in (here.parent.parent / "web", here.parent.parent.parent / "web"):
+        if (candidate / "index.html").exists():
+            return candidate
+    return here.parent.parent / "web"
+
+
+WEB_DIR = _find_web_dir()
 
 
 @asynccontextmanager
@@ -104,6 +114,14 @@ class ScheduleRequest(BaseModel):
 class PushRegisterRequest(BaseModel):
     token: str
     platform: str = ""
+
+
+class StrategyUpdateRequest(BaseModel):
+    values: dict[str, object] = Field(default_factory=dict)
+
+
+class ProfileRequest(BaseModel):
+    name: str
 
 
 # ============================================================ health
@@ -255,6 +273,93 @@ async def websocket_feed(ws: WebSocket):
         log.debug("websocket closed: %s", exc)
     finally:
         supervisor.unsubscribe(queue)
+
+
+# ============================================================ strategy
+
+
+@app.get("/api/strategy")
+async def strategy_get(_: str = Depends(require_token)):
+    return {
+        **strategy_config.describe(),
+        "applies_at": "next start",
+        "bot_running": supervisor.running,
+    }
+
+
+@app.put("/api/strategy")
+async def strategy_put(body: StrategyUpdateRequest, _: str = Depends(require_token)):
+    """Edit strategy parameters.
+
+    Accepted while the bot is running, but deliberately not applied until it
+    next starts — an open position must finish under the rules it was opened
+    with.
+    """
+    try:
+        strategy_config.apply(body.values)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    supervisor._emit_local(
+        "strategy",
+        f"Strategy updated — {len(body.values)} parameter(s) changed"
+        + (" (applies when the bot next starts)" if supervisor.running else ""),
+        level="warn",
+    )
+    return await strategy_get(_)
+
+
+@app.post("/api/strategy/reset")
+async def strategy_reset(_: str = Depends(require_token)):
+    strategy_config.reset()
+    supervisor._emit_local("strategy", "Strategy reset to the v11 baseline", level="warn")
+    return await strategy_get(_)
+
+
+@app.post("/api/strategy/profiles")
+async def profile_save(body: ProfileRequest, _: str = Depends(require_token)):
+    try:
+        strategy_config.save_profile(body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return await strategy_get(_)
+
+
+@app.post("/api/strategy/profiles/load")
+async def profile_load(body: ProfileRequest, _: str = Depends(require_token)):
+    try:
+        strategy_config.load_profile(body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    supervisor._emit_local("strategy", f"Loaded strategy profile {body.name!r}", level="warn")
+    return await strategy_get(_)
+
+
+@app.delete("/api/strategy/profiles")
+async def profile_delete(name: str, _: str = Depends(require_token)):
+    strategy_config.delete_profile(name)
+    return await strategy_get(_)
+
+
+# ============================================================ chart
+
+
+@app.get("/api/chart")
+async def chart(_: str = Depends(require_token)):
+    """Latest candles, indicator overlays, and the open contract's premium.
+
+    Produced by the bot from the candles it already fetches, so it is only
+    populated while the bot is running.
+    """
+    if not supervisor.chart:
+        return {
+            "available": False,
+            "reason": "The bot is not running — candles come from its market feed."
+            if not supervisor.running
+            else "Waiting for the first candle push.",
+            "candles": [], "option": None,
+        }
+    return {"available": True, **supervisor.chart}
 
 
 # ============================================================ history
@@ -410,6 +515,9 @@ async def index():
 
 @app.get("/manifest.webmanifest", include_in_schema=False)
 async def manifest():
+    path = WEB_DIR / "manifest.webmanifest"
+    if path.exists():
+        return FileResponse(path, media_type="application/manifest+json")
     return JSONResponse({
         "name": "Meridian Capital",
         "short_name": "Meridian",
@@ -426,11 +534,14 @@ async def manifest():
 
 @app.get("/icon.svg", include_in_schema=False)
 async def icon():
+    path = WEB_DIR / "icon.svg"
+    if path.exists():
+        return FileResponse(path, media_type="image/svg+xml")
     svg = (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">'
         '<rect width="512" height="512" rx="112" fill="#05070d"/>'
         '<path d="M112 352V160l72 96 72-96 72 96 72-96v192" fill="none" '
-        'stroke="#3ddc97" stroke-width="30" stroke-linejoin="round" '
+        'stroke="#35d6a0" stroke-width="30" stroke-linejoin="round" '
         'stroke-linecap="round"/></svg>'
     )
     return Response(content=svg, media_type="image/svg+xml")

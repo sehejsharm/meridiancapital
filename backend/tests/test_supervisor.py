@@ -164,6 +164,54 @@ def test_missing_credentials() -> None:
         settings.angel_api_key = saved
 
 
+def test_strategy_injection() -> None:
+    """An edit in the app must reach the child process, and only on a restart."""
+    print("\nStrategy injection")
+    from app import strategy_config as sc
+
+    os.environ["STUB_MODE"] = "normal"
+    sc.apply({"SL_PCT": 0.12, "MAX_TRADES_PER_DAY": 5,
+              "ENABLE_CHOP_FILTER": False, "MARKET_OPEN": "09:45"})
+    supervisor.tail.clear()
+    supervisor.restarts = 0
+
+    supervisor.start(trigger="test", force=True)
+    got = wait_for(lambda: any(e["kind"] == "config_seen" for e in supervisor.tail), timeout=20)
+    check("child reported its strategy environment", got)
+
+    env = {}
+    for e in supervisor.tail:
+        if e["kind"] == "config_seen":
+            env = (e.get("payload") or {}).get("env", {})
+            break
+
+    check(f"overridden stop loss reached the child (SL_PCT={env.get('SL_PCT')})",
+          env.get("SL_PCT") == "0.12", str(env))
+    check(f"overridden trade cap reached the child ({env.get('MAX_TRADES_PER_DAY')})",
+          env.get("MAX_TRADES_PER_DAY") == "5", str(env))
+    check("booleans serialise as the algorithm parses them",
+          env.get("ENABLE_CHOP_FILTER") == "false", str(env))
+    check("times pass through as HH:MM", env.get("MARKET_OPEN") == "09:45", str(env))
+    check("untouched parameters still carry their v11 value",
+          env.get("BE_TRIGGER_PCT") == "0.15", str(env))
+    check("instrument defaults to NIFTY", env.get("INDEX_NAME") == "NIFTY", str(env))
+
+    check("drift was announced at startup",
+          any(e["kind"] == "strategy" for e in supervisor.tail))
+
+    supervisor.stop(reason="injection test done", timeout=20)
+
+    # Inconsistent parameters must block the launch rather than trade on them.
+    db.kv_set(sc.KV_KEY, {"BE_FLOOR_PCT": 0.40})
+    result = supervisor.start(trigger="test", force=True)
+    check("inconsistent stored parameters refuse to start",
+          result.get("ok") is False and "inconsistent" in str(result.get("reason")).lower(),
+          str(result))
+    check("no process was spawned with a broken ladder", not supervisor.running)
+
+    sc.reset()
+
+
 def test_real_module_guard() -> None:
     """The actual algorithm must refuse to start with no credentials."""
     print("\nReal algorithm module")
@@ -188,6 +236,76 @@ def test_real_module_guard() -> None:
           "Traceback (most recent call last)" not in out, out[-400:])
 
 
+def test_real_module_reads_overrides() -> None:
+    """Prove the algorithm's own constants follow the environment."""
+    print("\nReal algorithm honours overrides")
+    import subprocess
+
+    env = dict(os.environ)
+    env.update({
+        "SL_PCT": "0.12", "BE_TRIGGER_PCT": "0.18", "LOCK1_TRIGGER": "0.30",
+        "LOCK1_FLOOR": "0.12", "LOCK2_TRIGGER": "0.50", "LOCK2_FLOOR": "0.30",
+        "MAX_TRADES_PER_DAY": "5", "ENABLE_CHOP_FILTER": "false",
+        "MARKET_OPEN": "09:45", "ENTRY_CUTOFF": "14:00",
+        "INDEX_NAME": "BANKNIFTY", "STRIKE_STEP": "100",
+        "PYTHONUNBUFFERED": "1",
+    })
+
+    code = (
+        "import json;"
+        "from app.bot import strategy as s;"
+        "s.verify_config();"
+        "print('RESULT' + json.dumps({"
+        "'sl': s.SL_PCT, 'be': s.BE_TRIGGER_PCT, 'l1': s.LOCK1_TRIGGER,"
+        "'max': s.MAX_TRADES_PER_DAY, 'chop': s.ENABLE_CHOP_FILTER,"
+        "'open': s.MARKET_OPEN.strftime('%H:%M'),"
+        "'cut': s.ENTRY_CUTOFF.strftime('%H:%M'),"
+        "'idx': s.INDEX_NAME, 'step': s.STRIKE_STEP}))"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(Path(__file__).resolve().parent.parent),
+        env=env, capture_output=True, text=True, timeout=180,
+    )
+    line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULT")), "")
+    check("module imported and reported its config", bool(line),
+          (proc.stdout + proc.stderr)[-500:])
+    if not line:
+        return
+
+    import json as _json
+    cfg = _json.loads(line[len("RESULT"):])
+    check(f"SL_PCT follows the environment ({cfg['sl']})", cfg["sl"] == 0.12)
+    check(f"BE trigger follows ({cfg['be']})", cfg["be"] == 0.18)
+    check(f"Lock 1 trigger follows ({cfg['l1']})", cfg["l1"] == 0.30)
+    check(f"trade cap follows ({cfg['max']})", cfg["max"] == 5)
+    check("chop filter can be switched off", cfg["chop"] is False)
+    check(f"session times parse ({cfg['open']}–{cfg['cut']})",
+          cfg["open"] == "09:45" and cfg["cut"] == "14:00")
+    check(f"instrument switches ({cfg['idx']} / step {cfg['step']})",
+          cfg["idx"] == "BANKNIFTY" and cfg["step"] == 100)
+    check("verify_config accepted a consistent non-v11 ladder",
+          proc.returncode == 0, (proc.stdout + proc.stderr)[-300:])
+    check("drift from v11 was reported, not silently accepted",
+          "differ from the v11 baseline" in proc.stdout, proc.stdout[-300:])
+
+    # And an inconsistent ladder must abort rather than trade.
+    bad = dict(env)
+    bad["BE_FLOOR_PCT"] = "0.40"
+    proc2 = subprocess.run(
+        [sys.executable, "-c",
+         "from app.bot import strategy as s; s.verify_config(); print('ACCEPTED')"],
+        cwd=str(Path(__file__).resolve().parent.parent),
+        env=bad, capture_output=True, text=True, timeout=180,
+    )
+    check("inconsistent ladder fails the guard",
+          "ACCEPTED" not in proc2.stdout and proc2.returncode != 0,
+          (proc2.stdout + proc2.stderr)[-300:])
+    check("the guard says which rule was broken",
+          "below its trigger" in (proc2.stdout + proc2.stderr),
+          (proc2.stdout + proc2.stderr)[-300:])
+
+
 def main() -> int:
     print("=" * 60)
     print("  MERIDIAN CAPITAL — SUPERVISOR TESTS")
@@ -199,7 +317,9 @@ def main() -> int:
         test_graceful_stop()
         test_startup_failure()
         test_missing_credentials()
+        test_strategy_injection()
         test_real_module_guard()
+        test_real_module_reads_overrides()
     finally:
         if supervisor.running:
             supervisor.stop(reason="test teardown", timeout=10)

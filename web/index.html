@@ -213,6 +213,55 @@ nav button.on{color:var(--accent)}
 nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;
   stroke-linecap:round;stroke-linejoin:round}
 .empty{text-align:center;padding:34px 18px;color:var(--dim);font-size:13px;line-height:1.6}
+
+/* ---------- chart ---------- */
+.chartwrap{width:100%;overflow:hidden}
+.chartwrap svg{display:block;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:13px;margin-top:10px}
+.lg{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dim);letter-spacing:.3px}
+.lg i{width:12px;height:2.5px;border-radius:2px;display:block}
+.tbgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px;
+  padding-top:13px;border-top:1px solid var(--line)}
+.tbb{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+.tbb .k{font-size:9px;letter-spacing:.6px;color:var(--dim);font-weight:700}
+.tbb .v{font-size:14px;font-weight:700;margin-top:3px}
+.tbb .s{font-size:10px;color:var(--muted);margin-top:1px}
+.lrow{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:11.5px}
+.lrow .d{width:6px;height:6px;border-radius:99px;background:rgba(255,255,255,.16);flex-shrink:0}
+.lrow.done .d{background:var(--up)}
+.lrow .nm{width:104px;color:var(--muted)}
+.lrow.done .nm{color:var(--up)}
+.lrow .tg{font-size:9.5px;color:var(--dim);display:block}
+.lrow .pr{width:66px;font-weight:700}
+.lrow .aw{flex:1;font-size:10.5px;color:var(--dim)}
+.lrow.done .aw{color:var(--up)}
+.lrow .fl{font-size:10px;color:var(--dim)}
+.ladnote{color:var(--dim);font-size:10.5px;line-height:1.5;margin:5px 0 9px}
+
+/* ---------- strategy ---------- */
+.param{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:11px 0;border-bottom:1px solid var(--line)}
+.param:last-child{border-bottom:none}
+.param .info{flex:1;min-width:0}
+.param .nm{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px}
+.param .hp{font-size:11px;color:var(--dim);line-height:1.45;margin-top:3px}
+.param .df{font-size:10.5px;color:var(--info);margin-top:3px}
+.edited{width:6px;height:6px;border-radius:99px;background:var(--accent);flex-shrink:0}
+.crit{font-size:8.5px;font-weight:800;letter-spacing:.5px;color:var(--warn);
+  background:var(--warn-bg);padding:1.5px 5px;border-radius:4px}
+.stepper{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.stepper button{width:27px;height:27px;border-radius:8px;background:var(--surface-2);
+  border:1px solid var(--line);color:var(--text);font-size:15px;font-weight:700;line-height:1}
+.stepper .val{min-width:66px;text-align:center;font-size:14px;font-weight:700}
+.stepper input[type=text]{width:120px;text-align:right;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px}
+.savebar{position:sticky;bottom:calc(80px + var(--safe-b));display:flex;gap:9px;
+  padding:11px;background:rgba(9,12,19,.95);backdrop-filter:blur(14px);
+  border:1px solid var(--line-strong);border-radius:14px;margin-top:11px;z-index:30}
+.warnbox{background:var(--warn-bg);border:1px solid rgba(255,176,58,.3);border-radius:12px;
+  padding:12px;font-size:12px;color:var(--warn);line-height:1.5;margin-bottom:11px}
+.errbox{background:var(--down-bg);border:1px solid rgba(255,90,110,.3);border-radius:12px;
+  padding:12px;font-size:12px;color:var(--down);line-height:1.5;margin-bottom:11px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + var(--safe-b));
   background:var(--raised);border:1px solid var(--line-strong);border-radius:12px;
   padding:11px 17px;font-size:13px;z-index:80;opacity:0;pointer-events:none;transition:opacity .25s}
@@ -285,6 +334,38 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;
       <div class="card-h"><span class="card-t">Angel One latency</span></div>
       <div id="d-lat"></div>
     </div>
+  </section>
+
+  <!-- ============ CHART ============ -->
+  <section class="view" id="v-chart">
+    <div class="card">
+      <div class="card-h"><span class="card-t" id="ch-title">Underlying · 1 min</span>
+        <span class="num" id="ch-spot" style="font-size:13px"></span></div>
+      <div class="chartwrap" id="ch-candles"></div>
+      <div class="legend">
+        <span class="lg"><i style="background:#57a6ff"></i>EMA 9</span>
+        <span class="lg"><i style="background:#9a7dff"></i>EMA 21</span>
+        <span class="lg"><i style="background:#ffb03a"></i>VWAP</span>
+        <span class="lg"><i style="background:#35d6a0"></i>Up</span>
+        <span class="lg"><i style="background:#ff5a6e"></i>Down</span>
+      </div>
+      <div class="dim" id="ch-meta" style="font-size:10px;margin-top:8px"></div>
+    </div>
+    <div id="ch-tradebox"></div>
+    <div class="card" id="ch-context"></div>
+  </section>
+
+  <!-- ============ STRATEGY ============ -->
+  <section class="view" id="v-strategy">
+    <div class="card">
+      <div class="card-h"><span class="card-t">Strategy parameters</span></div>
+      <div class="muted" style="font-size:12.5px;line-height:1.55">
+        The numbers the algorithm trades on. Every edit is validated against the rules
+        that must hold — a ladder floor above its own trigger is refused, not saved.
+      </div>
+      <div class="warn" style="font-size:12px;line-height:1.5;margin-top:9px" id="st-applies"></div>
+    </div>
+    <div id="st-body"></div>
   </section>
 
   <!-- ============ FEED ============ -->
@@ -377,10 +458,12 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;
 </main>
 
 <nav>
-  <button class="on" data-v="dash"><svg viewBox="0 0 24 24"><path d="M3 13h5v8H3zM10 3h4v18h-4zM16 9h5v12h-5z"/></svg>Dashboard</button>
+  <button class="on" data-v="dash"><svg viewBox="0 0 24 24"><path d="M3 13h5v8H3zM10 3h4v18h-4zM16 9h5v12h-5z"/></svg>Dash</button>
+  <button data-v="chart"><svg viewBox="0 0 24 24"><path d="M3 3v18h18M7 15V9m5 6V5m5 10v-4"/></svg>Chart</button>
   <button data-v="feed"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg>Live</button>
   <button data-v="trades"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M21 7h-5m5 0v5"/></svg>Trades</button>
   <button data-v="reports"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M8 13h8M8 17h5"/></svg>Reports</button>
+  <button data-v="strategy"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Strategy</button>
   <button data-v="ctrl"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2v.2a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.6 1.7 1.7 0 00-1.9.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00-1.2-2.9H3a2 2 0 110-4h.1A1.7 1.7 0 004.7 8a1.7 1.7 0 00-.4-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V2a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H22a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>Control</button>
 </nav>
 
@@ -440,9 +523,21 @@ const dlUrl = (period, fmt) => {
 $("#g-url").value = S.url;
 $("#g-token").value = S.token;
 $("#g-go").onclick = async () => {
-  const url = $("#g-url").value.trim().replace(/\/+$/, "");
+  let url = $("#g-url").value.trim().replace(/\/+$/, "");
   const token = $("#g-token").value.trim();
   if (!url || !token) { $("#g-err").textContent = "Server URL and token are both required."; return; }
+  if (!/^https?:\/\//.test(url)) url = "https://" + url;
+
+  // A page served over HTTPS cannot call a plain-HTTP server — the browser
+  // blocks it silently. Catch it here rather than leaving a dead Connect button.
+  if (location.protocol === "https:" && url.startsWith("http://")) {
+    $("#g-err").innerHTML =
+      "This page is on HTTPS, so the browser will block a plain-HTTP server.<br>" +
+      "Give your bot server an HTTPS address (Tailscale Funnel or Cloudflare Tunnel " +
+      "both do this free) and use that here.";
+    return;
+  }
+
   $("#g-err").textContent = ""; $("#g-go").disabled = true; $("#g-go").textContent = "Connecting…";
   S.url = url; S.token = token;
   try {
@@ -451,7 +546,9 @@ $("#g-go").onclick = async () => {
     $("#gate").classList.add("hide");
     boot();
   } catch (e) {
-    $("#g-err").textContent = e.message === "unauthorized" ? "Token rejected by the server." : e.message;
+    $("#g-err").textContent = e.message === "unauthorized"
+      ? "Token rejected by the server."
+      : e.message + " — check the address is reachable and serving HTTPS.";
   } finally { $("#g-go").disabled = false; $("#g-go").textContent = "Connect"; }
 };
 function logout(msg) {
@@ -471,6 +568,8 @@ $$("nav button").forEach(b => b.onclick = () => {
   if (S.view === "reports") loadReports();
   if (S.view === "ctrl") loadControl();
   if (S.view === "feed") renderFeed();
+  if (S.view === "chart") loadChart();
+  if (S.view === "strategy") loadStrategy();
 });
 
 /* ---------------- clock ---------------- */
@@ -500,7 +599,9 @@ function connectWS() {
     if (m.kind === "status") { S.snap = m.payload || {}; renderDash(); return; }
     pushLine(m);
     if (["entry", "exit", "ladder", "eod", "daily_kill"].includes(m.kind)) {
-      refreshStatus(); if (S.view === "trades") loadTrades();
+      refreshStatus();
+      if (S.view === "trades") loadTrades();
+      if (S.view === "chart") loadChart();
     }
     if (["supervisor", "scheduler", "boot", "ready", "shutdown", "fatal"].includes(m.kind)) {
       refreshStatus();
@@ -802,6 +903,379 @@ async function loadReports() {
   } catch (e) { toast(e.message); }
 }
 
+/* ---------------- chart ---------------- */
+const CHART_PAD = { t: 10, r: 54, b: 18, l: 6 };
+
+function svgEl(w, h, inner) {
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="height:${h}px">${inner}</svg>`;
+}
+
+function makeScale(n, lo, hi, w, h) {
+  const span = (hi - lo) || 1;
+  const pw = w - CHART_PAD.l - CHART_PAD.r;
+  const ph = h - CHART_PAD.t - CHART_PAD.b;
+  return {
+    lo, hi,
+    x: i => CHART_PAD.l + (n <= 1 ? pw / 2 : (i / (n - 1)) * pw),
+    y: v => CHART_PAD.t + ph - ((v - lo) / span) * ph
+  };
+}
+
+const hhmm = ms => new Date(ms).toLocaleTimeString("en-GB",
+  { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" });
+
+function drawCandles(d) {
+  const cs = d.candles || [];
+  if (cs.length < 2) {
+    return `<div class="empty">${esc(d.reason ||
+      "Candles arrive once the bot is running — it charts the same feed it trades from.")}</div>`;
+  }
+  const W = 720, H = 250;
+  let lo = Math.min(...cs.map(c => c[3])), hi = Math.max(...cs.map(c => c[2]));
+  for (const arr of [d.vwap, d.ema9, d.ema21]) {
+    if (!arr) continue;
+    for (const v of arr) { if (v == null) continue; lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  }
+  const pad = (hi - lo) * 0.06 || 1;
+  const s = makeScale(cs.length, lo - pad, hi + pad, W, H);
+  const bw = Math.max(1, Math.min(8, ((W - CHART_PAD.l - CHART_PAD.r) / cs.length) * 0.68));
+
+  const path = arr => {
+    if (!arr) return "";
+    let out = "", pen = false;
+    arr.forEach((v, i) => {
+      if (v == null) { pen = false; return; }
+      out += `${pen ? "L" : "M"}${s.x(i).toFixed(1)} ${s.y(v).toFixed(1)}`; pen = true;
+    });
+    return out;
+  };
+
+  let g = "";
+  [0, .25, .5, .75, 1].forEach(f => {
+    const v = s.lo + (s.hi - s.lo) * f, y = s.y(v);
+    g += `<line x1="${CHART_PAD.l}" x2="${W - CHART_PAD.r}" y1="${y}" y2="${y}"
+      stroke="rgba(255,255,255,.075)" stroke-width="1"/>
+      <text x="${W - CHART_PAD.r + 5}" y="${y + 3.5}" fill="#4d5768" font-size="9"
+        font-family="ui-monospace,monospace">${v.toFixed(0)}</text>`;
+  });
+
+  cs.forEach((c, i) => {
+    const [, o, h, l, cl] = c, up = cl >= o, col = up ? "#35d6a0" : "#ff5a6e";
+    const x = s.x(i), top = s.y(Math.max(o, cl)), bot = s.y(Math.min(o, cl));
+    g += `<line x1="${x}" x2="${x}" y1="${s.y(h)}" y2="${s.y(l)}" stroke="${col}"
+        stroke-width="1" opacity=".85"/>
+      <rect x="${x - bw / 2}" y="${top}" width="${bw}" height="${Math.max(1, bot - top)}"
+        fill="${col}" opacity=".9"/>`;
+  });
+
+  const vw = path(d.vwap), e9 = path(d.ema9), e21 = path(d.ema21);
+  if (vw) g += `<path d="${vw}" stroke="#ffb03a" stroke-width="1.3" fill="none" stroke-dasharray="4 3" opacity=".9"/>`;
+  if (e9) g += `<path d="${e9}" stroke="#57a6ff" stroke-width="1.2" fill="none" opacity=".8"/>`;
+  if (e21) g += `<path d="${e21}" stroke="#9a7dff" stroke-width="1.2" fill="none" opacity=".7"/>`;
+
+  g += `<text x="${CHART_PAD.l + 2}" y="${H - 5}" fill="#4d5768" font-size="9"
+      font-family="ui-monospace,monospace">${hhmm(cs[0][0])}</text>
+    <text x="${W - CHART_PAD.r}" y="${H - 5}" fill="#4d5768" font-size="9" text-anchor="end"
+      font-family="ui-monospace,monospace">${hhmm(cs[cs.length - 1][0])}</text>`;
+
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${g}</svg>`;
+}
+
+function drawTradeBox(opt, cur) {
+  const series = opt.series || [], prices = series.map(p => p[1]);
+  const lv = opt.levels || {};
+  const pool = [...prices, cur, opt.entry, opt.sl,
+    lv.breakeven && lv.breakeven.price, lv.lock1 && lv.lock1.price]
+    .filter(v => typeof v === "number" && isFinite(v));
+  if (pool.length < 2) return `<div class="empty">Collecting premium ticks…</div>`;
+
+  const W = 720, H = 230;
+  let lo = Math.min(...pool), hi = Math.max(...pool);
+  const pad = (hi - lo) * 0.1 || 1; lo -= pad; hi += pad;
+  const s = makeScale(Math.max(prices.length, 2), lo, hi, W, H);
+  const profit = cur >= opt.entry, col = profit ? "#35d6a0" : "#ff5a6e";
+
+  let g = `<defs><linearGradient id="pf" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="${col}" stop-opacity=".22"/>
+    <stop offset="100%" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>`;
+
+  if (opt.sl >= lo && opt.sl <= hi) {
+    g += `<rect x="${CHART_PAD.l}" y="${s.y(opt.sl)}" width="${W - CHART_PAD.r - CHART_PAD.l}"
+      height="${Math.max(0, H - CHART_PAD.b - s.y(opt.sl))}" fill="#ff5a6e" opacity=".07"/>`;
+  }
+
+  if (prices.length > 1) {
+    const d = prices.map((v, i) => `${i ? "L" : "M"}${s.x(i).toFixed(1)} ${s.y(v).toFixed(1)}`).join("");
+    g += `<path d="${d} L ${s.x(prices.length - 1)} ${H - CHART_PAD.b} L ${s.x(0)} ${H - CHART_PAD.b} Z" fill="url(#pf)"/>
+      <path d="${d}" stroke="${col}" stroke-width="1.7" fill="none"/>
+      <circle cx="${s.x(prices.length - 1)}" cy="${s.y(prices[prices.length - 1])}" r="3" fill="${col}"/>`;
+  }
+
+  const mark = (price, colour, label, dash) => {
+    if (price == null || price < lo || price > hi) return "";
+    const y = s.y(price);
+    return `<line x1="${CHART_PAD.l}" x2="${W - CHART_PAD.r}" y1="${y}" y2="${y}"
+        stroke="${colour}" stroke-width="1" ${dash ? `stroke-dasharray="${dash}"` : ""} opacity=".85"/>
+      <text x="${W - CHART_PAD.r + 4}" y="${y + 3.5}" fill="${colour}" font-size="8.5"
+        font-family="ui-monospace,monospace">${price.toFixed(1)}</text>
+      <text x="${CHART_PAD.l + 3}" y="${y - 4}" fill="${colour}" font-size="8.5" opacity=".9">${label}</text>`;
+  };
+
+  g += mark(lv.lock2 && lv.lock2.price, "#9a7dff", "LOCK 2", "3 3");
+  g += mark(lv.lock1 && lv.lock1.price, "#57a6ff", "LOCK 1", "3 3");
+  g += mark(lv.breakeven && lv.breakeven.price, "#ffb03a", "BREAKEVEN", "3 3");
+  g += mark(opt.entry, "#e9eef8", "ENTRY");
+  g += mark(opt.sl, "#ff5a6e", "STOP");
+  if (opt.high_prem > opt.entry) g += mark(opt.high_prem, "#35d6a0", "PEAK", "1 4");
+
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${g}</svg>`;
+}
+
+async function loadChart() {
+  try {
+    const d = await api("/api/chart");
+    S.chart = d;
+    const m = (S.snap && S.snap.market) || {};
+    $("#ch-title").textContent = (d.index || "Underlying") + " · 1 min";
+    $("#ch-spot").innerHTML = m.spot
+      ? `${Number(m.spot).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+         <span class="${cls(m.day_move)}" style="font-size:11px">
+         ${m.day_move >= 0 ? "+" : ""}${(m.day_move || 0).toFixed(1)} pts</span>` : "";
+    $("#ch-candles").innerHTML = drawCandles(d);
+    $("#ch-meta").textContent = d.candles && d.candles.length
+      ? `${d.candles.length} bars · from ${d.source || "index"}` : "";
+
+    const pos = S.snap && S.snap.position;
+    const box = $("#ch-tradebox");
+    if (pos && d.option) {
+      const lv = pos.levels || {};
+      const stages = ["INIT", "BE", "LOCK1", "LOCK2", "FREE"];
+      const si = stages.indexOf(pos.stage);
+      const lrow = (key, label) => {
+        const L = lv[key]; if (!L) return "";
+        const done = si >= ["breakeven", "lock1", "lock2"].indexOf(key) + 1;
+        const away = pos.entry > 0 ? (L.price - pos.current) / pos.entry * 100 : 0;
+        return `<div class="lrow ${done ? "done" : ""}"><span class="d"></span>
+          <span class="nm">${label}<span class="tg num">at +${L.pct}%</span></span>
+          <span class="pr num">${money(L.price, 2)}</span>
+          <span class="aw num">${done ? "reached" : (away > 0 ? "+" : "") + away.toFixed(1) + "% away"}</span>
+          <span class="fl num">→ SL ${money(L.floor, 0)}</span></div>`;
+      };
+      const nt = pos.next_trigger || {};
+      box.innerHTML = `<div class="card">
+        <div class="pos-top">
+          <div><div class="card-t">Open position</div>
+            <div class="pos-sym" style="margin-top:4px">${esc(pos.symbol)}</div></div>
+          <span class="stage ${esc(pos.stage)}">${esc(pos.stage)}</span></div>
+        <div style="margin-bottom:12px">
+          <span class="pnl-big num ${cls(pos.pnl)}">${signed(pos.pnl, 0)}</span>
+          <span class="pnl-pct num ${cls(pos.pnl)}">${pct(pos.pnl_pct, 1)}</span></div>
+        <div class="chartwrap">${drawTradeBox(d.option, pos.current)}</div>
+        <div class="tbgrid">
+          ${tbb("Entry", money(pos.entry, 2), "")}
+          ${tbb("Live", money(pos.current, 2), "", cls(pos.pnl))}
+          ${tbb("Stop", money(pos.sl_price, 2), pct(pos.sl_pct, 0), "down")}
+          ${tbb("Peak", money(pos.high_prem, 2), pct(pos.peak_gain_pct, 1), "up")}
+          ${tbb("Quantity", String(pos.qty), "")}
+          ${tbb("Risk left", money(pos.risk_left, 0), "", "warn")}
+        </div>
+        <div style="margin-top:15px;padding-top:13px;border-top:1px solid var(--line)">
+          <div class="card-t">Ladder targets</div>
+          <div class="ladnote">No fixed take-profit — each level ratchets the stop up,
+            then it trails ${lv.free ? lv.free.giveback_pct : 10}% behind the peak.</div>
+          ${lrow("breakeven", "Breakeven lock")}
+          ${lrow("lock1", "Lock 1")}
+          ${lrow("lock2", "Lock 2")}
+        </div>
+        <div style="margin-top:13px">
+          <div class="ladder-h"><span>Next: ${esc(nt.label || "Trailing")}</span>
+            <span class="num">${nt.target_pct
+              ? pct(nt.gain_pct, 1) + " / +" + nt.target_pct + "%" : pct(nt.gain_pct, 1)}</span></div>
+          <div class="track"><div class="fill" style="width:${Math.round((nt.progress ?? 1) * 100)}%"></div></div>
+        </div>
+        ${pos.entry_reason ? `<div class="trade-why">${esc(pos.entry_reason)}</div>` : ""}
+      </div>`;
+    } else {
+      box.innerHTML = `<div class="card"><div class="card-h"><span class="card-t">Trade box</span></div>
+        <div class="empty">${S.status && S.status.running
+          ? "Flat. The trade box appears the moment a position opens, with entry, stop and every ladder level drawn live."
+          : "The bot is not running."}</div></div>`;
+    }
+
+    $("#ch-context").innerHTML = m.spot ? `
+      <div class="card-h"><span class="card-t">Chart context</span></div>
+      ${row("VWAP", `${(m.vwap || 0).toFixed(1)} · spot ${m.vwap_side}`)}
+      ${row("EMA 9 / 21", `${(m.ema9 || 0).toFixed(1)} / ${(m.ema21 || 0).toFixed(1)}`)}
+      ${row("EMA slope", (m.slope || 0).toFixed(2))}
+      ${row("ADX", `${(m.adx || 0).toFixed(1)} · ${m.trend || ""}`)}
+      ${row("ATR", `${(m.atr || 0).toFixed(1)} pts`)}
+      ${row("Day range", `${(m.day_range_pts || 0).toFixed(0)} pts · ${(m.day_range_pct || 0).toFixed(2)}%`)}`
+      : `<div class="empty">No market data yet.</div>`;
+  } catch (e) { toast(e.message); }
+}
+
+const tbb = (k, v, s2, c) => `<div class="tbb"><div class="k">${esc(k)}</div>
+  <div class="v num ${c || ""}">${esc(v)}</div>${s2 ? `<div class="s num">${esc(s2)}</div>` : ""}</div>`;
+
+/* ---------------- strategy ---------------- */
+S.stratEdits = {};
+
+async function loadStrategy() {
+  try {
+    S.strategy = await api("/api/strategy");
+    S.stratEdits = {};
+    renderStrategy();
+  } catch (e) { toast(e.message); }
+}
+
+function renderStrategy() {
+  const d = S.strategy; if (!d) return;
+  $("#st-applies").textContent = d.bot_running
+    ? "The bot is running. Changes take effect on its next start, never mid-position."
+    : "Changes take effect the next time the bot starts.";
+
+  const val = p => (p.key in S.stratEdits ? S.stratEdits[p.key] : p.value);
+  const fmtv = v => typeof v === "boolean" ? (v ? "on" : "off")
+    : (typeof v === "number" && v > 0 && v < 1) ? (v * 100).toFixed(1) + "%" : String(v);
+
+  let html = "";
+
+  const drift = Object.entries(d.drift || {});
+  if (drift.length) {
+    html += `<div class="card"><div class="card-h"><span class="card-t">Changed from v11</span></div>
+      ${drift.map(([k, x]) => row(x.label, `${fmtv(x.v11)} → ${fmtv(x.current)}`)).join("")}
+      <button class="btn ghost" id="st-reset" style="width:100%;margin-top:11px">Reset everything to v11</button></div>`;
+  }
+  if (d.problems && d.problems.length) {
+    html += `<div class="errbox">${d.problems.map(esc).join("<br>")}</div>`;
+  }
+
+  for (const g of d.groups) {
+    html += `<div class="card"><div class="card-h"><span class="card-t">${esc(g.name)}</span></div>`;
+    for (const p of g.params) {
+      const v = val(p), edited = p.key in S.stratEdits;
+      let control;
+      if (p.type === "bool") {
+        control = `<span class="toggle ${v ? "on" : ""}" data-tog="${p.key}"></span>`;
+      } else if (p.type === "text") {
+        control = `<input type="text" data-txt="${p.key}" value="${esc(v)}">`;
+      } else if (p.type === "time") {
+        control = `<span class="stepper">
+          <button data-t="${p.key}" data-u="h" data-d="-1">−</button>
+          <span class="val num">${esc(v)}</span>
+          <button data-t="${p.key}" data-u="h" data-d="1">+</button>
+          <button data-t="${p.key}" data-u="m" data-d="-1">−</button>
+          <button data-t="${p.key}" data-u="m" data-d="1">+</button></span>`;
+      } else {
+        const isPct = p.type === "pct";
+        const shown = isPct ? (v * 100).toFixed(1) + "%"
+          : (p.type === "rupees" ? "₹" : "") + Number(v).toLocaleString("en-IN");
+        control = `<span class="stepper">
+          <button data-n="${p.key}" data-d="-1">−</button>
+          <span class="val num">${shown}</span>
+          <button data-n="${p.key}" data-d="1">+</button></span>`;
+      }
+      html += `<div class="param"><div class="info">
+        <div class="nm">${esc(p.label)}${edited ? '<span class="edited"></span>' : ""}
+          ${p.critical ? '<span class="crit">INSTRUMENT</span>' : ""}</div>
+        ${p.help ? `<div class="hp">${esc(p.help)}</div>` : ""}
+        ${p.modified && !edited ? `<div class="df">v11 default: ${fmtv(p.default)}</div>` : ""}
+      </div>${control}</div>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `<div class="card"><div class="card-h"><span class="card-t">Profiles</span></div>
+    <div class="muted" style="font-size:12.5px">Save a set of parameters and switch back later.</div>
+    <div style="display:flex;gap:9px;margin-top:11px">
+      <input class="field" id="st-pname" placeholder="Profile name" style="flex:1">
+      <button class="btn ghost" id="st-psave" style="padding:12px 22px">Save</button></div>
+    ${(d.profiles || []).map(p => `<div class="day">
+      <div><div class="day-d">${esc(p.name)}</div>
+        <div class="day-m">${p.changes} change${p.changes === 1 ? "" : "s"} from v11</div></div>
+      <div style="display:flex;gap:7px">
+        <button class="btn ghost" data-pl="${esc(p.name)}" style="padding:8px 14px;font-size:12px">Load</button>
+        <button class="btn danger" data-pd="${esc(p.name)}" style="padding:8px 14px;font-size:12px">Delete</button>
+      </div></div>`).join("")}</div>`;
+
+  html += `<div class="card"><div class="card-h"><span class="card-t">Changing the algorithm itself</span></div>
+    <div class="muted" style="font-size:12.5px;line-height:1.55">These controls change the algorithm's
+    inputs. To change its logic — a new signal rule, a different indicator — edit
+    <span class="mono" style="color:var(--text)">backend/app/bot/strategy.py</span> and redeploy.
+    The supervisor, dashboard, reports and exports keep working unchanged as long as it still
+    prints what it prints today.</div></div>`;
+
+  const nEdits = Object.keys(S.stratEdits).length;
+  if (nEdits) {
+    html += `<div class="savebar">
+      <button class="btn ghost" id="st-discard" style="flex:1">Discard</button>
+      <button class="btn" id="st-save" style="flex:2">Save ${nEdits} change${nEdits > 1 ? "s" : ""}</button></div>`;
+  }
+
+  $("#st-body").innerHTML = html;
+  wireStrategy();
+}
+
+function wireStrategy() {
+  const d = S.strategy;
+  const paramOf = k => d.groups.flatMap(g => g.params).find(p => p.key === k);
+  const cur = k => (k in S.stratEdits ? S.stratEdits[k] : paramOf(k).value);
+
+  $$("[data-tog]").forEach(el => el.onclick = () => {
+    const k = el.dataset.tog; S.stratEdits[k] = !cur(k); renderStrategy();
+  });
+  $$("[data-txt]").forEach(el => el.onchange = () => {
+    S.stratEdits[el.dataset.txt] = el.value.trim(); renderStrategy();
+  });
+  $$("[data-n]").forEach(el => el.onclick = () => {
+    const k = el.dataset.n, p = paramOf(k), dir = Number(el.dataset.d);
+    const step = p.step ?? (p.type === "pct" ? 0.01 : 1);
+    let next = Number(cur(k)) + dir * step;
+    if (p.min != null) next = Math.max(p.min, next);
+    if (p.max != null) next = Math.min(p.max, next);
+    S.stratEdits[k] = p.type === "int" ? Math.round(next) : Number(next.toFixed(6));
+    renderStrategy();
+  });
+  $$("[data-t]").forEach(el => el.onclick = () => {
+    const k = el.dataset.t, dir = Number(el.dataset.d), unit = el.dataset.u;
+    const [h, m] = String(cur(k)).split(":").map(Number);
+    const nh = unit === "h" ? (h + dir + 24) % 24 : h;
+    const nm = unit === "m" ? (m + dir * 5 + 60) % 60 : m;
+    S.stratEdits[k] = `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+    renderStrategy();
+  });
+
+  const discard = $("#st-discard"); if (discard) discard.onclick = () => { S.stratEdits = {}; renderStrategy(); };
+  const save = $("#st-save"); if (save) save.onclick = async () => {
+    save.disabled = true; save.textContent = "Saving…";
+    try {
+      S.strategy = await api("/api/strategy", { method: "PUT", body: JSON.stringify({ values: S.stratEdits }) });
+      S.stratEdits = {}; renderStrategy(); refreshStatus();
+      toast("Saved — applies on the next start");
+    } catch (e) { toast(e.message); save.disabled = false; save.textContent = "Save"; }
+  };
+  const reset = $("#st-reset"); if (reset) reset.onclick = async () => {
+    if (!confirm("Reset every parameter to the original v11 values?")) return;
+    try { S.strategy = await api("/api/strategy/reset", { method: "POST" });
+      S.stratEdits = {}; renderStrategy(); toast("Reset to v11"); } catch (e) { toast(e.message); }
+  };
+  const psave = $("#st-psave"); if (psave) psave.onclick = async () => {
+    const name = $("#st-pname").value.trim(); if (!name) return;
+    try { S.strategy = await api("/api/strategy/profiles",
+      { method: "POST", body: JSON.stringify({ name }) }); renderStrategy(); toast("Profile saved"); }
+    catch (e) { toast(e.message); }
+  };
+  $$("[data-pl]").forEach(el => el.onclick = async () => {
+    try { S.strategy = await api("/api/strategy/profiles/load",
+      { method: "POST", body: JSON.stringify({ name: el.dataset.pl }) });
+      S.stratEdits = {}; renderStrategy(); toast("Profile loaded"); } catch (e) { toast(e.message); }
+  });
+  $$("[data-pd]").forEach(el => el.onclick = async () => {
+    try { S.strategy = await api(`/api/strategy/profiles?name=${encodeURIComponent(el.dataset.pd)}`,
+      { method: "DELETE" }); renderStrategy(); } catch (e) { toast(e.message); }
+  });
+}
+
 /* ---------------- control ---------------- */
 $("#c-start").onclick = async () => {
   try { await api("/api/bot/start", { method: "POST", body: JSON.stringify({ force: false }) });
@@ -870,9 +1344,11 @@ function renderAll() { renderDash(); renderFeed(); }
 
 function boot() {
   refreshStatus(); refreshMarks(); connectWS();
-  clearInterval(boot._a); clearInterval(boot._b);
+  clearInterval(boot._a); clearInterval(boot._b); clearInterval(boot._c);
   boot._a = setInterval(refreshStatus, 15000);
   boot._b = setInterval(refreshMarks, 60000);
+  // The bot pushes a chart every 15s; match it so the view stays live.
+  boot._c = setInterval(() => { if (S.view === "chart") loadChart(); }, 15000);
 }
 
 if (S.token) { $("#gate").classList.add("hide"); boot(); }

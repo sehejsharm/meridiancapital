@@ -87,6 +87,24 @@ def _envf(name: str, default: float) -> float:
         return default
 
 
+def _envi(name: str, default: int) -> int:
+    try:
+        return int(float(os.getenv(name) or default))
+    except ValueError:
+        return default
+
+
+def _envt(name: str, default: dtime) -> dtime:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        hh, _, mm = raw.partition(":")
+        return dtime(int(hh), int(mm or 0))
+    except ValueError:
+        return default
+
+
 PAPER_MODE          = _envb("PAPER_MODE", True)
 SEED_CAPITAL        = _envf("SEED_CAPITAL", 20000.0)   # used ONLY on very first run
 PAPER_SLIPPAGE_PCT  = _envf("PAPER_SLIPPAGE_PCT", 0.005)  # 0.5% each side
@@ -97,58 +115,62 @@ CLIENT_ID    = os.getenv("ANGEL_CLIENT_ID", "")
 PASSWORD     = os.getenv("ANGEL_PASSWORD", "")
 TOTP_SECRET  = os.getenv("ANGEL_TOTP_SECRET", "")
 
-INDEX_NAME   = "NIFTY"
-INDEX_TOKEN  = "99926000"
+# Every constant below keeps its v11 value as the default. An untouched
+# install trades exactly as the original script did; the app can override any
+# of them, and the supervisor passes the overrides in as environment.
+INDEX_NAME   = os.getenv("INDEX_NAME", "NIFTY")
+INDEX_TOKEN  = os.getenv("INDEX_TOKEN", "99926000")
+INDEX_SYMBOL = os.getenv("INDEX_TRADINGSYMBOL", "Nifty 50")
 FUT_TOKEN    = None
 FUT_SYMBOL   = None
 
-STRIKE_STEP      = 50
-DEFAULT_LOT_SIZE = 75
+STRIKE_STEP      = _envi("STRIKE_STEP", 50)
+DEFAULT_LOT_SIZE = _envi("DEFAULT_LOT_SIZE", 75)
 
 # ---- RISK LADDER (sweep-winning config) ----
-SL_PCT         = 0.10
-BE_TRIGGER_PCT = 0.15
-BE_FLOOR_PCT   = 0.04
-LOCK1_TRIGGER  = 0.25
-LOCK1_FLOOR    = 0.10
-LOCK2_TRIGGER  = 0.40
-LOCK2_FLOOR    = 0.25
-FREE_GIVEBACK  = 0.10
+SL_PCT         = _envf("SL_PCT", 0.10)
+BE_TRIGGER_PCT = _envf("BE_TRIGGER_PCT", 0.15)
+BE_FLOOR_PCT   = _envf("BE_FLOOR_PCT", 0.04)
+LOCK1_TRIGGER  = _envf("LOCK1_TRIGGER", 0.25)
+LOCK1_FLOOR    = _envf("LOCK1_FLOOR", 0.10)
+LOCK2_TRIGGER  = _envf("LOCK2_TRIGGER", 0.40)
+LOCK2_FLOOR    = _envf("LOCK2_FLOOR", 0.25)
+FREE_GIVEBACK  = _envf("FREE_GIVEBACK", 0.10)
 
-DAILY_KILL_RUPEES  = 3000.0
-MAX_TRADES_PER_DAY = 3
+DAILY_KILL_RUPEES  = _envf("DAILY_KILL_RUPEES", 3000.0)
+MAX_TRADES_PER_DAY = _envi("MAX_TRADES_PER_DAY", 3)
 ENABLE_PYRAMID     = False
 MAX_LOTS_IN_TRADE  = 1
 
-SL_SAME_DIR_COOLDOWN_MIN   = 15
-EXIT_SAME_DIR_COOLDOWN_MIN = 3
+SL_SAME_DIR_COOLDOWN_MIN   = _envi("SL_SAME_DIR_COOLDOWN_MIN", 15)
+EXIT_SAME_DIR_COOLDOWN_MIN = _envi("EXIT_SAME_DIR_COOLDOWN_MIN", 3)
 
-SMA_PERIOD  = 50
-EMA_FAST    = 9
-EMA_SLOW    = 21
-SLOPE_BARS  = 3
-RF_RATE     = 0.07
+SMA_PERIOD  = _envi("SMA_PERIOD", 50)
+EMA_FAST    = _envi("EMA_FAST", 9)
+EMA_SLOW    = _envi("EMA_SLOW", 21)
+SLOPE_BARS  = _envi("SLOPE_BARS", 3)
+RF_RATE     = _envf("RF_RATE", 0.07)
 
-USE_RSI_FILTER = False
-RSI_PERIOD     = 14
+USE_RSI_FILTER = _envb("USE_RSI_FILTER", False)
+RSI_PERIOD     = _envi("RSI_PERIOD", 14)
 
-GARCH_VOL_MIN       = 0.09
-GARCH_TRADE3_MIN    = 0.11
-POST_SL_GARCH_MIN   = 0.09
+GARCH_VOL_MIN       = _envf("GARCH_VOL_MIN", 0.09)
+GARCH_TRADE3_MIN    = _envf("GARCH_TRADE3_MIN", 0.11)
+POST_SL_GARCH_MIN   = _envf("POST_SL_GARCH_MIN", 0.09)
 GARCH_BARS_PER_YEAR = 375 * 252
 
-ENABLE_CHOP_FILTER = True
-CHOP_BLOCK_PCT     = 15
-CHOP_LOOKBACK_DAYS = 60
-CHOP_HISTORY_DAYS  = 75
-ADX_PERIOD         = 14
+ENABLE_CHOP_FILTER = _envb("ENABLE_CHOP_FILTER", True)
+CHOP_BLOCK_PCT     = _envi("CHOP_BLOCK_PCT", 15)
+CHOP_LOOKBACK_DAYS = _envi("CHOP_LOOKBACK_DAYS", 60)
+CHOP_HISTORY_DAYS  = CHOP_LOOKBACK_DAYS + 15
+ADX_PERIOD         = _envi("ADX_PERIOD", 14)
 
-BLOCK_EXPIRY_DAY_TRADING = True
-EXPIRY_DAY_GARCH_MIN     = 0.13
+BLOCK_EXPIRY_DAY_TRADING = _envb("BLOCK_EXPIRY_DAY_TRADING", True)
+EXPIRY_DAY_GARCH_MIN     = _envf("EXPIRY_DAY_GARCH_MIN", 0.13)
 
-MARKET_OPEN  = dtime(9, 40)
-ENTRY_CUTOFF = dtime(13, 30)
-FORCE_CLOSE  = dtime(15, 0)
+MARKET_OPEN  = _envt("MARKET_OPEN", dtime(9, 40))
+ENTRY_CUTOFF = _envt("ENTRY_CUTOFF", dtime(13, 30))
+FORCE_CLOSE  = _envt("FORCE_CLOSE", dtime(15, 0))
 MARKET_END   = dtime(15, 30)
 
 # ---- FILES (memory across days) ----
@@ -170,6 +192,9 @@ EOD_FILE    = _p("eod_reports.csv")
 # ---- REPORTING ----
 MINUTE_UPDATE_SECONDS = 60           # full status block every 60s
 STATUS_EVENT_SECONDS  = 2            # live push cadence to the phone
+CHART_EVENT_SECONDS   = 15           # candle + premium push cadence
+CHART_MAX_BARS        = 400          # today's session fits in 375 one-minute bars
+PREMIUM_SERIES_MAX    = 1500         # option ticks kept for the trade box
 CANDLE_CACHE_SECONDS  = 60
 MAX_LTP_FAILURES      = 5
 SESSION_REFRESH_SECONDS = 3600
@@ -439,6 +464,8 @@ class LiveBroker:
         self.last_heartbeat    = 0
         self.last_minute_report = 0
         self.last_status_event = 0
+        self.last_chart_event  = 0
+        self.premium_series    = deque(maxlen=PREMIUM_SERIES_MAX)
         self._paper_order_seq  = 0
         self._paper_last_fill  = {}
         self.chop_scores       = {}
@@ -549,7 +576,7 @@ class LiveBroker:
         self.last_heartbeat = time.time()
         try:
             self._patch_ip()
-            res = timed("ltpData", self.api.ltpData, "NSE", "Nifty 50", INDEX_TOKEN)
+            res = timed("ltpData", self.api.ltpData, "NSE", INDEX_SYMBOL, INDEX_TOKEN)
             if res and res.get("status"):
                 emit("heartbeat", "Connection healthy", latency=LAT.summary_line())
                 return
@@ -861,7 +888,7 @@ class LiveBroker:
     def get_spot_ltp(self):
         try:
             self._patch_ip()
-            res = timed("ltpData", self.api.ltpData, "NSE", "Nifty 50", INDEX_TOKEN)
+            res = timed("ltpData", self.api.ltpData, "NSE", INDEX_SYMBOL, INDEX_TOKEN)
             if res and res.get("status"):
                 return float(res["data"]["ltp"])
         except Exception:
@@ -874,7 +901,11 @@ class LiveBroker:
             res = timed("ltpData", self.api.ltpData, "NFO", symbol, token)
             if res and res.get("status"):
                 self.ltp_failures = 0
-                return float(res["data"]["ltp"])
+                ltp = float(res["data"]["ltp"])
+                # Every poll on the open contract feeds the trade-box chart.
+                if self.position and self.position.get("symbol") == symbol:
+                    self.premium_series.append((int(time.time() * 1000), round(ltp, 2)))
+                return ltp
         except Exception:
             pass
         self.ltp_failures += 1
@@ -1118,7 +1149,7 @@ class LiveBroker:
         atm = round(spot / STRIKE_STEP) * STRIKE_STEP
         today = datetime.now().date()
         for k in [atm, atm + STRIKE_STEP, atm - STRIKE_STEP, atm + 2 * STRIKE_STEP, atm - 2 * STRIKE_STEP]:
-            res = self.search_scrip_live(f"NIFTY {k} {'CE' if opt_type=='C' else 'PE'}")
+            res = self.search_scrip_live(f"{INDEX_NAME} {k} {'CE' if opt_type=='C' else 'PE'}")
             if not res:
                 continue
             valid = []
@@ -1766,6 +1797,8 @@ class LiveBroker:
                 "model_prem": p.get("model_prem"), "entry_iv": p.get("entry_iv"),
                 "lot_cost": p.get("lot_cost"), "real_margin": p.get("real_margin"),
                 "next_trigger": self._next_ladder_trigger(entry, cur),
+                "levels": self._ladder_levels(entry),
+                "token": p.get("token"),
             }
 
         emit("status", "", level="debug",
@@ -1798,6 +1831,94 @@ class LiveBroker:
                      "force_close": FORCE_CLOSE.strftime("%H:%M"),
                      "end": MARKET_END.strftime("%H:%M")},
              reject_counts=dict(self.reject_counts))
+
+    # ================================================================
+    #  CHART — candles and the live option premium, for the app
+    # ================================================================
+    def chart_event(self, df_ind, spot, force=False):
+        """Push today's bars and the open contract's premium track.
+
+        Reuses the candles already fetched for signal generation, so this
+        costs no extra broker calls.
+        """
+        now = time.time()
+        if not force and now - self.last_chart_event < CHART_EVENT_SECONDS:
+            return
+        self.last_chart_event = now
+
+        candles, vwap, ema9, ema21 = [], [], [], []
+        try:
+            today = df_ind[df_ind["Date"] == datetime.now().date()].tail(CHART_MAX_BARS)
+            for row in today.itertuples():
+                ts = int(pd.Timestamp(row.Timestamp).timestamp() * 1000)
+                candles.append([ts, round(float(row.Open), 2), round(float(row.High), 2),
+                                round(float(row.Low), 2), round(float(row.Close), 2),
+                                int(row.Volume)])
+                vwap.append(None if pd.isna(row.VWAP) else round(float(row.VWAP), 2))
+                ema9.append(None if pd.isna(row.EMA9) else round(float(row.EMA9), 2))
+                ema21.append(None if pd.isna(row.EMA21) else round(float(row.EMA21), 2))
+        except Exception:
+            return
+
+        option = None
+        if self.position:
+            p = self.position
+            entry = p["avg_entry"]
+            option = {
+                "symbol": p["symbol"],
+                "opt_type": p["type"],
+                "strike": p["strike"],
+                "series": list(self.premium_series),
+                "entry": entry,
+                "sl": p["sl_price"],
+                "stage": p["stage"],
+                "high_prem": p["high_prem"],
+                "entry_ts": self._entry_ts_ms(p),
+                "levels": self._ladder_levels(entry),
+            }
+
+        emit("chart", "", level="debug",
+             index=INDEX_NAME,
+             source=FUT_SYMBOL or INDEX_SYMBOL,
+             interval="1m",
+             spot=round(spot, 2) if spot else None,
+             candles=candles, vwap=vwap, ema9=ema9, ema21=ema21,
+             option=option)
+
+    @staticmethod
+    def _entry_ts_ms(position):
+        try:
+            return int(datetime.strptime(
+                position["entry_time"], "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _ladder_levels(entry):
+        """Every price the ladder cares about, for drawing on the chart.
+
+        This strategy has no fixed take-profit — it climbs a trailing ladder,
+        so these are the levels at which the stop ratchets up, not exit
+        targets. The final stage trails behind the peak instead.
+        """
+        return {
+            "stop": {"price": round(entry * (1 - SL_PCT), 2),
+                     "pct": round(-SL_PCT * 100, 1), "label": "Stop loss"},
+            "breakeven": {"price": round(entry * (1 + BE_TRIGGER_PCT), 2),
+                          "pct": round(BE_TRIGGER_PCT * 100, 1),
+                          "floor": round(entry * (1 + BE_FLOOR_PCT), 2),
+                          "label": "Breakeven lock"},
+            "lock1": {"price": round(entry * (1 + LOCK1_TRIGGER), 2),
+                      "pct": round(LOCK1_TRIGGER * 100, 1),
+                      "floor": round(entry * (1 + LOCK1_FLOOR), 2),
+                      "label": "Lock 1"},
+            "lock2": {"price": round(entry * (1 + LOCK2_TRIGGER), 2),
+                      "pct": round(LOCK2_TRIGGER * 100, 1),
+                      "floor": round(entry * (1 + LOCK2_FLOOR), 2),
+                      "label": "Lock 2"},
+            "free": {"giveback_pct": round(FREE_GIVEBACK * 100, 1),
+                     "label": f"Trail {FREE_GIVEBACK*100:.0f}% behind peak"},
+        }
 
     def _next_ladder_trigger(self, entry, cur):
         """What the position has to do next for the ladder to step up."""
@@ -2202,6 +2323,7 @@ class LiveBroker:
                            f"Managing {self.position['symbol']}" if self.position else "Flat")
             self.minute_report(dec, gvol, spot, atm)
             self.status_event(dec, gvol, spot, atm)
+            self.chart_event(df_ind, spot)
             if self.position:
                 p = self.position
                 cur = self.get_option_ltp(p["symbol"], p["token"]) or p["avg_entry"]
@@ -2223,6 +2345,7 @@ class LiveBroker:
 
         self.minute_report(decision, gvol, spot, atm)
         self.status_event(decision, gvol, spot, atm)
+        self.chart_event(df_ind, spot)
 
         if decision.took_trade:
             emit("signal", f"SIGNAL {decision.detail}", level="success", **decision.as_dict())
@@ -2234,17 +2357,80 @@ class LiveBroker:
 
 
 # ================================================================
-#  CONFIG GUARD — the v11 numbers must not drift
+#  CONFIG GUARD
 # ================================================================
+V11_BASELINE = {
+    "SL_PCT": 0.10, "BE_TRIGGER_PCT": 0.15, "BE_FLOOR_PCT": 0.04,
+    "LOCK1_TRIGGER": 0.25, "LOCK1_FLOOR": 0.10,
+    "LOCK2_TRIGGER": 0.40, "LOCK2_FLOOR": 0.25, "FREE_GIVEBACK": 0.10,
+    "DAILY_KILL_RUPEES": 3000.0, "MAX_TRADES_PER_DAY": 3,
+    "GARCH_VOL_MIN": 0.09, "GARCH_TRADE3_MIN": 0.11, "POST_SL_GARCH_MIN": 0.09,
+    "USE_RSI_FILTER": False, "ENABLE_CHOP_FILTER": True,
+    "BLOCK_EXPIRY_DAY_TRADING": True,
+    "MARKET_OPEN": "09:40", "ENTRY_CUTOFF": "13:30", "FORCE_CLOSE": "15:00",
+    "INDEX_NAME": "NIFTY", "STRIKE_STEP": 50,
+}
+
+
+def current_config() -> dict:
+    return {
+        "SL_PCT": SL_PCT, "BE_TRIGGER_PCT": BE_TRIGGER_PCT,
+        "BE_FLOOR_PCT": BE_FLOOR_PCT, "LOCK1_TRIGGER": LOCK1_TRIGGER,
+        "LOCK1_FLOOR": LOCK1_FLOOR, "LOCK2_TRIGGER": LOCK2_TRIGGER,
+        "LOCK2_FLOOR": LOCK2_FLOOR, "FREE_GIVEBACK": FREE_GIVEBACK,
+        "DAILY_KILL_RUPEES": DAILY_KILL_RUPEES,
+        "MAX_TRADES_PER_DAY": MAX_TRADES_PER_DAY,
+        "GARCH_VOL_MIN": GARCH_VOL_MIN, "GARCH_TRADE3_MIN": GARCH_TRADE3_MIN,
+        "POST_SL_GARCH_MIN": POST_SL_GARCH_MIN,
+        "USE_RSI_FILTER": USE_RSI_FILTER,
+        "ENABLE_CHOP_FILTER": ENABLE_CHOP_FILTER,
+        "BLOCK_EXPIRY_DAY_TRADING": BLOCK_EXPIRY_DAY_TRADING,
+        "MARKET_OPEN": MARKET_OPEN.strftime("%H:%M"),
+        "ENTRY_CUTOFF": ENTRY_CUTOFF.strftime("%H:%M"),
+        "FORCE_CLOSE": FORCE_CLOSE.strftime("%H:%M"),
+        "INDEX_NAME": INDEX_NAME, "STRIKE_STEP": STRIKE_STEP,
+    }
+
+
 def verify_config() -> None:
-    assert abs(SL_PCT - 0.10) < 1e-9,         "SL must be 10%"
-    assert abs(BE_TRIGGER_PCT - 0.15) < 1e-9, "BE trigger 15%"
-    assert abs(BE_FLOOR_PCT - 0.04) < 1e-9,   "BE floor 4%"
-    assert abs(LOCK1_TRIGGER - 0.25) < 1e-9,  "Lock1 25%"
-    assert abs(LOCK2_TRIGGER - 0.40) < 1e-9,  "Lock2 40%"
-    assert USE_RSI_FILTER is False,           "RSI OFF"
-    assert ENABLE_PYRAMID is False,           "Pyramid OFF"
-    assert FORCE_CLOSE == dtime(15, 0),       "Force close 15:00"
+    """Check the properties that must hold at any set of values.
+
+    The original guard asserted the literal v11 constants, which cannot
+    survive a strategy the user is allowed to edit. What actually matters is
+    that the ladder steps upward and the session times run in order — a floor
+    above its trigger would place the stop above the market and fire the
+    instant a position opened. Deviations from v11 are reported, not blocked.
+    """
+    assert BE_FLOOR_PCT < BE_TRIGGER_PCT, \
+        "Breakeven floor must sit below its trigger"
+    assert BE_TRIGGER_PCT < LOCK1_TRIGGER < LOCK2_TRIGGER, \
+        "Ladder triggers must increase: breakeven < lock 1 < lock 2"
+    assert LOCK1_FLOOR < LOCK1_TRIGGER and LOCK2_FLOOR < LOCK2_TRIGGER, \
+        "Each ladder floor must sit below its own trigger"
+    assert BE_FLOOR_PCT <= LOCK1_FLOOR < LOCK2_FLOOR, \
+        "Ladder floors must increase as the ladder climbs"
+    assert 0 < SL_PCT < 1, "Stop loss must be between 0 and 100%"
+    assert 0 < FREE_GIVEBACK < 1, "Free-run giveback must be between 0 and 100%"
+    assert EMA_FAST < EMA_SLOW, "Fast EMA period must be shorter than the slow EMA"
+    assert MARKET_OPEN < ENTRY_CUTOFF < FORCE_CLOSE < MARKET_END, \
+        "Session times must run in order and finish before the exchange closes"
+    assert MAX_TRADES_PER_DAY >= 1 and DAILY_KILL_RUPEES > 0, \
+        "Trade cap and kill switch must be positive"
+    assert ENABLE_PYRAMID is False, "Pyramid OFF"
+
+    drift = {k: {"v11": v, "now": current_config()[k]}
+             for k, v in V11_BASELINE.items() if current_config()[k] != v}
+    if drift:
+        print(Fore.YELLOW + Style.BRIGHT
+              + f"[Guard] {len(drift)} parameter(s) differ from the v11 baseline:")
+        for key, d in drift.items():
+            print(Fore.YELLOW + f"    {key:<26} v11 {d['v11']}  ->  now {d['now']}")
+        emit("config_drift",
+             f"{len(drift)} parameter(s) differ from the v11 baseline",
+             level="warn", drift=drift, config=current_config())
+    else:
+        emit("config_ok", "Running the v11 baseline configuration",
+             config=current_config())
 
 
 # ================================================================

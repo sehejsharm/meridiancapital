@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { Pill } from './src/components/ui';
 import { istClock } from './src/format';
+import ChartScreen from './src/screens/ChartScreen';
 import ConnectScreen from './src/screens/ConnectScreen';
 import ControlScreen from './src/screens/ControlScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
@@ -80,6 +81,7 @@ function Header() {
 
 const ICONS: Record<string, [keyof typeof Ionicons.glyphMap, keyof typeof Ionicons.glyphMap]> = {
   Dashboard: ['stats-chart', 'stats-chart-outline'],
+  Chart: ['analytics', 'analytics-outline'],
   Live: ['terminal', 'terminal-outline'],
   Trades: ['trending-up', 'trending-up-outline'],
   Reports: ['document-text', 'document-text-outline'],
@@ -103,7 +105,7 @@ function Tabs() {
             paddingTop: 6,
             paddingBottom: 8,
           },
-          tabBarLabelStyle: { fontSize: 9.5, fontWeight: '700', letterSpacing: 0.3 },
+          tabBarLabelStyle: { fontSize: 9, fontWeight: '700', letterSpacing: 0.1 },
           tabBarIcon: ({ focused, color, size }) => {
             const [active, inactive] = ICONS[route.name] ?? ['ellipse', 'ellipse-outline'];
             return (
@@ -113,6 +115,7 @@ function Tabs() {
         })}
       >
         <Tab.Screen name="Dashboard" component={DashboardScreen} />
+        <Tab.Screen name="Chart" component={ChartScreen} />
         <Tab.Screen name="Live" component={FeedScreen} />
         <Tab.Screen name="Trades" component={TradesScreen} />
         <Tab.Screen name="Reports" component={ReportsScreen} />

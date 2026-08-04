@@ -257,6 +257,58 @@ def test_api() -> None:
         r = client.get("/", headers=h)
         check("dashboard page served", r.status_code == 200 and "html" in r.text.lower())
 
+        # ---- strategy ----
+        r = client.get("/api/strategy", headers=h)
+        check("strategy describes itself", r.status_code == 200 and len(r.json()["groups"]) > 0)
+        body = r.json()
+        n_params = sum(len(g["params"]) for g in body["groups"])
+        check(f"all parameters exposed ({n_params})", n_params >= 30)
+        check("baseline reports no drift", body["drift"] == {})
+        check("baseline reports no problems", body["problems"] == [])
+
+        r = client.put("/api/strategy", headers=h,
+                       json={"values": {"SL_PCT": 0.12, "MAX_TRADES_PER_DAY": 5}})
+        check("valid strategy edit accepted", r.status_code == 200)
+        check("edit shows up as drift",
+              set(r.json()["drift"]) == {"SL_PCT", "MAX_TRADES_PER_DAY"}, str(r.json()["drift"]))
+
+        r = client.put("/api/strategy", headers=h, json={"values": {"BE_FLOOR_PCT": 0.30}})
+        check("inconsistent ladder rejected with a reason",
+              r.status_code == 400 and "below its trigger" in r.json()["detail"],
+              r.text[:200])
+
+        r = client.put("/api/strategy", headers=h, json={"values": {"SL_PCT": 9.0}})
+        check("out-of-range value rejected", r.status_code == 400)
+
+        r = client.put("/api/strategy", headers=h, json={"values": {"NOT_A_PARAM": 1}})
+        check("unknown parameter rejected", r.status_code == 400)
+
+        r = client.post("/api/strategy/profiles", headers=h, json={"name": "wider stop"})
+        check("profile saved", r.status_code == 200
+              and any(p["name"] == "wider stop" for p in r.json()["profiles"]))
+
+        client.post("/api/strategy/reset", headers=h)
+        r = client.get("/api/strategy", headers=h)
+        check("reset clears drift", r.json()["drift"] == {})
+
+        r = client.post("/api/strategy/profiles/load", headers=h, json={"name": "wider stop"})
+        check("profile restores its values",
+              r.status_code == 200 and "SL_PCT" in r.json()["drift"], str(r.json()["drift"]))
+        client.post("/api/strategy/reset", headers=h)
+
+        r = client.get("/api/strategy", headers=h)
+        check("strategy endpoint needs no bot running", r.status_code == 200)
+        r = client.get("/api/strategy")
+        check("strategy endpoint is authenticated", r.status_code == 401)
+
+        # ---- chart ----
+        r = client.get("/api/chart", headers=h)
+        check("chart endpoint answers with the bot stopped",
+              r.status_code == 200 and r.json()["available"] is False)
+        check("chart explains why it is empty", bool(r.json().get("reason")))
+        r = client.get("/api/chart")
+        check("chart endpoint is authenticated", r.status_code == 401)
+
 
 def main() -> int:
     print("=" * 60)

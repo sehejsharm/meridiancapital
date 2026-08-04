@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View,
+  Alert, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView,
+  StyleSheet, Text, View,
 } from 'react-native';
 
 import * as api from '../api';
 import { Button, Card, Row, Toggle } from '../components/ui';
 import { duration, prettyDateTime } from '../format';
+import StrategyScreen from './StrategyScreen';
 import { useStore } from '../store';
 import { C, R } from '../theme';
 
@@ -46,6 +48,7 @@ export default function ControlScreen() {
   const [start, setStart] = useState('09:15');
   const [stop, setStop] = useState('15:45');
   const [busy, setBusy] = useState<string | null>(null);
+  const [showStrategy, setShowStrategy] = useState(false);
 
   const loadSchedule = useCallback(async () => {
     try {
@@ -208,6 +211,37 @@ export default function ControlScreen() {
         </View>
       </Card>
 
+      <Card title="Strategy">
+        <Text style={s.hint}>
+          Stop loss, the risk ladder, volatility gates, filters, session times and
+          the instrument itself — all editable, all validated. Changes apply the
+          next time the bot starts, never mid-position.
+        </Text>
+        <Button
+          title="Edit strategy parameters"
+          variant="ghost"
+          style={{ marginTop: 12 }}
+          onPress={() => setShowStrategy(true)}
+        />
+      </Card>
+
+      <Modal
+        visible={showStrategy}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowStrategy(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+          <View style={s.sheetHead}>
+            <Text style={s.sheetTitle}>Strategy</Text>
+            <Pressable onPress={() => setShowStrategy(false)} hitSlop={12}>
+              <Text style={s.sheetClose}>Done</Text>
+            </Pressable>
+          </View>
+          <StrategyScreen />
+        </SafeAreaView>
+      </Modal>
+
       <Card title="System">
         <Row k="Mode" v={cfg?.paper_mode ? 'Paper trading' : 'LIVE — real money'}
              vColor={cfg?.paper_mode ? C.info : C.down} />
@@ -283,6 +317,13 @@ const s = StyleSheet.create({
   },
   liveWarnText: { color: C.down, fontSize: 12.5, fontWeight: '700', lineHeight: 18 },
   hint: { color: C.dim, fontSize: 11.5, lineHeight: 18, marginTop: 12 },
+  sheetHead: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line,
+  },
+  sheetTitle: { color: C.text, fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
+  sheetClose: { color: C.accent, fontSize: 15, fontWeight: '700' },
   switchRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12, paddingBottom: 13,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line,

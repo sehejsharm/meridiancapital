@@ -46,6 +46,12 @@ def main() -> None:
     print("  MODE: PAPER TRADING")
     print("=" * 68)
     emit("boot", "Bot starting — PAPER TRADING", level="success", paper=True)
+    # Report the strategy environment we were launched with, so the tests can
+    # prove overrides actually reach the child process.
+    emit("config_seen", "Strategy environment received", level="debug",
+         env={k: os.getenv(k) for k in
+              ("SL_PCT", "BE_TRIGGER_PCT", "MAX_TRADES_PER_DAY",
+               "ENABLE_CHOP_FILTER", "MARKET_OPEN", "INDEX_NAME")})
     emit("ready", "Bot armed and watching the market", level="success", equity=20000.0)
 
     if MODE == "crash":

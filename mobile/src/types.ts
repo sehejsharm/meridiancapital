@@ -26,6 +26,8 @@ export interface Position {
   model_prem?: number | null; entry_iv?: number | null;
   lot_cost?: number | null; real_margin?: number | null;
   next_trigger?: LadderTrigger;
+  levels?: LadderLevels;
+  token?: string;
 }
 
 export interface Decision {
@@ -136,6 +138,89 @@ export interface Summary {
 }
 
 export interface DateRange { start: string; end: string; label: string }
+
+/** [timestamp_ms, open, high, low, close, volume] */
+export type Candle = [number, number, number, number, number, number];
+
+export interface LadderLevel {
+  price: number;
+  pct: number;
+  floor?: number;
+  label: string;
+}
+
+export interface LadderLevels {
+  stop: LadderLevel;
+  breakeven: LadderLevel;
+  lock1: LadderLevel;
+  lock2: LadderLevel;
+  free: { giveback_pct: number; label: string };
+}
+
+export interface OptionTrack {
+  symbol: string;
+  opt_type: 'C' | 'P';
+  strike: number;
+  /** [timestamp_ms, premium] */
+  series: [number, number][];
+  entry: number;
+  sl: number;
+  stage: string;
+  high_prem: number;
+  entry_ts: number | null;
+  levels: LadderLevels;
+}
+
+export interface ChartData {
+  available: boolean;
+  reason?: string;
+  index?: string;
+  source?: string;
+  interval?: string;
+  spot?: number | null;
+  candles: Candle[];
+  vwap?: (number | null)[];
+  ema9?: (number | null)[];
+  ema21?: (number | null)[];
+  option: OptionTrack | null;
+  _ts?: string;
+}
+
+export interface StrategyParam {
+  key: string;
+  label: string;
+  type: 'pct' | 'rupees' | 'int' | 'bool' | 'time' | 'text';
+  value: any;
+  default: any;
+  min: number | null;
+  max: number | null;
+  step: number | null;
+  help: string;
+  critical: boolean;
+  modified: boolean;
+}
+
+export interface StrategyGroup {
+  name: string;
+  params: StrategyParam[];
+}
+
+export interface StrategyProfile {
+  name: string;
+  saved_at: string | null;
+  changes: number;
+}
+
+export interface StrategyDescription {
+  groups: StrategyGroup[];
+  drift: Record<string, {
+    label: string; group: string; v11: any; current: any; critical: boolean;
+  }>;
+  problems: string[];
+  profiles: StrategyProfile[];
+  applies_at: string;
+  bot_running: boolean;
+}
 
 export interface EquityMark {
   ts: string; session_date: string; equity: number;

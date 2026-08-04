@@ -24,6 +24,9 @@ COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ /app/
+# The dashboard doubles as a standalone Vercel project, so it is copied in
+# rather than living under backend/ — the server can host it either way.
+COPY web/ /app/web/
 
 # Runtime state — equity book, ledgers, SQLite — lives on a volume so a
 # redeploy never resets the compounding capital.

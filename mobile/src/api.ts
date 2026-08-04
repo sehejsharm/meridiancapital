@@ -2,8 +2,8 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
 import type {
-  BotStatus, DateRange, EquityMark, FeedEvent, Format,
-  Period, SessionRow, Summary, Trade,
+  BotStatus, ChartData, DateRange, EquityMark, FeedEvent, Format,
+  Period, SessionRow, StrategyDescription, Summary, Trade,
 } from './types';
 
 export class ApiError extends Error {
@@ -134,6 +134,40 @@ export const exportPreview = (period: Period, anchor: string) =>
   request<{ range: DateRange; summary: Summary; sessions: number; trades: number }>(
     `/api/export/preview?${rangeQuery(period, anchor)}`,
   );
+
+// ------------------------------------------------------------- chart
+
+export const chart = () => request<ChartData>('/api/chart');
+
+// ------------------------------------------------------------- strategy
+
+export const getStrategy = () => request<StrategyDescription>('/api/strategy');
+
+export const putStrategy = (values: Record<string, any>) =>
+  request<StrategyDescription>('/api/strategy', {
+    method: 'PUT',
+    body: JSON.stringify({ values }),
+  });
+
+export const resetStrategy = () =>
+  request<StrategyDescription>('/api/strategy/reset', { method: 'POST' });
+
+export const saveProfile = (name: string) =>
+  request<StrategyDescription>('/api/strategy/profiles', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+
+export const loadProfile = (name: string) =>
+  request<StrategyDescription>('/api/strategy/profiles/load', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+
+export const deleteProfile = (name: string) =>
+  request<StrategyDescription>(`/api/strategy/profiles?name=${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  });
 
 // ------------------------------------------------------------- push
 
