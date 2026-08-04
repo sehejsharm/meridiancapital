@@ -30,6 +30,9 @@ from .holidays import is_trading_day, why_not_trading
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
+# Overridable so the supervisor's plumbing can be exercised without a broker.
+BOT_MODULE = os.getenv("BOT_MODULE", "app.bot.strategy")
+
 # Events that are pure UI chatter — broadcast live, never stored.
 EPHEMERAL_KINDS = {"status"}
 
@@ -149,7 +152,7 @@ class BotSupervisor:
             backend_dir = Path(__file__).resolve().parent.parent
             try:
                 self.proc = subprocess.Popen(
-                    [sys.executable, "-u", "-m", "app.bot.strategy"],
+                    [sys.executable, "-u", "-m", BOT_MODULE],
                     cwd=str(backend_dir),
                     env=env,
                     stdout=subprocess.PIPE,

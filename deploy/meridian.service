@@ -1,0 +1,49 @@
+# systemd unit for running without Docker.
+#
+#   sudo cp deploy/meridian.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now meridian
+#   sudo journalctl -u meridian -f
+#
+# Adjust User and the paths if you did not clone to /opt/meridiancapital.
+
+[Unit]
+Description=Meridian Capital trading control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=meridian
+Group=meridian
+WorkingDirectory=/opt/meridiancapital/backend
+Environment=TZ=Asia/Kolkata
+Environment=PYTHONUNBUFFERED=1
+Environment=DATA_DIR=/opt/meridiancapital/data
+EnvironmentFile=/opt/meridiancapital/.env
+ExecStart=/opt/meridiancapital/.venv/bin/uvicorn app.main:app \
+    --host 0.0.0.0 --port 8000 \
+    --ws-ping-interval 20 --ws-ping-timeout 20
+
+Restart=always
+RestartSec=10
+
+# The API spawns the bot as a child. KillMode=control-group would SIGKILL it
+# outright; `mixed` sends SIGTERM to the whole group first, giving the
+# algorithm its chance to flatten and file the end-of-day report.
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=90
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/meridiancapital/data
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meridian
+
+[Install]
+WantedBy=multi-user.target

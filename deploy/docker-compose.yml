@@ -1,0 +1,54 @@
+# Run from the repository root:
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# Reads secrets from ../.env — never bake them into the image.
+
+services:
+  meridian:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: meridian:latest
+    container_name: meridian
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      TZ: Asia/Kolkata
+      DATA_DIR: /data
+    ports:
+      - "8000:8000"
+    volumes:
+      - meridian-data:/data
+    # The bot spawns a child process; give it room to shut down cleanly so an
+    # open position is flattened and the EOD report is filed before exit.
+    stop_grace_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # Optional TLS front door. Point DOMAIN at this host first, then:
+  #   docker compose -f deploy/docker-compose.yml --profile tls up -d
+  caddy:
+    image: caddy:2-alpine
+    container_name: meridian-caddy
+    restart: unless-stopped
+    profiles: ["tls"]
+    depends_on:
+      - meridian
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  meridian-data:
+  caddy-data:
+  caddy-config:

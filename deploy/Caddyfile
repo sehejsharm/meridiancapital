@@ -1,0 +1,42 @@
+# Automatic HTTPS in front of the API.
+#
+# Set DOMAIN in .env to a hostname whose DNS A record already points at this
+# server; Caddy provisions and renews the certificate on its own.
+#
+# HTTPS is not optional here. The API token travels in a header on every
+# request and in the query string on downloads — over plain HTTP anyone on the
+# path can lift it and take control of the bot.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# WebSocket upgrade for the live feed.
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websocket meridian:8000
+
+	reverse_proxy meridian:8000 {
+		header_up X-Real-IP {remote_host}
+		# Long reads: the feed socket is idle between market events.
+		transport http {
+			read_timeout 3600s
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}

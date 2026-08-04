@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "Meridian Capital",
+    "slug": "meridian-capital",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "meridian",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#05070d",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#05070d",
+      "resizeMode": "contain"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.meridian.capital",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"],
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.meridian.capital",
+      "adaptiveIcon": {
+        "backgroundColor": "#05070d"
+      },
+      "permissions": ["INTERNET", "POST_NOTIFICATIONS"],
+      "usesCleartextTraffic": true
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#35d6a0"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "00000000-0000-0000-0000-000000000000"
+      }
+    }
+  }
+}
