@@ -52,8 +52,8 @@ ssh <your-user>@meridian.local
 ## 2. One command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<you>/meridiancapital/main/deploy/pi-setup.sh \
-  | sudo REPO_URL=https://github.com/<you>/meridiancapital.git bash
+curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/claude/paper-trading-bot-setup-y5nxn5/deploy/pi-setup.sh \
+  | sudo REPO_URL=https://github.com/sehejsharm/meridiancapital.git bash
 ```
 
 It refuses to continue on a 32-bit OS or under 1 GB of RAM, then handles the

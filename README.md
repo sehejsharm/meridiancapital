@@ -70,6 +70,8 @@ anything differing from v11 rather than refusing to start.
 ## Quick start
 
 Free path start to finish: [`deploy/FREE-HOSTING.md`](deploy/FREE-HOSTING.md).
+Oracle Cloud from a blank account, zero context needed:
+[`deploy/ORACLE-SETUP.md`](deploy/ORACLE-SETUP.md).
 Running it on a Raspberry Pi — free forever, lowest latency, one command:
 [`deploy/RASPBERRY-PI.md`](deploy/RASPBERRY-PI.md).
 Paid/self-hosted variants: [`deploy/DEPLOY.md`](deploy/DEPLOY.md).

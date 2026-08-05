@@ -28,8 +28,8 @@ Ubuntu 24.04 LTS.
 SSH in and run:
 
 ```bash
-sudo REPO_URL=https://github.com/<you>/meridiancapital.git bash \
-  <(curl -fsSL https://raw.githubusercontent.com/<you>/meridiancapital/main/deploy/setup.sh)
+sudo REPO_URL=https://github.com/sehejsharm/meridiancapital.git bash \
+  <(curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/claude/paper-trading-bot-setup-y5nxn5/deploy/setup.sh)
 ```
 
 Or manually:
@@ -37,7 +37,7 @@ Or manually:
 ```bash
 sudo timedatectl set-timezone Asia/Kolkata     # not optional
 curl -fsSL https://get.docker.com | sudo sh
-sudo git clone https://github.com/<you>/meridiancapital.git /opt/meridiancapital
+sudo git clone https://github.com/sehejsharm/meridiancapital.git /opt/meridiancapital
 cd /opt/meridiancapital
 cp .env.example .env
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # your API token
@@ -128,7 +128,7 @@ sudo docker compose -f deploy/docker-compose.yml exec meridian date
 
 ```bash
 sudo adduser --system --group meridian
-sudo git clone https://github.com/<you>/meridiancapital.git /opt/meridiancapital
+sudo git clone https://github.com/sehejsharm/meridiancapital.git /opt/meridiancapital
 cd /opt/meridiancapital
 sudo python3 -m venv .venv
 sudo .venv/bin/pip install -r backend/requirements.txt

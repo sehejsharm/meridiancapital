@@ -35,24 +35,25 @@ Oracle's free tier is the only one that is genuinely free forever *and* has an
 India region. Both matter: every LTP poll is a round trip to Angel One, and
 the bot polls twice a second while holding a position.
 
-1. Sign up at [cloud.oracle.com](https://cloud.oracle.com). Pick **India West
+1. Sign up at [cloud.oracle.com](https://cloud.oracle.com) — full click-by-click walkthrough in [`deploy/ORACLE-SETUP.md`](ORACLE-SETUP.md) if this is your first time. Pick **India West
    (Mumbai)** or **India South (Hyderabad)** as your home region — this cannot
    be changed later. A card is required for identity verification; the Always
    Free resources are not charged.
 
 2. Create a VM instance:
    - Image: **Ubuntu 24.04**
-   - Shape: **VM.Standard.A1.Flex** (Ampere ARM), 1 OCPU, 6 GB RAM
+   - Shape: **VM.Standard.E2.1.Micro** (AMD, 1/8 OCPU, 1 GB RAM) — Always
+     Free, and reliably available, unlike the ARM shape below
    - Tick **Assign a public IPv4 address**
    - Save the SSH key it offers you
 
-   > **"Out of host capacity" is the normal experience.** Free ARM in Mumbai
-   > is heavily oversubscribed. Do not keep retrying the same shape — switch
-   > to the AMD one, which almost always has room:
+   > **Skip VM.Standard.A1.Flex (Ampere ARM) entirely.** It is also Always
+   > Free and offers more RAM (up to 6 GB), but it is heavily oversubscribed
+   > in Indian regions and you will most likely just see "Out of host
+   > capacity" for hours. The AMD Micro shape above is smaller but reliably
+   > available, and 1 GB is enough for this bot.
    >
-   > **Shape → VM.Standard.E2.1.Micro** (1/8 OCPU, 1 GB), also Always Free.
-   >
-   > 1 GB is enough. The bot holds about 130 MB resident; the one spike is
+   > The bot holds about 130 MB resident; the one spike is
    > parsing Angel One's 30 MB scrip master on the first run of each day, and
    > `deploy/setup.sh` adds 2 GB of swap to absorb it. After that first parse
    > the contracts are cached to disk at ~3% of the size, so restarts are
@@ -82,7 +83,7 @@ the bot polls twice a second while holding a position.
    ```bash
    sudo timedatectl set-timezone Asia/Kolkata
    curl -fsSL https://get.docker.com | sudo sh
-   sudo git clone https://github.com/<you>/meridiancapital.git /opt/meridiancapital
+   sudo git clone https://github.com/sehejsharm/meridiancapital.git /opt/meridiancapital
    cd /opt/meridiancapital
    cp .env.example .env
    nano .env
@@ -167,7 +168,8 @@ Or without any CLI: push this repo to GitHub, go to
 to `web`. Leave the framework as *Other*; there is no build step.
 
 You get something like `https://meridian-capital.vercel.app`. Open it, enter
-your Tailscale URL and the API token, and you are connected.
+your Tailscale URL, then sign in with the `ADMIN_USER` / `ADMIN_PASSWORD` from
+your `.env` — the API token is only needed for `curl` and scripted exports.
 
 There are no secrets in the Vercel deployment. The dashboard is static HTML —
 your token is typed in on the device and kept in that browser's local storage.
@@ -258,8 +260,8 @@ reaches it from anywhere, and you never touch the machine after setup. If you
 have a Pi in a drawer, this is genuinely the best option on this list.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<you>/meridiancapital/main/deploy/pi-setup.sh \
-  | sudo REPO_URL=https://github.com/<you>/meridiancapital.git bash
+curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/claude/paper-trading-bot-setup-y5nxn5/deploy/pi-setup.sh \
+  | sudo REPO_URL=https://github.com/sehejsharm/meridiancapital.git bash
 ```
 
 **Not recommended:** Render and Koyeb free tiers sleep after inactivity, which
