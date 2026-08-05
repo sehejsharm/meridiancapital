@@ -71,11 +71,31 @@ the bot polls twice a second while holding a position.
    sudo git clone https://github.com/<you>/meridiancapital.git /opt/meridiancapital
    cd /opt/meridiancapital
    cp .env.example .env
-   python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # copy this
-   nano .env          # paste it as API_TOKEN, fill in the five ANGEL_* values
+   nano .env
+   ```
+
+   Fill in five things:
+
+   ```ini
+   ADMIN_USER=Sehej            # what you type into the app
+   ADMIN_PASSWORD=...          # your passcode — hashed at boot, never stored plain
+   ANGEL_API_KEY=...           # the five broker values
+   ANGEL_SECRET_KEY=...
+   ANGEL_CLIENT_ID=...
+   ANGEL_PASSWORD=...
+   ANGEL_TOTP_SECRET=...
+   API_TOKEN=...               # optional, only for curl and scripted exports
+   ```
+
+   Type the broker credentials yourself rather than pasting them through any
+   tool — they are the login to your money. Then:
+
+   ```bash
    sudo docker compose -f deploy/docker-compose.yml up -d --build
    curl http://localhost:8000/api/health
    ```
+
+   `login_available: true` in that response means the password took.
 
 ---
 
