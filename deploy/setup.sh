@@ -23,6 +23,21 @@ die()  { echo "${RED}==>${OFF} $*" >&2; exit 1; }
 say "Setting the system clock to Asia/Kolkata"
 timedatectl set-timezone Asia/Kolkata || warn "Could not set timezone; do it manually."
 
+# The free 1 GB shapes are workable, but parsing Angel One's 30 MB scrip
+# master spikes to a few hundred megabytes on the first run of each day.
+# Swap absorbs that spike instead of the kernel killing the bot.
+TOTAL_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 4096)"
+if (( TOTAL_MB < 1800 )) && [[ ! -f /swapfile ]]; then
+  say "Only ${TOTAL_MB} MB RAM — adding 2 GB of swap"
+  fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048
+  chmod 600 /swapfile
+  mkswap /swapfile >/dev/null
+  swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  sysctl -w vm.swappiness=10 >/dev/null
+  grep -q '^vm.swappiness' /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
+fi
+
 if ! command -v docker >/dev/null 2>&1; then
   say "Installing Docker"
   curl -fsSL https://get.docker.com | sh

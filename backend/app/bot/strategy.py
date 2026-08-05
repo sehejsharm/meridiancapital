@@ -17,6 +17,7 @@ Run standalone with:  python -m app.bot.strategy
 """
 from __future__ import annotations
 
+import gc
 import json
 import logging
 import os
@@ -186,6 +187,7 @@ LOG_FILE    = _p("paper_ledger.csv")
 STATE_FILE  = _p("paper_state.json")
 DAY_FILE    = _p("paper_day.json")
 CHOP_FILE   = _p("paper_chop.json")
+SCRIP_CACHE_FILE = _p("scrip_master_cache.json")
 EQUITY_FILE = _p("equity_book.json")     # <-- compounding capital lives here
 EOD_FILE    = _p("eod_reports.csv")
 
@@ -607,21 +609,43 @@ class LiveBroker:
         print(Fore.YELLOW + "[Init] Downloading scrip master...")
         for attempt in range(3):
             try:
+                if self._load_scrip_cache():
+                    return
+
                 url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
                 t0 = time.perf_counter()
                 raw = urllib.request.urlopen(url, timeout=30).read()
                 LAT.record("scripMaster", (time.perf_counter() - t0) * 1000)
+
+                # The full file is ~30 MB of JSON that parses into a few hundred
+                # megabytes of dicts. On a 1 GB host that spike is the difference
+                # between running and being OOM-killed, so everything needed is
+                # pulled out in a single pass and the big list is released at
+                # once rather than lingering through a second scan.
                 all_scrips = json.loads(raw)
-                self.scrip_master = [
-                    s for s in all_scrips
-                    if s.get("exch_seg") == "NFO" and s.get("name") == INDEX_NAME
-                    and s.get("instrumenttype") == "OPTIDX"]
+                del raw
+
+                options, futures = [], []
+                for s in all_scrips:
+                    if s.get("exch_seg") != "NFO" or s.get("name") != INDEX_NAME:
+                        continue
+                    kind = s.get("instrumenttype")
+                    if kind == "OPTIDX":
+                        options.append(s)
+                    elif kind == "FUTIDX":
+                        futures.append(s)
+
+                del all_scrips
+                gc.collect()
+
+                self.scrip_master = options
                 print(Fore.GREEN + f"[OK] {len(self.scrip_master)} contracts | "
                       + f"download {LAT.stats('scripMaster')['last']/1000:.1f}s")
-                emit("scrip_master", f"{len(self.scrip_master)} NIFTY option contracts loaded",
+                emit("scrip_master", f"{len(self.scrip_master)} {INDEX_NAME} option contracts loaded",
                      contracts=len(self.scrip_master),
                      seconds=round(LAT.stats("scripMaster")["last"] / 1000, 1))
-                self._discover_futures(all_scrips)
+                self._discover_futures(futures)
+                self._save_scrip_cache(options, futures)
                 return
             except Exception as e:
                 print(Fore.YELLOW + f"[Init] Attempt {attempt+1}: {e}")
@@ -629,17 +653,54 @@ class LiveBroker:
         print(Fore.RED + "[FAIL] Could not load scrip master")
         raise BotStartupError("Could not download Angel One scrip master")
 
-    def _discover_futures(self, all_scrips):
+    def _load_scrip_cache(self) -> bool:
+        """Reuse today's filtered contracts instead of re-parsing 30 MB.
+
+        A restart mid-session — a crash, a redeploy — should not pay the
+        download and the memory spike again.
+        """
+        try:
+            if not os.path.exists(SCRIP_CACHE_FILE):
+                return False
+            with open(SCRIP_CACHE_FILE, "r") as f:
+                cached = json.load(f)
+            if cached.get("date") != datetime.now().strftime("%Y-%m-%d"):
+                return False
+            if cached.get("index") != INDEX_NAME:
+                return False
+            options = cached.get("options") or []
+            if not options:
+                return False
+            self.scrip_master = options
+            print(Fore.GREEN + f"[OK] {len(options)} contracts from today's cache")
+            emit("scrip_master", f"{len(options)} {INDEX_NAME} option contracts from cache",
+                 contracts=len(options), cached=True)
+            self._discover_futures(cached.get("futures") or [])
+            return True
+        except Exception:
+            return False
+
+    def _save_scrip_cache(self, options, futures) -> None:
+        try:
+            with open(SCRIP_CACHE_FILE, "w") as f:
+                json.dump({
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "index": INDEX_NAME,
+                    "options": options,
+                    "futures": futures,
+                }, f)
+        except Exception:
+            pass        # the cache is an optimisation, never a requirement
+
+    def _discover_futures(self, futures):
         global FUT_TOKEN, FUT_SYMBOL
         today = datetime.now().date()
         futs = []
-        for s in all_scrips:
+        for s in futures:
             try:
-                if (s.get("exch_seg") == "NFO" and s.get("name") == INDEX_NAME
-                        and s.get("instrumenttype") == "FUTIDX"):
-                    exp = datetime.strptime(s["expiry"], "%d%b%Y").date()
-                    if exp >= today:
-                        futs.append((exp, s))
+                exp = datetime.strptime(s["expiry"], "%d%b%Y").date()
+                if exp >= today:
+                    futs.append((exp, s))
             except Exception:
                 continue
         if futs:

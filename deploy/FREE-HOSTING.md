@@ -46,11 +46,25 @@ the bot polls twice a second while holding a position.
    - Tick **Assign a public IPv4 address**
    - Save the SSH key it offers you
 
-   > **Expect to retry.** Free ARM capacity in Mumbai is frequently exhausted
-   > and you will see *"Out of host capacity"*. Try again over a few hours, or
-   > try Hyderabad. If you cannot get one, skip to
-   > [the paid fallback](#if-the-free-vm-will-not-come-up) — it is about ₹800
-   > a month and takes five minutes.
+   > **"Out of host capacity" is the normal experience.** Free ARM in Mumbai
+   > is heavily oversubscribed. Do not keep retrying the same shape — switch
+   > to the AMD one, which almost always has room:
+   >
+   > **Shape → VM.Standard.E2.1.Micro** (1/8 OCPU, 1 GB), also Always Free.
+   >
+   > 1 GB is enough. The bot holds about 130 MB resident; the one spike is
+   > parsing Angel One's 30 MB scrip master on the first run of each day, and
+   > `deploy/setup.sh` adds 2 GB of swap to absorb it. After that first parse
+   > the contracts are cached to disk at ~3% of the size, so restarts are
+   > cheap. If you skip the setup script, add swap yourself before starting:
+   >
+   > ```bash
+   > sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+   > sudo mkswap /swapfile && sudo swapon /swapfile
+   > echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+   > ```
+   >
+   > Still stuck? See [the alternatives](#if-oracle-will-not-cooperate).
 
 3. Open the firewall. Oracle blocks everything by default, in two places:
 
@@ -214,10 +228,40 @@ which is exactly why the home-screen web app above is worth using on iPhone.
 
 ---
 
-## If the free VM will not come up
+## If Oracle will not cooperate
 
-Oracle's free ARM capacity genuinely runs out. Rather than fighting it for
-days, any of these work the same way — same repo, same commands:
+In order of how much I would actually recommend them. Every one runs the same
+repo with the same commands — only the box changes.
+
+**1. Oracle's AMD shape, not ARM.** Before giving up on Oracle: the capacity
+problem is specific to `VM.Standard.A1.Flex` (ARM). `VM.Standard.E2.1.Micro`
+(AMD, 1 GB) is also Always Free and is usually available immediately. With the
+swap the setup script adds, it runs this bot fine. Try this first — it keeps
+you on free-forever in Mumbai.
+
+**2. Google Cloud, ₹0 for 90 days.** $300 of credit, any region including
+Mumbai, no capacity lottery. An `e2-small` runs comfortably inside it for
+three months. Their permanent free `e2-micro` is US-only, so when the credit
+ends you either pay ~₹1,000/mo or move. Good if you want to be running today
+and decide later.
+
+**3. AWS free tier, ₹0 for 12 months.** `t3.micro` in Mumbai, 1 GB, free for a
+year from signup. Longer runway than Google's credit, same one-day setup. Add
+swap as above.
+
+**4. Your own hardware.** A Raspberry Pi 4, or any old laptop that can stay
+plugged in and closed. Free forever, and the lowest latency to Angel One you
+will get since it is physically in India. This does not contradict wanting a
+laptop-free setup — Tailscale means your phone reaches it from anywhere, and
+you never touch the machine after setup. If you have a Pi in a drawer, this is
+genuinely the best option on this list.
+
+**Not recommended:** Render and Koyeb free tiers sleep after inactivity, which
+kills a bot that must hold a position; Railway's free credit runs out mid-month;
+Fly.io dropped its free allowance. Anything that sleeps or has no India region
+is the wrong shape for this.
+
+Paid, if you would rather just not think about it:
 
 | Provider | Region | Spec | Cost |
 |---|---|---|---|
@@ -225,8 +269,15 @@ days, any of these work the same way — same repo, same commands:
 | AWS Lightsail | Mumbai | 1 vCPU / 2 GB | ~₹850/mo |
 | Azure | Central India | B1s | ~₹800/mo |
 
-2 GB RAM is the floor — pandas, scipy and the scrip master need about 600 MB
-resident, and 1 GB instances get killed under load.
+### What it actually needs
+
+Measured, not guessed: ~130 MB resident once running. The only pressure point
+is the first scrip-master parse of each day, which can touch a few hundred
+megabytes transiently. So:
+
+- **2 GB RAM** — comfortable, no swap needed.
+- **1 GB RAM + 2 GB swap** — works, and is what the free shapes give you.
+- **512 MB** — do not.
 
 ---
 
