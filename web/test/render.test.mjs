@@ -295,6 +295,20 @@ console.log('\nSecurity surface');
         html.includes('mixedContentBlocked'));
   check('token is never hardcoded in the page',
         !html.includes('cXTBbbmZ'), 'a real token leaked into the file');
+  check('a build stamp is present so a stale cache is visible',
+        /const BUILD = "[\d.a-z-]+"/.test(html));
+  check('the build stamp is shown on the login screen',
+        html.includes('id="g-build"'));
+
+  const vercel = JSON.parse(readFileSync(join(HERE, '..', 'vercel.json'), 'utf8'));
+  const sources = vercel.headers.map((h) => h.source);
+  check('vercel serves the site root uncached', sources.includes('/'),
+        'a request to / never carries the /index.html path, so it needs its own rule');
+  check('vercel serves index.html uncached', sources.includes('/index.html'));
+  const rootRule = vercel.headers.find((h) => h.source === '/');
+  check('root cache header actually disables caching',
+        rootRule.headers.some((x) => /no-store/.test(x.value)),
+        JSON.stringify(rootRule));
 }
 
 console.log('\n' + '='.repeat(60));

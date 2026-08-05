@@ -460,7 +460,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.5;
       </div>
     </details>
 
-    <div class="gate-foot">NIFTY Options · IST</div>
+    <div class="gate-foot">NIFTY Options · IST · <span id="g-build"></span></div>
   </div>
 </div>
 
@@ -697,6 +697,11 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.5;
 
 <script>
 "use strict";
+/* Bump on every UI change. Shown on the login screen and under Control →
+   System, so "is the browser serving me a stale build?" is answerable in one
+   glance instead of a guess. */
+const BUILD = "2026.08.05-gold.1";
+
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
@@ -831,6 +836,7 @@ async function bioUnlock() {
 }
 
 /* ---------------- gate ---------------- */
+$("#g-build").textContent = BUILD;
 $("#g-url").value = S.url;
 $("#g-user").value = S.user || "Sehej";
 
@@ -1740,6 +1746,7 @@ async function loadControl() {
       ${row("Operator", S.user || "—")}
       ${row("Server", S.url.replace(/^https?:\/\//, ""))}
       ${row("Biometric unlock", bioOn ? "Enabled on this device" : (avail ? "Available" : "Not supported here"))}
+      ${row("Dashboard build", BUILD)}
       <div class="dim" style="font-size:10px;line-height:1.6;margin-top:9px">
         Biometrics lock this device. Your passcode is what the server verifies.</div>`;
     $("#c-bio-enroll").textContent = bioOn ? "Re-enrol biometric unlock" : "Enable biometric unlock";
