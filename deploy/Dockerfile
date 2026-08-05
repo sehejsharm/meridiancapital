@@ -21,7 +21,11 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY backend/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# numpy, pandas and scipy all publish prebuilt aarch64 wheels, which is what
+# keeps a Raspberry Pi build to minutes instead of hours. Refusing a source
+# build for them turns a missing wheel into an immediate, readable error
+# rather than a long compile that fails at the end on a board with 2 GB.
+RUN pip install --no-cache-dir --only-binary=numpy,pandas,scipy -r requirements.txt
 
 COPY backend/ /app/
 # The dashboard doubles as a standalone Vercel project, so it is copied in

@@ -249,12 +249,18 @@ and decide later.
 year from signup. Longer runway than Google's credit, same one-day setup. Add
 swap as above.
 
-**4. Your own hardware.** A Raspberry Pi 4, or any old laptop that can stay
-plugged in and closed. Free forever, and the lowest latency to Angel One you
-will get since it is physically in India. This does not contradict wanting a
-laptop-free setup — Tailscale means your phone reaches it from anywhere, and
-you never touch the machine after setup. If you have a Pi in a drawer, this is
-genuinely the best option on this list.
+**4. Your own hardware — [full guide here](RASPBERRY-PI.md).** A Raspberry Pi
+4/5, or any old laptop that can stay plugged in and closed. Free forever, and
+the lowest latency to Angel One you will get since it is physically in India:
+single-digit milliseconds against 40–60 ms from a Mumbai cloud VM. This does
+not contradict wanting a laptop-free setup — Tailscale means your phone
+reaches it from anywhere, and you never touch the machine after setup. If you
+have a Pi in a drawer, this is genuinely the best option on this list.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/<you>/meridiancapital/main/deploy/pi-setup.sh \
+  | sudo REPO_URL=https://github.com/<you>/meridiancapital.git bash
+```
 
 **Not recommended:** Render and Koyeb free tiers sleep after inactivity, which
 kills a bot that must hold a position; Railway's free credit runs out mid-month;

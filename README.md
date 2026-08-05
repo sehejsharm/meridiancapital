@@ -70,6 +70,8 @@ anything differing from v11 rather than refusing to start.
 ## Quick start
 
 Free path start to finish: [`deploy/FREE-HOSTING.md`](deploy/FREE-HOSTING.md).
+Running it on a Raspberry Pi — free forever, lowest latency, one command:
+[`deploy/RASPBERRY-PI.md`](deploy/RASPBERRY-PI.md).
 Paid/self-hosted variants: [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
 
 **Bot server** — any always-on Linux box in India:
@@ -242,7 +244,7 @@ web/
   vercel.json            static deploy config
   test/render.test.mjs   47 render, brand and security checks
 mobile/                  Expo React Native app
-deploy/                  Dockerfile, compose, Caddy, systemd, hosting guides
+deploy/                  Dockerfile, compose, Caddy, systemd, Pi and cloud guides
 ```
 
 ## API
