@@ -5,11 +5,13 @@ import { AppState, AppStateStatus, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 import * as api from './api';
+import * as bio from './biometrics';
 import { registerForPush } from './push';
 import type { BotStatus, EquityMark, FeedEvent, Snapshot } from './types';
 
 const KEY_URL = 'meridian_url';
 const KEY_TOKEN = 'meridian_token';
+const KEY_USER = 'meridian_user';
 const MAX_LINES = 900;
 
 type Connection = 'connecting' | 'live' | 'polling' | 'offline';
@@ -19,13 +21,22 @@ interface Store {
   authed: boolean;
   connection: Connection;
   baseUrl: string;
+  user: string;
+  savedServer: string;
+  savedUser: string;
+  /** A stored session plus enrolled biometrics — offer the unlock. */
+  canUnlock: boolean;
   status: BotStatus | null;
   snapshot: Snapshot;
   feed: FeedEvent[];
   marks: EquityMark[];
   error: string | null;
 
-  connect(url: string, token: string): Promise<void>;
+  /** Password sign-in, or token sign-in when `token` is supplied. */
+  login(url: string, username: string, password: string, token?: string): Promise<void>;
+  unlockWithBiometrics(): Promise<boolean>;
+  enableBiometrics(): Promise<boolean>;
+  disableBiometrics(): Promise<void>;
   disconnect(): Promise<void>;
   refresh(): Promise<void>;
   clearFeed(): void;
@@ -43,6 +54,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [baseUrl, setBaseUrl] = useState('');
+  const [user, setUser] = useState('');
+  const [savedServer, setSavedServer] = useState('');
+  const [savedUser, setSavedUser] = useState('');
+  const [canUnlock, setCanUnlock] = useState(false);
   const [connection, setConnection] = useState<Connection>('offline');
   const [status, setStatus] = useState<BotStatus | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot>({});
@@ -198,21 +213,97 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const connectionIsStale = () =>
     ws.current == null || ws.current.readyState > 1; // CLOSING or CLOSED
 
-  const connect = useCallback(async (url: string, token: string) => {
-    const clean = url.trim().replace(/\/+$/, '');
-    api.configure(clean, token.trim());
-    await api.status(); // throws if the token or URL is wrong
-    await SecureStore.setItemAsync(KEY_URL, clean);
-    await SecureStore.setItemAsync(KEY_TOKEN, token.trim());
-    await begin(clean, token.trim());
+  const normalise = (url: string) => {
+    let u = url.trim().replace(/\/+$/, '');
+    if (u && !/^https?:\/\//.test(u)) u = `https://${u}`;
+    return u;
+  };
+
+  const persist = async (url: string, token: string, who: string) => {
+    await SecureStore.setItemAsync(KEY_URL, url).catch(() => {});
+    await SecureStore.setItemAsync(KEY_TOKEN, token).catch(() => {});
+    await SecureStore.setItemAsync(KEY_USER, who).catch(() => {});
+    setSavedServer(url);
+    setSavedUser(who);
+  };
+
+  const login = useCallback(async (
+    url: string, username: string, password: string, token?: string,
+  ) => {
+    const clean = normalise(url);
+    if (!clean) throw new Error('Enter the server address');
+
+    let sessionToken: string;
+    let who: string;
+
+    if (token) {
+      // Straight API token — validate it before storing.
+      api.configure(clean, token.trim());
+      const me = await api.whoami();
+      sessionToken = token.trim();
+      who = me.user;
+    } else {
+      const session = await api.login(clean, username.trim(), password);
+      sessionToken = session.token;
+      who = session.user;
+      api.configure(clean, sessionToken);
+    }
+
+    await persist(clean, sessionToken, who);
+    setUser(who);
+    await begin(clean, sessionToken);
+
+    // Offer to turn on Face ID once there is a session worth protecting.
+    const cap = await bio.capability();
+    if (cap.available && cap.enrolled && !(await bio.isEnabled())) {
+      setCanUnlock(false);   // stays off until the user opts in from Control
+    }
   }, [begin]);
+
+  const unlockWithBiometrics = useCallback(async (): Promise<boolean> => {
+    const url = await SecureStore.getItemAsync(KEY_URL).catch(() => null);
+    const token = await SecureStore.getItemAsync(KEY_TOKEN).catch(() => null);
+    const who = await SecureStore.getItemAsync(KEY_USER).catch(() => null);
+    if (!url || !token) return false;
+
+    const ok = await bio.authenticate('Unlock Meridian Capital');
+    if (!ok) return false;
+
+    api.configure(url, token);
+    try {
+      await api.whoami();          // the stored session may have expired
+    } catch {
+      return false;
+    }
+    setUser(who ?? '');
+    await begin(url, token);
+    return true;
+  }, [begin]);
+
+  const enableBiometrics = useCallback(async (): Promise<boolean> => {
+    const cap = await bio.capability();
+    if (!cap.available || !cap.enrolled) return false;
+    const ok = await bio.authenticate(`Enable ${cap.label} for Meridian`);
+    if (!ok) return false;
+    await bio.setEnabled(true);
+    setCanUnlock(true);
+    return true;
+  }, []);
+
+  const disableBiometrics = useCallback(async () => {
+    await bio.setEnabled(false);
+    setCanUnlock(false);
+  }, []);
 
   const disconnect = useCallback(async () => {
     closeSocket();
     if (pollTimer.current) { clearInterval(pollTimer.current); pollTimer.current = null; }
     await SecureStore.deleteItemAsync(KEY_TOKEN).catch(() => {});
+    await bio.setEnabled(false);
     api.configure('', '');
     setAuthed(false);
+    setUser('');
+    setCanUnlock(false);
     setStatus(null);
     setSnapshot({});
     setFeed([]);
@@ -225,17 +316,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const url = await SecureStore.getItemAsync(KEY_URL);
-        const token = await SecureStore.getItemAsync(KEY_TOKEN);
-        if (url && token) {
-          api.configure(url, token);
-          try {
-            await api.status();
-            await begin(url, token);
-          } catch {
-            // Stored credentials no longer work; fall through to the gate.
-            setAuthed(false);
-          }
+        const url = await SecureStore.getItemAsync(KEY_URL).catch(() => null);
+        const token = await SecureStore.getItemAsync(KEY_TOKEN).catch(() => null);
+        const who = await SecureStore.getItemAsync(KEY_USER).catch(() => null);
+        setSavedServer(url ?? '');
+        setSavedUser(who ?? '');
+
+        if (!url || !token) return;
+
+        const cap = await bio.capability();
+        const bioOn = await bio.isEnabled();
+
+        if (bioOn && cap.available && cap.enrolled) {
+          // Locked: the gate offers Face ID rather than opening straight up.
+          setCanUnlock(true);
+          return;
+        }
+
+        api.configure(url, token);
+        try {
+          await api.whoami();
+          setUser(who ?? '');
+          await begin(url, token);
+        } catch {
+          setAuthed(false);   // stored session no longer valid
         }
       } finally {
         setReady(true);
@@ -264,10 +368,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [closeSocket]);
 
   const value = useMemo<Store>(() => ({
-    ready, authed, connection, baseUrl, status, snapshot, feed, marks, error,
-    connect, disconnect, refresh, clearFeed,
-  }), [ready, authed, connection, baseUrl, status, snapshot, feed, marks, error,
-       connect, disconnect, refresh, clearFeed]);
+    ready, authed, connection, baseUrl, user, savedServer, savedUser, canUnlock,
+    status, snapshot, feed, marks, error,
+    login, unlockWithBiometrics, enableBiometrics, disableBiometrics,
+    disconnect, refresh, clearFeed,
+  }), [ready, authed, connection, baseUrl, user, savedServer, savedUser, canUnlock,
+       status, snapshot, feed, marks, error,
+       login, unlockWithBiometrics, enableBiometrics, disableBiometrics,
+       disconnect, refresh, clearFeed]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

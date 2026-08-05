@@ -1,28 +1,50 @@
 import { Platform } from 'react-native';
 
+/**
+ * Gold on black, taken from the compass mark.
+ *
+ * Colour carries meaning here rather than decoration: gold is the interface,
+ * and green/red appear only on numbers that represent money moving. A control
+ * deck where everything is coloured tells you nothing.
+ */
 export const C = {
-  bg: '#05070d',
-  surface: '#0b1119',
-  surface2: '#111926',
-  raised: '#16202f',
-  line: 'rgba(255,255,255,0.075)',
-  lineStrong: 'rgba(255,255,255,0.14)',
+  bg: '#050506',
+  surface: '#0a0a0c',
+  surface2: '#101012',
+  raised: '#17171a',
 
-  text: '#e9eef8',
-  muted: '#78849a',
-  dim: '#4d5768',
+  line: 'rgba(212,175,55,0.11)',
+  lineStrong: 'rgba(212,175,55,0.20)',
+  lineBright: 'rgba(212,175,55,0.34)',
 
-  up: '#35d6a0',
-  down: '#ff5a6e',
-  warn: '#ffb03a',
-  info: '#57a6ff',
-  accent: '#35d6a0',
+  // the mark's gradient, sampled
+  au: '#d4af37',
+  auLit: '#f2da92',
+  auMid: '#b8912b',
+  auDeep: '#8b6914',
+  auBg: 'rgba(212,175,55,0.09)',
+  auBg2: 'rgba(212,175,55,0.16)',
 
-  upBg: 'rgba(53,214,160,0.12)',
-  downBg: 'rgba(255,90,110,0.12)',
-  warnBg: 'rgba(255,176,58,0.12)',
-  infoBg: 'rgba(87,166,255,0.12)',
-  track: 'rgba(255,255,255,0.07)',
+  text: '#ece5d6',
+  muted: '#8e8878',
+  dim: '#5a564d',
+  faint: '#38352f',
+
+  up: '#3ecf8e',
+  down: '#f0505a',
+  upBg: 'rgba(62,207,142,0.11)',
+  downBg: 'rgba(240,80,90,0.11)',
+
+  track: 'rgba(212,175,55,0.11)',
+
+  // Semantic names used across the screens. In this palette "warn" and
+  // "info" are both gold — the deck speaks in one accent, and the only
+  // second colour is money moving.
+  accent: '#d4af37',
+  warn: '#d4af37',
+  warnBg: 'rgba(212,175,55,0.09)',
+  info: '#b8912b',
+  infoBg: 'rgba(212,175,55,0.09)',
 } as const;
 
 export const MONO = Platform.select({
@@ -31,18 +53,28 @@ export const MONO = Platform.select({
   default: 'monospace',
 }) as string;
 
-export const R = { sm: 9, md: 13, lg: 17, xl: 20, pill: 999 } as const;
+/** Sharp corners read as instrumentation; rounded reads as consumer app. */
+export const R = { sm: 2, md: 3, lg: 3, xl: 4, pill: 2 } as const;
 
-/** Tone -> colour, used everywhere P&L is shown. */
 export const tone = (v: number | null | undefined) =>
   v == null || Number.isNaN(v) ? C.muted : v > 0 ? C.up : v < 0 ? C.down : C.muted;
 
 export const levelColor = (level?: string) => {
   switch (level) {
     case 'error': return C.down;
-    case 'warn': return C.warn;
+    case 'warn': return C.au;
     case 'success': return C.up;
-    case 'debug': return C.dim;
-    default: return '#c3cddd';
+    case 'debug': return C.faint;
+    default: return '#b5af9f';
   }
+};
+
+/** Uppercase micro-label styling used across every panel header. */
+export const LABEL = {
+  fontSize: 9,
+  fontWeight: '700' as const,
+  letterSpacing: 1.9,
+  textTransform: 'uppercase' as const,
+  color: C.au,
+  fontFamily: MONO,
 };

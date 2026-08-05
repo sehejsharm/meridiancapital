@@ -29,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from . import auth as auth_mod
 from . import db, exports, strategy_config
 from .auth import authorise_websocket, require_token, require_token_query
 from .config import settings
@@ -61,9 +62,11 @@ async def lifespan(app: FastAPI):
     supervisor.bind_loop(asyncio.get_running_loop())
     log.info("Data directory: %s", settings.data_dir)
     log.info("Mode: %s", "PAPER" if settings.paper_mode else "LIVE — REAL MONEY")
-    if not settings.api_token:
-        log.error("API_TOKEN is not set — every authenticated route will refuse. "
-                  "Generate one and put it in .env.")
+    if auth_mod.login_configured():
+        log.info("Login enabled for user %r", auth_mod.admin_username())
+    if not settings.api_token and not auth_mod.login_configured():
+        log.error("Neither ADMIN_PASSWORD nor API_TOKEN is set — every "
+                  "authenticated route will refuse. Fill one in .env.")
     if settings.missing_credentials():
         log.warning("Angel One credentials incomplete: %s",
                     ", ".join(settings.missing_credentials()))
@@ -124,6 +127,11 @@ class ProfileRequest(BaseModel):
     name: str
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
+
+
 # ============================================================ health
 
 
@@ -135,8 +143,58 @@ async def health():
         "service": "meridian-capital",
         "server_time": datetime.now().isoformat(timespec="seconds"),
         "timezone": settings.tz,
-        "auth_configured": bool(settings.api_token),
+        "auth_configured": bool(settings.api_token) or auth_mod.login_configured(),
+        "login_available": auth_mod.login_configured(),
     }
+
+
+# ============================================================ auth
+
+
+@app.post("/api/auth/login")
+async def login(body: LoginRequest, request: Request):
+    ip = request.client.host if request.client else "unknown"
+
+    locked = auth_mod.check_rate_limit(ip)
+    if locked is not None:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many attempts. Try again in {max(1, locked)} seconds.",
+        )
+
+    if not auth_mod.login_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="No password is configured on the server. Set ADMIN_PASSWORD in .env.",
+        )
+
+    session = auth_mod.attempt_login(body.username, body.password)
+    if session is None:
+        auth_mod.record_failure(ip)
+        log.warning("failed login for %r from %s", body.username[:32], ip)
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+
+    auth_mod.clear_failures(ip)
+    log.info("login succeeded for %s from %s", session["user"], ip)
+    return session
+
+
+@app.get("/api/auth/me")
+async def whoami(token: str = Depends(require_token)):
+    payload = auth_mod.verify_session(token)
+    return {
+        "user": payload["sub"] if payload else "api-token",
+        "expires_at": payload.get("exp") if payload else None,
+        "kind": "session" if payload else "api-token",
+    }
+
+
+@app.post("/api/auth/logout-everywhere")
+async def logout_everywhere(_: str = Depends(require_token)):
+    """Invalidate every session token issued so far — for a lost device."""
+    epoch = auth_mod.bump_epoch()
+    log.warning("all sessions invalidated (epoch %s)", epoch)
+    return {"ok": True, "epoch": epoch}
 
 
 # ============================================================ bot control

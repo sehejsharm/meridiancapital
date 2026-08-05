@@ -19,6 +19,8 @@ TMP = tempfile.mkdtemp(prefix="meridian-test-")
 os.environ.update({
     "DATA_DIR": TMP,
     "API_TOKEN": "test-token-123",
+    "ADMIN_USER": "Sehej",
+    "ADMIN_PASSWORD": "test-passcode-9931",
     "PAPER_MODE": "true",
     "TZ": "Asia/Kolkata",
     "AUTO_SCHEDULE": "false",
@@ -308,6 +310,69 @@ def test_api() -> None:
         check("chart explains why it is empty", bool(r.json().get("reason")))
         r = client.get("/api/chart")
         check("chart endpoint is authenticated", r.status_code == 401)
+
+        # ---- login ----
+        r = client.get("/api/health")
+        check("health advertises that login is available", r.json()["login_available"] is True)
+
+        r = client.post("/api/auth/login",
+                        json={"username": "Sehej", "password": "test-passcode-9931"})
+        check("correct credentials sign in", r.status_code == 200 and "token" in r.json())
+        session = r.json()
+        check("session names the operator", session["user"] == "Sehej")
+        check("session carries an expiry", session["expires_at"] > 0)
+
+        sh = {"X-API-Token": session["token"]}
+        r = client.get("/api/status", headers=sh)
+        check("session token opens the API", r.status_code == 200)
+        r = client.get("/api/auth/me", headers=sh)
+        check("whoami identifies the session",
+              r.status_code == 200 and r.json()["user"] == "Sehej"
+              and r.json()["kind"] == "session")
+
+        r = client.post("/api/auth/login",
+                        json={"username": "Sehej", "password": "wrong"})
+        check("wrong password refused", r.status_code == 401)
+        r = client.post("/api/auth/login",
+                        json={"username": "someone", "password": "test-passcode-9931"})
+        check("wrong username refused", r.status_code == 401)
+        check("failure message does not reveal which field was wrong",
+              "username or password" in r.json()["detail"].lower(), r.text[:160])
+
+        r = client.post("/api/auth/login",
+                        json={"username": "sehej", "password": "test-passcode-9931"})
+        check("username is case-insensitive", r.status_code == 200)
+
+        r = client.get("/api/status", headers={"X-API-Token": session["token"][:-3] + "abc"})
+        check("tampered session token rejected", r.status_code == 401)
+
+        # Exports must accept a session token in the query string too.
+        r = client.get(f"/api/export?period=day&anchor=2026-08-04&format=csv"
+                       f"&token={session['token']}")
+        check("session token works for browser downloads", r.status_code == 200)
+
+        # Signing out everywhere must invalidate tokens already issued.
+        r = client.post("/api/auth/logout-everywhere", headers=sh)
+        check("logout-everywhere succeeds", r.status_code == 200)
+        r = client.get("/api/status", headers=sh)
+        check("old session dies after logout-everywhere", r.status_code == 401)
+        r = client.get("/api/status", headers=h)
+        check("the API token still works after logout-everywhere", r.status_code == 200)
+
+        r = client.post("/api/auth/login",
+                        json={"username": "Sehej", "password": "test-passcode-9931"})
+        check("can sign in again afterwards", r.status_code == 200)
+
+        # Repeated failures must lock out rather than allow unlimited guessing.
+        codes = [
+            client.post("/api/auth/login",
+                        json={"username": "Sehej", "password": f"guess-{i}"}).status_code
+            for i in range(12)
+        ]
+        check("brute force is rate limited", 429 in codes, str(codes))
+
+        r = client.get("/api/status", headers=h)
+        check("rate limiting never blocks a valid token", r.status_code == 200)
 
 
 def main() -> int:

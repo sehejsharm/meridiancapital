@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 
 import * as api from '../api';
+import * as bio from '../biometrics';
 import { Button, Card, Row, Toggle } from '../components/ui';
 import { duration, prettyDateTime } from '../format';
 import StrategyScreen from './StrategyScreen';
@@ -43,7 +44,15 @@ const Stepper = ({ onPress, label }: { onPress: () => void; label: string }) => 
 );
 
 export default function ControlScreen() {
-  const { status, refresh, disconnect, baseUrl, connection } = useStore();
+  const {
+    status, refresh, disconnect, baseUrl, connection, user,
+    canUnlock, enableBiometrics, disableBiometrics,
+  } = useStore();
+  const [bioCap, setBioCap] = useState<{ available: boolean; enrolled: boolean; label: string }>(
+    { available: false, enrolled: false, label: 'Biometrics' },
+  );
+
+  useEffect(() => { bio.capability().then(setBioCap); }, []);
   const [sched, setSched] = useState<api.ScheduleInfo | null>(null);
   const [start, setStart] = useState('09:15');
   const [stop, setStop] = useState('15:45');
@@ -296,13 +305,77 @@ export default function ControlScreen() {
         />
       </Card>
 
+      <Card title="Security">
+        <Row k="Operator" v={user || '—'} />
+        <Row k="Server" v={baseUrl.replace(/^https?:\/\//, '')} />
+        <Row
+          k={`${bioCap.label} unlock`}
+          v={
+            !bioCap.available ? 'No sensor on this device'
+              : !bioCap.enrolled ? `Set up ${bioCap.label} in system settings first`
+              : canUnlock ? 'Enabled' : 'Off'
+          }
+          vColor={canUnlock ? C.up : C.muted}
+        />
+        {bioCap.available && bioCap.enrolled && (
+          <Pressable
+            style={s.switchRow}
+            onPress={async () => {
+              if (canUnlock) {
+                await disableBiometrics();
+              } else if (!(await enableBiometrics())) {
+                Alert.alert('Not enabled', `${bioCap.label} did not verify.`);
+              }
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: C.text, fontSize: 13.5 }}>
+                Require {bioCap.label} to open
+              </Text>
+              <Text style={{ color: C.dim, fontSize: 11.5, marginTop: 2, lineHeight: 17 }}>
+                Locks this device. Your passcode is what the server verifies.
+              </Text>
+            </View>
+            <Toggle
+              on={canUnlock}
+              onPress={async () => {
+                if (canUnlock) await disableBiometrics();
+                else await enableBiometrics();
+              }}
+            />
+          </Pressable>
+        )}
+        <Button
+          title="Sign out everywhere"
+          variant="ghost"
+          style={{ marginTop: 12 }}
+          onPress={() =>
+            Alert.alert(
+              'Sign out everywhere?',
+              'Every device signed in with this account stops working immediately.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Sign out all',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try { await api.logoutEverywhere(); } catch { /* going anyway */ }
+                    disconnect();
+                  },
+                },
+              ],
+            )
+          }
+        />
+      </Card>
+
       <Button
-        title="Disconnect"
-        variant="ghost"
+        title="Sign out"
+        variant="danger"
         onPress={() =>
-          Alert.alert('Disconnect?', 'The saved token is removed from this device.', [
+          Alert.alert('Sign out?', 'The saved session is removed from this device.', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Disconnect', style: 'destructive', onPress: () => disconnect() },
+            { text: 'Sign out', style: 'destructive', onPress: () => disconnect() },
           ])
         }
       />

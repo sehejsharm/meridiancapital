@@ -215,15 +215,15 @@ console.log('\nTrade box');
   check('lock 1 target drawn', svg.includes('LOCK 1'));
   check('peak marked when above entry', svg.includes('PEAK'));
   check('loss zone shaded below the stop', svg.includes('opacity=".07"'));
-  check('in profit the line is green',
-        svg.includes('stroke="#35d6a0"'), 'expected the up colour at 150.2 over 142.5');
+  check('in profit the line uses the up colour',
+        svg.includes('stroke="#3ecf8e"'), 'expected the up colour at 150.2 over 142.5');
 }
 {
   const series = Array.from({ length: 30 }, (_, i) => [
     Date.UTC(2026, 7, 4, 4, 22) + i * 5000, round(142.5 - i * 0.4),
   ]);
   const svg = sandbox.drawTradeBox(track(series), 130.6);
-  check('in loss the line is red', svg.includes('stroke="#ff5a6e"'));
+  check('in loss the line uses the down colour', svg.includes('stroke="#f0505a"'));
   check('no NaN when underwater', !svg.includes('NaN'));
 }
 {
@@ -256,11 +256,45 @@ console.log('\nFormatting');
   check('signed money marks a loss', evaluate('signed(-946, 0)').startsWith('−'));
   check('percent carries a sign', evaluate('pct(12.345, 1)') === '+12.3%',
         evaluate('pct(12.345, 1)'));
-  check('null money is not NaN', evaluate('money(null)') === '₹—');
+  check('null money renders as a dash, not NaN', evaluate('money(null)') === '—');
   check('escaping neutralises markup',
         evaluate('esc("<img src=x onerror=alert(1)>")').includes('&lt;img'));
   check('tone class follows the sign',
         evaluate('cls(5)') === 'up' && evaluate('cls(-5)') === 'down');
+}
+
+console.log('\nBrand');
+{
+  const html = readFileSync(HTML, 'utf8');
+  check('gold is the accent variable', html.includes('--au:#d4af37'));
+  check('no leftover green accent from the old palette',
+        !html.includes('#35d6a0'), 'old accent still present');
+  check('compass mark is inline in the login', html.includes('class="mark"'));
+  check('desktop rail exists', html.includes('id="rail"'));
+  check('rail is hidden until 1000px',
+        /@media \(min-width:1000px\)[\s\S]{0,900}#rail\{display:flex/.test(html));
+  check('bottom nav is hidden on desktop',
+        /@media \(min-width:1000px\)[\s\S]{0,400}nav\{display:none/.test(html));
+  check('deck reflows into columns on wide screens',
+        html.includes('grid-template-columns:repeat(auto-fit,minmax(330px,1fr))'));
+
+  const svg = readFileSync(join(HERE, '..', 'icon.svg'), 'utf8');
+  check('icon is the gold compass', svg.includes('#D4AF37') && svg.includes('256'));
+}
+
+console.log('\nSecurity surface');
+{
+  const html = readFileSync(HTML, 'utf8');
+  check('login posts to the auth endpoint', html.includes('/api/auth/login'));
+  check('password field is masked', html.includes('id="g-pass" type="password"'));
+  check('WebAuthn requires user verification',
+        html.includes("userVerification: \"required\""));
+  check('biometric gate is honest about what it protects',
+        html.includes('Your passcode is what the server verifies'));
+  check('mixed content is caught before it fails silently',
+        html.includes('mixedContentBlocked'));
+  check('token is never hardcoded in the page',
+        !html.includes('cXTBbbmZ'), 'a real token leaked into the file');
 }
 
 console.log('\n' + '='.repeat(60));

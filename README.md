@@ -236,11 +236,11 @@ backend/
     auth.py              bearer token, constant-time compare
     push.py              Expo push
     holidays.py          NSE calendar
-  tests/                 131 checks, two suites
+  tests/                 149 checks, two suites
 web/
   index.html             the dashboard — one file, no build step
   vercel.json            static deploy config
-  test/render.test.mjs   33 chart-rendering checks
+  test/render.test.mjs   47 render, brand and security checks
 mobile/                  Expo React Native app
 deploy/                  Dockerfile, compose, Caddy, systemd, hosting guides
 ```
@@ -269,11 +269,11 @@ Auth is `X-API-Token` or `Authorization: Bearer`. Downloads also accept
 ## Tests
 
 ```bash
-./test.sh                    # everything: 164 checks + typecheck
+./test.sh                    # everything: 196 checks + typecheck
 
 # or individually
-cd backend && python -m tests.run_all     # 131 checks, two suites
-node web/test/render.test.mjs             # 33 chart-rendering checks
+cd backend && python -m tests.run_all     # 149 checks, two suites
+node web/test/render.test.mjs             # 47 render, brand and security checks
 cd mobile && npx tsc --noEmit             # strict typecheck, 17 files
 ```
 

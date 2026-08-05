@@ -60,12 +60,59 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 }
 
+// ------------------------------------------------------------- auth
+
+export interface Session {
+  token: string;
+  expires_at: number;
+  user: string;
+}
+
+/**
+ * Sign in. Deliberately does not use `request`, because the base URL is being
+ * established by this very call and there is no token yet.
+ */
+export async function login(
+  baseUrl: string, username: string, password: string,
+): Promise<Session> {
+  const clean = baseUrl.trim().replace(/\/+$/, '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const res = await fetch(clean + '/api/auth/login', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    let body: any = {};
+    try { body = await res.json(); } catch { /* non-JSON error page */ }
+    if (!res.ok) {
+      throw new ApiError(body.detail ?? `HTTP ${res.status}`, res.status);
+    }
+    return body as Session;
+  } catch (err: any) {
+    if (err instanceof ApiError) throw err;
+    if (err?.name === 'AbortError') throw new ApiError('Server did not respond in time');
+    throw new ApiError('Cannot reach the server — check the address is up on HTTPS');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export const whoami = () =>
+  request<{ user: string; expires_at: number | null; kind: string }>('/api/auth/me');
+
+export const logoutEverywhere = () =>
+  request<{ ok: boolean; epoch: number }>('/api/auth/logout-everywhere', { method: 'POST' });
+
 // ------------------------------------------------------------- health & control
 
 export const health = () =>
-  request<{ ok: boolean; server_time: string; timezone: string; auth_configured: boolean }>(
-    '/api/health',
-  );
+  request<{
+    ok: boolean; server_time: string; timezone: string;
+    auth_configured: boolean; login_available: boolean;
+  }>('/api/health');
 
 export const status = () => request<BotStatus>('/api/status');
 

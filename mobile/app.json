@@ -6,29 +6,39 @@
     "orientation": "portrait",
     "scheme": "meridian",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#05070d",
+    "backgroundColor": "#050506",
     "newArchEnabled": true,
     "splash": {
-      "backgroundColor": "#05070d",
+      "backgroundColor": "#050506",
       "resizeMode": "contain"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.meridian.capital",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"],
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
-        }
+        },
+        "NSFaceIDUsageDescription": "Meridian uses Face ID to unlock your trading session on this device."
       }
     },
     "android": {
       "package": "com.meridian.capital",
       "adaptiveIcon": {
-        "backgroundColor": "#05070d"
+        "backgroundColor": "#050506"
       },
-      "permissions": ["INTERNET", "POST_NOTIFICATIONS"],
+      "permissions": [
+        "INTERNET",
+        "POST_NOTIFICATIONS",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ],
       "usesCleartextTraffic": true
     },
     "web": {
@@ -38,7 +48,13 @@
       [
         "expo-notifications",
         {
-          "color": "#35d6a0"
+          "color": "#d4af37"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Meridian to unlock with Face ID."
         }
       ]
     ],

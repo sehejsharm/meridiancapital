@@ -123,7 +123,7 @@ class BotSupervisor:
                 self._emit_local("scheduler", f"Start skipped — {reason}", level="warn")
                 return {"ok": False, "reason": reason, "state": self.state}
 
-            missing = settings.missing_credentials()
+            missing = settings.missing_credentials()  # broker, not login
             if missing:
                 msg = "Missing credentials: " + ", ".join(missing)
                 self.state = "error"
