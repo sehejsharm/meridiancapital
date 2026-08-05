@@ -647,6 +647,71 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.5;
     <div class="deck" id="st-body"></div>
   </section>
 
+  <!-- ============ ADMIN ============ -->
+  <section class="view" id="v-admin">
+    <div class="deck">
+      <div class="card span-all">
+        <div class="card-h"><span class="card-t">Operators</span>
+          <span class="dim mono" style="font-size:9.5px" id="u-count"></span></div>
+        <div class="muted" style="font-size:12px;line-height:1.6">
+          Who can sign in, and what each of them is allowed to do. A viewer can read
+          the P&amp;L; an operator can start and stop the bot; a super admin can also
+          manage people and replace the algorithm.
+        </div>
+        <div id="u-list" style="margin-top:12px"></div>
+        <button class="btn ghost" id="u-add-toggle" style="margin-top:12px">Add operator</button>
+        <div id="u-add" style="display:none;margin-top:12px;padding-top:13px;
+             border-top:1px solid var(--line)">
+          <label class="lbl">Username</label>
+          <input class="field" id="u-name" placeholder="analyst" autocapitalize="off">
+          <label class="lbl" style="margin-top:11px">Password</label>
+          <input class="field" id="u-pass" type="password" placeholder="at least 8 characters">
+          <label class="lbl" style="margin-top:11px">Role</label>
+          <select class="field" id="u-role"></select>
+          <div style="display:flex;gap:9px;margin-top:12px">
+            <button class="btn ghost" id="u-cancel">Cancel</button>
+            <button class="btn" id="u-create">Create</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card span-all">
+        <div class="card-h"><span class="card-t">Algorithm</span>
+          <span class="dim mono" style="font-size:9.5px" id="a-active"></span></div>
+        <div class="muted" style="font-size:12px;line-height:1.6">
+          Replace the trading logic entirely. An upload is checked before it can be
+          activated — syntax, entry point, every import resolving, and a sandboxed
+          import that runs its module-level code without touching your broker.
+        </div>
+        <div class="gold mono" style="font-size:11px;line-height:1.6;margin-top:10px"
+             id="a-applies"></div>
+
+        <div style="margin-top:14px">
+          <label class="lbl">Name this version</label>
+          <input class="field" id="a-name" placeholder="e.g. v12 wider stops">
+          <label class="lbl" style="margin-top:11px">Algorithm source</label>
+          <textarea class="field mono" id="a-source" rows="10" spellcheck="false"
+            style="resize:vertical;font-size:11px;line-height:1.5"
+            placeholder="Paste your Python here, or choose a .py file below"></textarea>
+          <div style="display:flex;gap:9px;margin-top:10px;flex-wrap:wrap">
+            <input type="file" id="a-file" accept=".py,.txt" style="display:none">
+            <button class="btn ghost" id="a-pick" style="flex:1;min-width:130px">Choose .py file</button>
+            <button class="btn ghost" id="a-template" style="flex:1;min-width:130px">Load starter</button>
+            <button class="btn ghost" id="a-check" style="flex:1;min-width:130px">Check only</button>
+            <button class="btn" id="a-upload" style="flex:1;min-width:130px">Upload</button>
+          </div>
+        </div>
+
+        <div id="a-report" style="margin-top:14px"></div>
+
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+          <div class="card-t">Versions</div>
+          <div id="a-versions" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ CONTROL ============ -->
   <section class="view" id="v-ctrl">
     <div class="deck">
@@ -700,7 +765,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.5;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.05-gold.1";
+const BUILD = "2026.08.05-gold.2-admin";
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -713,12 +778,16 @@ const VIEWS = [
   { id: "reports",  label: "Reports",  icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M8 13h8M8 17h5' },
   { id: "strategy", label: "Strategy", icon: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6' },
   { id: "ctrl",     label: "Control",  icon: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2v.2a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.6 1.7 1.7 0 00-1.9.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00-1.2-2.9H3a2 2 0 110-4h.1A1.7 1.7 0 004.7 8a1.7 1.7 0 00-.4-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V2a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H22a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z' },
+  { id: "admin",    label: "Admin",    icon: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
+    superOnly: true },
 ];
 
 const S = {
   url: localStorage.getItem("mc_url") || "",
   token: localStorage.getItem("mc_token") || "",
   user: localStorage.getItem("mc_user") || "",
+  role: localStorage.getItem("mc_role") || "viewer",
+  roles: [], algo: null,
   view: "dash",
   snap: {}, status: {}, chart: null, strategy: null, stratEdits: {},
   lines: [], filter: "all", follow: true,
@@ -882,10 +951,11 @@ async function doLogin() {
     const body = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(body.detail || ("HTTP " + r.status));
 
-    S.token = body.token; S.user = body.user;
+    S.token = body.token; S.user = body.user; S.role = body.role || "viewer";
     localStorage.setItem("mc_url", url);
     localStorage.setItem("mc_token", S.token);
     localStorage.setItem("mc_user", S.user);
+    localStorage.setItem("mc_role", S.role);
     $("#g-pass").value = "";
     enterApp();
     if (await bioAvailable() && !localStorage.getItem(BIO_KEY)) {
@@ -913,10 +983,11 @@ $("#g-token-go").onclick = async () => {
   S.url = url; S.token = token;
   try {
     const me = await api("/api/auth/me");
-    S.user = me.user;
+    S.user = me.user; S.role = me.role || "viewer";
     localStorage.setItem("mc_url", url);
     localStorage.setItem("mc_token", token);
     localStorage.setItem("mc_user", S.user);
+    localStorage.setItem("mc_role", S.role);
     enterApp();
   } catch (e) { gateMsg("Token rejected by the server.", true); }
 };
@@ -954,6 +1025,14 @@ async function showBioPanel() {
 function enterApp() {
   $("#gate").classList.add("hide");
   $("#r-user").textContent = S.user || "—";
+  applyRole();
+  // Confirm the role with the server rather than trusting what is cached.
+  api("/api/auth/me").then(me => {
+    S.role = me.role || "viewer";
+    localStorage.setItem("mc_role", S.role);
+    $("#r-user").textContent = `${me.user} · ${String(me.role).replace("_", " ")}`;
+    applyRole();
+  }).catch(() => {});
   boot();
 }
 
@@ -975,7 +1054,20 @@ function go(id) {
   if (id === "feed") renderFeed();
   if (id === "chart") loadChart();
   if (id === "strategy") loadStrategy();
+  if (id === "admin") { loadUsers(); loadAlgorithm(); }
   window.scrollTo(0, 0);
+}
+
+/* Hide what this account cannot use, rather than letting it 403. */
+function applyRole() {
+  const isSuper = S.role === "super_admin";
+  const canOperate = S.role === "super_admin" || S.role === "operator";
+  $$("[data-v='admin']").forEach(b => b.style.display = isSuper ? "" : "none");
+  ["#c-start", "#c-stop", "#c-save", "#c-auto"].forEach(sel => {
+    const el = $(sel);
+    if (el) { el.style.opacity = canOperate ? "1" : ".4"; el.style.pointerEvents = canOperate ? "" : "none"; }
+  });
+  if (S.view === "admin" && !isSuper) go("dash");
 }
 $$("[data-v]").forEach(b => b.onclick = () => go(b.dataset.v));
 
@@ -1681,6 +1773,196 @@ function wireStrategy() {
     } catch (e) { toast(e.message); }
   });
 }
+
+/* ---------------- admin: users ---------------- */
+async function loadUsers() {
+  try {
+    const d = await api("/api/users");
+    S.roles = d.roles;
+    $("#u-count").textContent = `${d.users.length} ACCOUNT${d.users.length === 1 ? "" : "S"}`;
+    $("#u-role").innerHTML = d.roles.map(r =>
+      `<option value="${esc(r.value)}">${esc(r.label)}</option>`).join("");
+
+    $("#u-list").innerHTML = d.users.map(u => {
+      const isMe = u.username.toLowerCase() === (S.user || "").toLowerCase();
+      return `<div class="day">
+        <div style="min-width:0">
+          <div class="day-d">${esc(u.username)}${isMe ? ' <span class="dim">(you)</span>' : ""}
+            ${u.disabled ? ' <span class="down">· disabled</span>' : ""}</div>
+          <div class="day-m">${esc(u.role.replace("_", " "))}
+            ${u.last_login ? "· last in " + esc(u.last_login.replace("T", " ")) : "· never signed in"}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+          <select class="field" data-urole="${u.id}"
+                  style="width:auto;padding:6px 8px;font-size:11px">
+            ${d.roles.map(r => `<option value="${esc(r.value)}"
+              ${r.value === u.role ? "selected" : ""}>${esc(r.value.replace("_", " "))}</option>`).join("")}
+          </select>
+          <button class="btn ghost" data-utoggle="${u.id}" data-on="${u.disabled ? 1 : 0}"
+                  style="width:auto;padding:6px 11px;font-size:10px">
+            ${u.disabled ? "Enable" : "Disable"}</button>
+          ${isMe ? "" : `<button class="btn danger" data-udel="${u.id}"
+                  data-uname="${esc(u.username)}"
+                  style="width:auto;padding:6px 11px;font-size:10px">Delete</button>`}
+        </div></div>`;
+    }).join("");
+
+    $$("[data-urole]").forEach(el => el.onchange = async () => {
+      try {
+        await api(`/api/users/${el.dataset.urole}`,
+          { method: "PATCH", body: JSON.stringify({ role: el.value }) });
+        toast("Role updated"); loadUsers();
+      } catch (e) { toast(e.message); loadUsers(); }
+    });
+    $$("[data-utoggle]").forEach(el => el.onclick = async () => {
+      try {
+        await api(`/api/users/${el.dataset.utoggle}`,
+          { method: "PATCH", body: JSON.stringify({ disabled: el.dataset.on !== "1" }) });
+        loadUsers();
+      } catch (e) { toast(e.message); }
+    });
+    $$("[data-udel]").forEach(el => el.onclick = async () => {
+      if (!confirm(`Delete ${el.dataset.uname}? They lose access immediately.`)) return;
+      try { await api(`/api/users/${el.dataset.udel}`, { method: "DELETE" }); loadUsers(); }
+      catch (e) { toast(e.message); }
+    });
+  } catch (e) { toast(e.message); }
+}
+
+$("#u-add-toggle").onclick = () => {
+  const box = $("#u-add");
+  box.style.display = box.style.display === "none" ? "block" : "none";
+};
+$("#u-cancel").onclick = () => { $("#u-add").style.display = "none"; };
+$("#u-create").onclick = async () => {
+  const username = $("#u-name").value.trim();
+  const password = $("#u-pass").value;
+  const role = $("#u-role").value;
+  if (!username || !password) { toast("Username and password are required"); return; }
+  try {
+    await api("/api/users", { method: "POST", body: JSON.stringify({ username, password, role }) });
+    $("#u-name").value = ""; $("#u-pass").value = "";
+    $("#u-add").style.display = "none";
+    toast(`Created ${username}`); loadUsers();
+  } catch (e) { toast(e.message); }
+};
+
+/* ---------------- admin: algorithm ---------------- */
+function renderReport(r) {
+  if (!r) { $("#a-report").innerHTML = ""; return; }
+  const cls2 = r.ok ? "gold" : "down";
+  $("#a-report").innerHTML = `
+    <div class="${r.ok ? "" : "errbox"}" ${r.ok ? 'style="border:1px solid var(--line-2);padding:12px"' : ""}>
+      <div class="${cls2}" style="font-size:12px;font-weight:700;margin-bottom:10px">
+        ${esc(r.summary)}</div>
+      ${r.checks.map(c => `
+        <div style="display:flex;gap:9px;padding:5px 0;font-size:11.5px;align-items:flex-start">
+          <span style="color:${c.passed ? "var(--up)" : (c.fatal ? "var(--down)" : "var(--au)")};
+            font-family:var(--mono);flex-shrink:0">${c.passed ? "✓" : (c.fatal ? "✕" : "!")}</span>
+          <div style="min-width:0">
+            <div style="color:var(--text)">${esc(c.name)}</div>
+            <div class="dim" style="font-size:10.5px;line-height:1.5;margin-top:2px">${esc(c.detail)}</div>
+            ${(c.items || []).length ? `<div class="mono dim"
+              style="font-size:10px;margin-top:4px;line-height:1.6">${
+              c.items.slice(0, 8).map(esc).join("<br>")}</div>` : ""}
+          </div></div>`).join("")}
+      <div class="dim" style="font-size:10px;line-height:1.6;margin-top:11px;
+           padding-top:10px;border-top:1px solid var(--line)">
+        These checks prove the file runs. They cannot tell you the strategy is
+        sound — nothing here backtests it or checks its risk maths.
+      </div>
+    </div>`;
+}
+
+async function loadAlgorithm() {
+  try {
+    const d = await api("/api/algorithm");
+    S.algo = d;
+    $("#a-active").textContent = (d.active_description || "").toUpperCase();
+    $("#a-applies").textContent = d.bot_running
+      ? "BOT RUNNING — A NEW ALGORITHM TAKES EFFECT ON THE NEXT START"
+      : "TAKES EFFECT ON THE NEXT START";
+    $("#a-versions").innerHTML = d.versions.map(v => `
+      <div class="day">
+        <div style="min-width:0">
+          <div class="day-d">${esc(v.name)}${v.active ? ' <span class="gold">· ACTIVE</span>' : ""}</div>
+          <div class="day-m">${v.builtin ? "shipped with the app"
+            : `${v.lines} lines · ${esc((v.uploaded_at || "").replace("T", " "))} · by ${esc(v.uploaded_by || "?")}`}
+            ${(v.warnings || []).length ? ` · <span class="warn">${v.warnings.length} warning(s)</span>` : ""}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          ${v.active ? "" : `<button class="btn ghost" data-aact="${esc(v.id)}"
+             style="width:auto;padding:6px 12px;font-size:10px">Activate</button>`}
+          ${v.builtin || v.active ? "" : `<button class="btn danger" data-adel="${esc(v.id)}"
+             style="width:auto;padding:6px 12px;font-size:10px">Delete</button>`}
+        </div></div>`).join("");
+
+    $$("[data-aact]").forEach(el => el.onclick = async () => {
+      if (!confirm("Make this the algorithm the bot runs?\n\nIt takes effect on the next start — a position open right now finishes under the current one.")) return;
+      try {
+        await api("/api/algorithm/activate",
+          { method: "POST", body: JSON.stringify({ version_id: el.dataset.aact }) });
+        toast("Activated — applies on next start"); loadAlgorithm();
+      } catch (e) { toast(e.message); }
+    });
+    $$("[data-adel]").forEach(el => el.onclick = async () => {
+      if (!confirm("Delete this version permanently?")) return;
+      try { await api(`/api/algorithm/${encodeURIComponent(el.dataset.adel)}`, { method: "DELETE" });
+        loadAlgorithm(); } catch (e) { toast(e.message); }
+    });
+  } catch (e) { toast(e.message); }
+}
+
+$("#a-pick").onclick = () => $("#a-file").click();
+$("#a-file").onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    $("#a-source").value = reader.result;
+    if (!$("#a-name").value.trim()) $("#a-name").value = f.name.replace(/\.py$/, "");
+    toast(`Loaded ${f.name}`);
+  };
+  reader.readAsText(f);
+};
+$("#a-template").onclick = async () => {
+  try {
+    const t = await api("/api/algorithm/template");
+    $("#a-source").value = t.source;
+    if (!$("#a-name").value.trim()) $("#a-name").value = "My algorithm";
+    toast("Starter loaded — edit it, then check");
+  } catch (e) { toast(e.message); }
+};
+$("#a-check").onclick = async () => {
+  const source = $("#a-source").value;
+  if (!source.trim()) { toast("Paste or load some source first"); return; }
+  const btn = $("#a-check"); btn.disabled = true; btn.textContent = "Checking…";
+  try {
+    renderReport(await api("/api/algorithm/validate",
+      { method: "POST", body: JSON.stringify({ source, filename: $("#a-name").value || "algorithm.py" }) }));
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; btn.textContent = "Check only"; }
+};
+$("#a-upload").onclick = async () => {
+  const source = $("#a-source").value;
+  const name = $("#a-name").value.trim() || "Uploaded algorithm";
+  if (!source.trim()) { toast("Paste or load some source first"); return; }
+  const btn = $("#a-upload"); btn.disabled = true; btn.textContent = "Checking…";
+  try {
+    const r = await fetch(S.url + "/api/algorithm/upload", {
+      method: "POST",
+      headers: { "X-API-Token": S.token, "Content-Type": "application/json" },
+      body: JSON.stringify({ name, source, activate: false })
+    });
+    const body = await r.json();
+    renderReport(body.report);
+    if (r.status === 422) { toast("Rejected — see the checks below"); return; }
+    if (!r.ok) { toast(body.detail || "Upload failed"); return; }
+    toast("Stored. Activate it when you are ready.");
+    $("#a-source").value = ""; $("#a-name").value = "";
+    loadAlgorithm();
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; btn.textContent = "Upload"; }
+};
 
 /* ---------------- control ---------------- */
 const row = (k, v) => `<div class="row"><span class="row-k">${esc(k)}</span><span class="row-v">${esc(v)}</span></div>`;

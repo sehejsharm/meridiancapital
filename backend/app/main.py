@@ -29,9 +29,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from . import algorithms
 from . import auth as auth_mod
-from . import db, exports, strategy_config
-from .auth import authorise_websocket, require_token, require_token_query
+from . import db, exports, strategy_config, users
+from .auth import (authorise_websocket, require_operator, require_super_admin,
+                   require_token, require_token_query)
 from .config import settings
 from .runner import supervisor
 from .scheduler import (next_runs, reschedule, set_schedule_enabled,
@@ -62,11 +64,19 @@ async def lifespan(app: FastAPI):
     supervisor.bind_loop(asyncio.get_running_loop())
     log.info("Data directory: %s", settings.data_dir)
     log.info("Mode: %s", "PAPER" if settings.paper_mode else "LIVE — REAL MONEY")
-    if auth_mod.login_configured():
-        log.info("Login enabled for user %r", auth_mod.admin_username())
+    try:
+        boot_user = users.bootstrap()
+        if boot_user:
+            log.info("Super admin ready: %r (%d user(s) total)",
+                     boot_user, users.count())
+    except Exception:
+        log.exception("Could not bootstrap the super admin")
+
     if not settings.api_token and not auth_mod.login_configured():
-        log.error("Neither ADMIN_PASSWORD nor API_TOKEN is set — every "
-                  "authenticated route will refuse. Fill one in .env.")
+        log.error("No account exists and API_TOKEN is unset — every "
+                  "authenticated route will refuse. Set ADMIN_USER and "
+                  "ADMIN_PASSWORD in .env and restart.")
+    log.info("Active algorithm: %s", algorithms.active_description())
     if settings.missing_credentials():
         log.warning("Angel One credentials incomplete: %s",
                     ", ".join(settings.missing_credentials()))
@@ -132,6 +142,38 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class CreateUserRequest(BaseModel):
+    username: str = Field(min_length=2, max_length=32)
+    password: str = Field(min_length=8, max_length=256)
+    role: str = Field(default="viewer")
+
+
+class UpdateUserRequest(BaseModel):
+    role: Optional[str] = None
+    disabled: Optional[bool] = None
+    password: Optional[str] = Field(default=None, min_length=8, max_length=256)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=8, max_length=256)
+
+
+class AlgorithmUploadRequest(BaseModel):
+    name: str = Field(default="Uploaded algorithm", max_length=80)
+    source: str = Field(min_length=1)
+    activate: bool = False
+
+
+class AlgorithmValidateRequest(BaseModel):
+    source: str = Field(min_length=1)
+    filename: str = Field(default="algorithm.py", max_length=120)
+
+
+class ActivateRequest(BaseModel):
+    version_id: str
+
+
 # ============================================================ health
 
 
@@ -182,11 +224,193 @@ async def login(body: LoginRequest, request: Request):
 @app.get("/api/auth/me")
 async def whoami(token: str = Depends(require_token)):
     payload = auth_mod.verify_session(token)
+    role = auth_mod.role_of(token)
     return {
         "user": payload["sub"] if payload else "api-token",
+        "role": role,
+        "role_label": users.ROLE_LABEL.get(role, role),
+        "can_manage_users": users.has_at_least(role, "super_admin"),
+        "can_change_algorithm": users.has_at_least(role, "super_admin"),
+        "can_operate": users.has_at_least(role, "operator"),
         "expires_at": payload.get("exp") if payload else None,
         "kind": "session" if payload else "api-token",
     }
+
+
+@app.post("/api/auth/change-password")
+async def change_own_password(body: ChangePasswordRequest,
+                              token: str = Depends(require_token)):
+    """Change your own password — needs the current one, even for a super admin."""
+    payload = auth_mod.verify_session(token)
+    if not payload:
+        raise HTTPException(status_code=400,
+                            detail="Only a signed-in user can change a password.")
+    username = payload["sub"]
+    if auth_mod.attempt_login(username, body.current_password) is None:
+        raise HTTPException(status_code=401, detail="Current password is incorrect.")
+    try:
+        users.set_password(username, body.new_password)
+    except users.UserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    log.info("password changed for %s", username)
+    return {"ok": True}
+
+
+# ============================================================ users
+
+
+@app.get("/api/users")
+async def list_users(_: str = Depends(require_super_admin)):
+    return {
+        "users": users.list_all(),
+        "roles": [{"value": r, "label": users.ROLE_LABEL[r]} for r in users.ROLES],
+    }
+
+
+@app.post("/api/users")
+async def create_user(body: CreateUserRequest, token: str = Depends(require_super_admin)):
+    payload = auth_mod.verify_session(token)
+    actor = payload["sub"] if payload else "api-token"
+    try:
+        created = users.create(body.username, body.password, body.role,  # type: ignore[arg-type]
+                               created_by=actor, must_change=True)
+    except users.UserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    supervisor._emit_local(
+        "users", f"{actor} created user {created['username']!r} as {created['role']}",
+        level="warn")
+    return created
+
+
+@app.patch("/api/users/{user_id}")
+async def update_user(user_id: int, body: UpdateUserRequest,
+                      token: str = Depends(require_super_admin)):
+    payload = auth_mod.verify_session(token)
+    actor = payload["sub"] if payload else "api-token"
+    target = users.get_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="No such user.")
+
+    try:
+        if body.role is not None:
+            users.set_role(user_id, body.role)          # type: ignore[arg-type]
+        if body.disabled is not None:
+            users.set_disabled(user_id, body.disabled)
+        if body.password is not None:
+            users.set_password(target["username"], body.password)
+    except users.UserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    supervisor._emit_local("users", f"{actor} updated user {target['username']!r}",
+                           level="warn")
+    return users.get_by_id(user_id) and users._row_to_public(users.get_by_id(user_id))
+
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: int, token: str = Depends(require_super_admin)):
+    payload = auth_mod.verify_session(token)
+    actor = payload["sub"] if payload else "api-token"
+    target = users.get_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="No such user.")
+    if payload and target["username"].lower() == payload["sub"].lower():
+        raise HTTPException(status_code=400,
+                            detail="You cannot delete the account you are signed in with.")
+    try:
+        users.delete(user_id)
+    except users.UserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    supervisor._emit_local("users", f"{actor} deleted user {target['username']!r}",
+                           level="warn")
+    return {"ok": True}
+
+
+# ============================================================ algorithm
+
+
+@app.get("/api/algorithm")
+async def algorithm_list(_: str = Depends(require_token)):
+    return {
+        **algorithms.list_versions(),
+        "active_description": algorithms.active_description(),
+        "bot_running": supervisor.running,
+        "applies_at": "next start",
+    }
+
+
+@app.get("/api/algorithm/template")
+async def algorithm_template(_: str = Depends(require_token)):
+    """A working skeleton that already speaks the dashboard's event protocol."""
+    return {"filename": "my_algorithm.py", "source": algorithms.template()}
+
+
+@app.post("/api/algorithm/validate")
+async def algorithm_validate(body: AlgorithmValidateRequest,
+                             _: str = Depends(require_super_admin)):
+    """Check an algorithm without storing it — a dry run of the upload."""
+    return await asyncio.to_thread(algorithms.validate, body.source, body.filename)
+
+
+@app.post("/api/algorithm/upload")
+async def algorithm_upload(body: AlgorithmUploadRequest,
+                           token: str = Depends(require_super_admin)):
+    payload = auth_mod.verify_session(token)
+    actor = payload["sub"] if payload else "api-token"
+
+    report = await asyncio.to_thread(algorithms.validate, body.source, body.name)
+    if not report["ok"]:
+        return JSONResponse(status_code=422,
+                            content={"stored": False, "report": report})
+
+    entry = algorithms.save_version(body.source, body.name, actor, report)
+    supervisor._emit_local(
+        "algorithm", f"{actor} uploaded algorithm {entry['name']!r} ({entry['id']})",
+        level="warn", version=entry["id"])
+
+    activated = False
+    if body.activate:
+        algorithms.activate(entry["id"])
+        activated = True
+        supervisor._emit_local(
+            "algorithm",
+            f"{entry['name']!r} is now active"
+            + (" — applies when the bot next starts" if supervisor.running else ""),
+            level="warn")
+
+    return {"stored": True, "activated": activated, "version": entry, "report": report,
+            **algorithms.list_versions()}
+
+
+@app.post("/api/algorithm/activate")
+async def algorithm_activate(body: ActivateRequest,
+                             token: str = Depends(require_super_admin)):
+    payload = auth_mod.verify_session(token)
+    actor = payload["sub"] if payload else "api-token"
+    try:
+        result = algorithms.activate(body.version_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    supervisor._emit_local(
+        "algorithm", f"{actor} activated algorithm {body.version_id}"
+        + (" — applies when the bot next starts" if supervisor.running else ""),
+        level="warn")
+    return {**result, "active_description": algorithms.active_description()}
+
+
+@app.delete("/api/algorithm/{version_id}")
+async def algorithm_delete(version_id: str, _: str = Depends(require_super_admin)):
+    try:
+        return algorithms.delete_version(version_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/algorithm/{version_id}/source")
+async def algorithm_source(version_id: str, _: str = Depends(require_super_admin)):
+    source = algorithms.get_source(version_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="No such version.")
+    return {"version_id": version_id, "source": source}
 
 
 @app.post("/api/auth/logout-everywhere")
@@ -210,7 +434,7 @@ async def status(_: str = Depends(require_token)):
 
 
 @app.post("/api/bot/start")
-async def bot_start(body: StartRequest, _: str = Depends(require_token)):
+async def bot_start(body: StartRequest, _: str = Depends(require_operator)):
     result = await asyncio.to_thread(supervisor.start, "manual", body.force)
     if not result.get("ok"):
         return JSONResponse(status_code=409, content=result)
@@ -218,7 +442,7 @@ async def bot_start(body: StartRequest, _: str = Depends(require_token)):
 
 
 @app.post("/api/bot/stop")
-async def bot_stop(body: StopRequest, _: str = Depends(require_token)):
+async def bot_stop(body: StopRequest, _: str = Depends(require_operator)):
     result = await asyncio.to_thread(supervisor.stop, body.reason)
     if not result.get("ok"):
         return JSONResponse(status_code=409, content=result)
@@ -226,7 +450,7 @@ async def bot_stop(body: StopRequest, _: str = Depends(require_token)):
 
 
 @app.post("/api/bot/restart")
-async def bot_restart(_: str = Depends(require_token)):
+async def bot_restart(_: str = Depends(require_operator)):
     return await asyncio.to_thread(supervisor.restart, "manual restart from app")
 
 
@@ -243,7 +467,7 @@ async def schedule_get(_: str = Depends(require_token)):
 
 
 @app.post("/api/schedule")
-async def schedule_set(body: ScheduleRequest, _: str = Depends(require_token)):
+async def schedule_set(body: ScheduleRequest, _: str = Depends(require_operator)):
     if body.start and body.stop:
         try:
             reschedule(body.start, body.stop)
@@ -346,7 +570,7 @@ async def strategy_get(_: str = Depends(require_token)):
 
 
 @app.put("/api/strategy")
-async def strategy_put(body: StrategyUpdateRequest, _: str = Depends(require_token)):
+async def strategy_put(body: StrategyUpdateRequest, _: str = Depends(require_operator)):
     """Edit strategy parameters.
 
     Accepted while the bot is running, but deliberately not applied until it
@@ -368,14 +592,14 @@ async def strategy_put(body: StrategyUpdateRequest, _: str = Depends(require_tok
 
 
 @app.post("/api/strategy/reset")
-async def strategy_reset(_: str = Depends(require_token)):
+async def strategy_reset(_: str = Depends(require_operator)):
     strategy_config.reset()
     supervisor._emit_local("strategy", "Strategy reset to the v11 baseline", level="warn")
     return await strategy_get(_)
 
 
 @app.post("/api/strategy/profiles")
-async def profile_save(body: ProfileRequest, _: str = Depends(require_token)):
+async def profile_save(body: ProfileRequest, _: str = Depends(require_operator)):
     try:
         strategy_config.save_profile(body.name)
     except ValueError as exc:
@@ -384,7 +608,7 @@ async def profile_save(body: ProfileRequest, _: str = Depends(require_token)):
 
 
 @app.post("/api/strategy/profiles/load")
-async def profile_load(body: ProfileRequest, _: str = Depends(require_token)):
+async def profile_load(body: ProfileRequest, _: str = Depends(require_operator)):
     try:
         strategy_config.load_profile(body.name)
     except ValueError as exc:
@@ -394,7 +618,7 @@ async def profile_load(body: ProfileRequest, _: str = Depends(require_token)):
 
 
 @app.delete("/api/strategy/profiles")
-async def profile_delete(name: str, _: str = Depends(require_token)):
+async def profile_delete(name: str, _: str = Depends(require_operator)):
     strategy_config.delete_profile(name)
     return await strategy_get(_)
 

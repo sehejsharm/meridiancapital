@@ -177,10 +177,27 @@ class BotSupervisor:
                     f"Could not resolve strategy overrides ({exc}); using v11 defaults",
                     level="warn")
 
+            # Whichever algorithm is active — the built-in module, or an
+            # uploaded file that passed validation.
+            command = [sys.executable, "-u", "-m", BOT_MODULE]
+            try:
+                from . import algorithms
+                kind, value = algorithms.active_target()
+                if kind == "file":
+                    command = [sys.executable, "-u", value]
+                    self._emit_local(
+                        "algorithm", f"Running uploaded algorithm: {algorithms.active_description()}",
+                        level="warn", target=value)
+            except Exception as exc:
+                self._emit_local(
+                    "algorithm",
+                    f"Could not resolve the active algorithm ({exc}); using the built-in",
+                    level="warn")
+
             backend_dir = Path(__file__).resolve().parent.parent
             try:
                 self.proc = subprocess.Popen(
-                    [sys.executable, "-u", "-m", BOT_MODULE],
+                    command,
                     cwd=str(backend_dir),
                     env=env,
                     stdout=subprocess.PIPE,

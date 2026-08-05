@@ -62,34 +62,17 @@ def verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(candidate, expected)
 
 
-def _password_hash() -> Optional[str]:
-    """Prefer a pre-computed hash; fall back to hashing the plaintext once.
-
-    Hashing `ADMIN_PASSWORD` at boot keeps setup to a single line in `.env`.
-    The plaintext never leaves that file and is never written anywhere else.
-    """
-    stored = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
-    if stored:
-        return stored
-
-    plain = os.getenv("ADMIN_PASSWORD", "").strip()
-    if not plain:
-        return None
-
-    cached = db.kv_get("admin_password_hash")
-    if cached and verify_password(plain, cached):
-        return cached                       # same password as last boot
-    fresh = hash_password(plain)
-    db.kv_set("admin_password_hash", fresh)
-    return fresh
-
-
 def admin_username() -> str:
-    return os.getenv("ADMIN_USER", "Sehej").strip()
+    return (os.getenv("ADMIN_USER") or "Sehej").strip()
 
 
 def login_configured() -> bool:
-    return _password_hash() is not None
+    """True once at least one account can sign in."""
+    from . import users
+    try:
+        return users.count() > 0
+    except Exception:
+        return bool((os.getenv("ADMIN_PASSWORD") or "").strip())
 
 
 # ---------------------------------------------------------------- sessions
@@ -123,15 +106,18 @@ def _unb64(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
-def issue_session(username: str, ttl: int = SESSION_TTL_SECONDS) -> dict:
+def issue_session(username: str, role: str = "viewer",
+                  ttl: int = SESSION_TTL_SECONDS) -> dict:
     now = int(time.time())
-    payload = {"sub": username, "iat": now, "exp": now + ttl, "epc": _epoch()}
+    payload = {"sub": username, "rol": role, "iat": now,
+               "exp": now + ttl, "epc": _epoch()}
     body = _b64(json.dumps(payload, separators=(",", ":")).encode())
     sig = _b64(hmac.new(_signing_key(), body.encode(), hashlib.sha256).digest())
     return {
         "token": f"{body}.{sig}",
         "expires_at": payload["exp"],
         "user": username,
+        "role": role,
     }
 
 
@@ -213,6 +199,47 @@ async def require_token_query(
     return candidate  # type: ignore[return-value]
 
 
+def role_of(token: str) -> str:
+    """The role a token carries.
+
+    A static API_TOKEN is treated as super admin — it is configured by
+    whoever has shell access to the server, so it already implies that level
+    of trust.
+    """
+    if settings.api_token and hmac.compare_digest(token, settings.api_token):
+        return "super_admin"
+    payload = verify_session(token)
+    return (payload or {}).get("rol", "viewer")
+
+
+def require_role(required: str):
+    """Dependency factory: refuse anything below `required`."""
+    from . import users
+
+    async def _guard(
+        authorization: Optional[str] = Header(default=None),
+        x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
+    ) -> str:
+        token = _extract(authorization, x_api_token)
+        if not _valid(token):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Sign in again")
+        role = role_of(token)          # type: ignore[arg-type]
+        if not users.has_at_least(role, required):   # type: ignore[arg-type]
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This needs the {required.replace('_', ' ')} role. "
+                       f"You are signed in as {role.replace('_', ' ')}.",
+            )
+        return token                    # type: ignore[return-value]
+
+    return _guard
+
+
+require_operator = require_role("operator")
+require_super_admin = require_role("super_admin")
+
+
 async def authorise_websocket(ws: WebSocket) -> bool:
     token = ws.query_params.get("token")
     if not token:
@@ -251,13 +278,20 @@ def clear_failures(ip: str) -> None:
 
 
 def attempt_login(username: str, password: str) -> Optional[dict]:
-    stored = _password_hash()
-    if stored is None:
+    from . import users
+
+    row = users.get(username)
+    if row is None:
+        # Still do the work, so a missing username and a wrong password take
+        # the same time and cannot be told apart by an attacker.
+        verify_password(password, hash_password("decoy"))
         return None
-    # Compare the username in constant time too, so a wrong name and a wrong
-    # password are indistinguishable from the outside.
-    user_ok = hmac.compare_digest(username.strip().lower(), admin_username().lower())
-    pass_ok = verify_password(password, stored)
-    if user_ok and pass_ok:
-        return issue_session(admin_username())
-    return None
+    if row["disabled"]:
+        return None
+    if not verify_password(password, row["password_hash"]):
+        return None
+
+    users.record_login(row["username"])
+    session = issue_session(row["username"], row["role"])
+    session["must_change"] = bool(row["must_change"])
+    return session

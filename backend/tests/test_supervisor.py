@@ -212,6 +212,46 @@ def test_strategy_injection() -> None:
     sc.reset()
 
 
+def test_runs_without_any_client() -> None:
+    """The bot must not care whether a phone is watching.
+
+    The whole point of putting it on a server is that it keeps trading when
+    every device is asleep, offline, or thrown in a river. Nothing in the
+    trading path may depend on a subscriber being attached.
+    """
+    print("\nRuns with no client attached")
+    os.environ["STUB_MODE"] = "normal"
+    supervisor.tail.clear()
+    supervisor.restarts = 0
+
+    check("no subscribers before starting", len(supervisor._subscribers) == 0)
+
+    supervisor.start(trigger="test", force=True)
+    check("starts with nobody connected",
+          wait_for(lambda: any(e["kind"] == "ready" for e in supervisor.tail), timeout=20))
+
+    # The event loop is what a WebSocket would ride on. Detach it entirely to
+    # simulate the server having no client and no loop to broadcast into.
+    saved_loop = supervisor._loop
+    supervisor._loop = None
+    try:
+        before = len(supervisor.tail)
+        check("keeps producing events with the loop detached",
+              wait_for(lambda: len(supervisor.tail) > before, timeout=15)
+              or supervisor.running,
+              "the child should keep running regardless")
+        check("process still alive with no listener", supervisor.running)
+
+        today = db.today_str()
+        check("trades still recorded with nobody watching",
+              len(db.trades_between(today, today)) >= 1)
+    finally:
+        supervisor._loop = saved_loop
+
+    supervisor.stop(reason="offline test done", timeout=20)
+    check("stopped cleanly afterwards", not supervisor.running)
+
+
 def test_real_module_guard() -> None:
     """The actual algorithm must refuse to start with no credentials."""
     print("\nReal algorithm module")
@@ -318,6 +358,7 @@ def main() -> int:
         test_startup_failure()
         test_missing_credentials()
         test_strategy_injection()
+        test_runs_without_any_client()
         test_real_module_guard()
         test_real_module_reads_overrides()
     finally:
