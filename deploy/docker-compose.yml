@@ -44,7 +44,9 @@ services:
     environment:
       DOMAIN: ${DOMAIN:-localhost}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # ",z" relabels the file for SELinux, which Oracle Linux and RHEL enforce
+      # by default; without it Caddy reads the mount as permission denied.
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro,z
       - caddy-data:/data
       - caddy-config:/config
 

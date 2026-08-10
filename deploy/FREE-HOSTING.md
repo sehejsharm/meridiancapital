@@ -260,7 +260,7 @@ reaches it from anywhere, and you never touch the machine after setup. If you
 have a Pi in a drawer, this is genuinely the best option on this list.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/claude/paper-trading-bot-setup-y5nxn5/deploy/pi-setup.sh \
+curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/main/deploy/pi-setup.sh \
   | sudo REPO_URL=https://github.com/sehejsharm/meridiancapital.git bash
 ```
 

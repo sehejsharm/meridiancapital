@@ -29,7 +29,7 @@ SSH in and run:
 
 ```bash
 sudo REPO_URL=https://github.com/sehejsharm/meridiancapital.git bash \
-  <(curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/claude/paper-trading-bot-setup-y5nxn5/deploy/setup.sh)
+  <(curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/main/deploy/setup.sh)
 ```
 
 Or manually:

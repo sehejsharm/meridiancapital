@@ -39,8 +39,10 @@ Once signed in, you land on the **OCI Console**.
 3. **Name**: type `meridian` (or anything).
 4. **Placement**: leave as default (your home region, an available domain).
 5. **Image and shape** — click **Edit**:
-   - Click **Change Image**. Select **Ubuntu**, then **Ubuntu 24.04**. Click
-     **Select Image**.
+   - Click **Change Image**. Either **Ubuntu 24.04** or the default **Oracle
+     Linux 9** works — the setup script handles both. Note which one you pick,
+     because it decides your SSH username in step 3: Ubuntu logs in as
+     `ubuntu`, Oracle Linux as `opc`. Click **Select Image**.
    - Click **Change Shape**. Under **Instance type**, choose **Virtual
      Machine**. Under **Shape series**, choose **AMD**. Select
      **VM.Standard.E2.1.Micro**.
@@ -89,10 +91,12 @@ mv ~/Downloads/ssh-key-*.key ~/.ssh/meridian.key
 chmod 600 ~/.ssh/meridian.key
 ```
 
-Connect (replace `<PUBLIC_IP>` with the address you copied):
+Connect. Replace `<PUBLIC_IP>` with the address you copied, and use the
+username that matches the image you chose in step 2 — **`ubuntu`** for Ubuntu,
+**`opc`** for Oracle Linux:
 
 ```bash
-ssh -i ~/.ssh/meridian.key ubuntu@<PUBLIC_IP>
+ssh -i ~/.ssh/meridian.key opc@<PUBLIC_IP>
 ```
 
 Type `yes` if asked about the host's fingerprint — that's expected the first
@@ -103,14 +107,14 @@ time.
 Use **PowerShell** (comes with Windows 10/11):
 
 ```powershell
-ssh -i "$env:USERPROFILE\Downloads\ssh-key-....key" ubuntu@<PUBLIC_IP>
+ssh -i "$env:USERPROFILE\Downloads\ssh-key-....key" opc@<PUBLIC_IP>
 ```
 
 Or use **PuTTY** if you prefer a GUI: convert the `.key` file to `.ppk` using
 PuTTYgen first (PuTTY's own guide covers this), then connect with PuTTY using
-username `ubuntu`.
+the same username.
 
-You should land on a prompt like `ubuntu@meridian:~$`. You're in.
+You should land on a prompt like `opc@meridian:~$`. You're in.
 
 ---
 
@@ -122,7 +126,7 @@ doesn't run out of memory:
 
 ```bash
 sudo REPO_URL=https://github.com/sehejsharm/meridiancapital.git bash \
-  <(curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/claude/paper-trading-bot-setup-y5nxn5/deploy/setup.sh)
+  <(curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/main/deploy/setup.sh)
 ```
 
 It will finish by telling you it created a `.env` file and stop, printing
@@ -169,18 +173,18 @@ filled in and proceeds to build and start:
 
 ```bash
 sudo REPO_URL=https://github.com/sehejsharm/meridiancapital.git bash \
-  <(curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/claude/paper-trading-bot-setup-y5nxn5/deploy/setup.sh)
+  <(curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/main/deploy/setup.sh)
 ```
 
 This takes a few minutes the first time. When it succeeds you'll see:
 
 ```
 Running.
-  Server URL for the app:  http://<some-ip>:8000
+  Local health check:  http://localhost:8000/api/health
 ```
 
-Ignore that HTTP address for now — it's not secure enough to use from your
-phone. The next step fixes that.
+The bot is now live on the box, but only reachable from the box itself. The
+next step gives it an address you can open from anywhere.
 
 ---
 
@@ -189,6 +193,13 @@ phone. The next step fixes that.
 Your dashboard runs on HTTPS (via Vercel), and a browser will refuse to let
 an HTTPS page talk to a plain HTTP server. Tailscale Funnel solves this for
 free, with no domain name needed.
+
+> **You do not need to open ports 80 and 443** — not in the VCN security list,
+> and not in the OS firewall. Tailscale dials *out* from the box and tunnels
+> replies back, so there is no inbound port to forward. Leaving the security
+> list closed is both less work and the safer configuration: your API token
+> never sits behind a bare HTTP port on the open internet. Skip the firewall
+> steps entirely and come straight here.
 
 Still connected over SSH, run:
 
@@ -254,7 +265,8 @@ curl -H "X-API-Token: <the token from Step 4>" http://localhost:8000/api/schedul
 
 | Problem | Fix |
 |---|---|
-| `Permission denied (publickey)` on SSH | Wrong key file, or wrong username. Username is `ubuntu`, not `root` or `opc`. |
+| `Permission denied (publickey)` on SSH | Wrong key file, or wrong username for the image you chose: `opc` on Oracle Linux, `ubuntu` on Ubuntu. Never `root`. |
+| SSH just hangs, then `Connection timed out` | Almost always the wrong public IP. Re-copy it from the instance page in the console — it must be an Oracle-owned address, and for Mumbai that means something like `140.238.x.x`, `152.67.x.x` or `168.138.x.x`. A `92.x.x.x` address is not Oracle's; that is your own ISP's. |
 | `Out of host capacity` creating the instance | You likely picked the ARM shape by mistake — go back and confirm it says **VM.Standard.E2.1.Micro** and **AMD**. |
 | Card declined during signup | Try a different card, or a virtual/prepaid card. Some banks block the small verification hold — call them if it keeps failing. |
 | `docker: command not found` after setup | The setup script failed partway — scroll up in the terminal output for the actual error, or re-run it. |

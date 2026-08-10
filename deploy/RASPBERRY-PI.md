@@ -52,7 +52,7 @@ ssh <your-user>@meridian.local
 ## 2. One command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/claude/paper-trading-bot-setup-y5nxn5/deploy/pi-setup.sh \
+curl -fsSL https://raw.githubusercontent.com/sehejsharm/meridiancapital/main/deploy/pi-setup.sh \
   | sudo REPO_URL=https://github.com/sehejsharm/meridiancapital.git bash
 ```
 

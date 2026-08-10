@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# One-shot server setup for a fresh Ubuntu 22.04/24.04 box.
+# One-shot server setup for a fresh box.
+#
+# Supports the two images the free tiers actually hand you:
+#   * Ubuntu 22.04/24.04            (login user: ubuntu)
+#   * Oracle Linux 9 / RHEL family  (login user: opc)
 #
 #   curl -fsSL https://raw.githubusercontent.com/<you>/meridiancapital/main/deploy/setup.sh | bash
 # or, after cloning:
@@ -20,6 +24,30 @@ die()  { echo "${RED}==>${OFF} $*" >&2; exit 1; }
 
 [[ $EUID -eq 0 ]] || die "Run as root (or with sudo)."
 
+# ---- Which package manager are we on? ----------------------------------
+if command -v dnf >/dev/null 2>&1; then
+  PKG=dnf
+elif command -v apt-get >/dev/null 2>&1; then
+  PKG=apt
+else
+  die "Neither dnf nor apt-get found — unsupported distribution."
+fi
+
+pkg_install() {
+  case "$PKG" in
+    dnf) dnf install -y "$@" >/dev/null ;;
+    apt) DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@" >/dev/null ;;
+  esac
+}
+
+say "Package manager: ${PKG}"
+
+# Oracle Linux's minimal image ships without curl's full build or git, and the
+# token generator needs python3. Install them before anything reaches for them.
+for tool in curl git python3; do
+  command -v "$tool" >/dev/null 2>&1 || { say "Installing $tool"; pkg_install "$tool"; }
+done
+
 say "Setting the system clock to Asia/Kolkata"
 timedatectl set-timezone Asia/Kolkata || warn "Could not set timezone; do it manually."
 
@@ -29,7 +57,15 @@ timedatectl set-timezone Asia/Kolkata || warn "Could not set timezone; do it man
 TOTAL_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 4096)"
 if (( TOTAL_MB < 1800 )) && [[ ! -f /swapfile ]]; then
   say "Only ${TOTAL_MB} MB RAM — adding 2 GB of swap"
-  fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048
+  # fallocate reports success on XFS but hands back unwritten extents, and
+  # swapon then refuses the file for "having holes". Oracle Linux formats root
+  # as XFS, so that path has to be written out with dd instead. ext4 keeps the
+  # fast path.
+  ROOT_FS="$(findmnt -no FSTYPE -T / 2>/dev/null || echo unknown)"
+  if [[ "$ROOT_FS" == "xfs" ]] || ! fallocate -l 2G /swapfile 2>/dev/null; then
+    rm -f /swapfile
+    dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+  fi
   chmod 600 /swapfile
   mkswap /swapfile >/dev/null
   swapon /swapfile
@@ -40,11 +76,26 @@ fi
 
 if ! command -v docker >/dev/null 2>&1; then
   say "Installing Docker"
-  curl -fsSL https://get.docker.com | sh
+  if [[ "$PKG" == "dnf" ]]; then
+    # Oracle Linux 9 ships podman plus its own runc, and both collide with
+    # containerd.io. get.docker.com walks into that collision and stops, so the
+    # repo is added directly and --allowerasing is allowed to swap the
+    # conflicting packages out.
+    pkg_install dnf-plugins-core
+    dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo >/dev/null
+    dnf install -y --allowerasing \
+      docker-ce docker-ce-cli containerd.io \
+      docker-buildx-plugin docker-compose-plugin >/dev/null
+  else
+    curl -fsSL https://get.docker.com | sh
+  fi
   systemctl enable --now docker
 else
   say "Docker already present"
 fi
+
+docker compose version >/dev/null 2>&1 \
+  || die "The Docker Compose plugin is missing. Install 'docker-compose-plugin' and re-run."
 
 if [[ ! -d "$REPO_DIR/.git" ]]; then
   [[ -n "${REPO_URL:-}" ]] || die "Set REPO_URL=https://github.com/<you>/meridiancapital.git and re-run."
@@ -85,13 +136,23 @@ for _ in $(seq 1 30); do
   if curl -fsS http://localhost:8000/api/health >/dev/null 2>&1; then
     echo
     say "Running."
-    IP="$(curl -fsS https://api.ipify.org 2>/dev/null || echo '<server-ip>')"
-    echo "  Server URL for the app:  ${BOLD}http://${IP}:8000${OFF}"
-    echo "  API token:               (the API_TOKEN line in .env)"
+    echo "  Local health check:  ${BOLD}http://localhost:8000/api/health${OFF}"
+    echo "  API token:           (the API_TOKEN line in .env)"
     echo
-    warn "Plain HTTP exposes your token. Point a domain here and run:"
-    echo "     echo 'DOMAIN=trade.example.com' >> .env"
-    echo "     docker compose -f deploy/docker-compose.yml --profile tls up -d"
+    warn "One step left: give it an HTTPS address."
+    echo
+    echo "  The dashboard is served over HTTPS, and a browser will not let an"
+    echo "  HTTPS page call a plain-HTTP server. Tailscale Funnel fixes that for"
+    echo "  free, and because it dials out there is nothing to open on the"
+    echo "  firewall or in your cloud security list:"
+    echo
+    echo "     curl -fsSL https://tailscale.com/install.sh | sudo sh"
+    echo "     sudo tailscale up"
+    echo "     sudo tailscale funnel --bg 8000"
+    echo "     sudo tailscale funnel status"
+    echo
+    echo "  The address it prints (https://….ts.net) is what you paste into the"
+    echo "  dashboard's Server field."
     exit 0
   fi
   sleep 2
