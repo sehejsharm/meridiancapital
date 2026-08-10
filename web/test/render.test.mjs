@@ -300,15 +300,49 @@ console.log('\nSecurity surface');
   check('the build stamp is shown on the login screen',
         html.includes('id="g-build"'));
 
-  const vercel = JSON.parse(readFileSync(join(HERE, '..', 'vercel.json'), 'utf8'));
-  const sources = vercel.headers.map((h) => h.source);
-  check('vercel serves the site root uncached', sources.includes('/'),
-        'a request to / never carries the /index.html path, so it needs its own rule');
-  check('vercel serves index.html uncached', sources.includes('/index.html'));
-  const rootRule = vercel.headers.find((h) => h.source === '/');
-  check('root cache header actually disables caching',
-        rootRule.headers.some((x) => /no-store/.test(x.value)),
-        JSON.stringify(rootRule));
+  // Two deploy configs exist because the project's Root Directory decides
+  // which one Vercel reads: left at the repository root it takes the root
+  // vercel.json (which points outputDirectory at web/), set to web/ it takes
+  // this one. Both have to be valid, so both are checked.
+  const configs = {
+    'web/vercel.json': join(HERE, '..', 'vercel.json'),
+    'vercel.json': join(HERE, '..', '..', 'vercel.json'),
+  };
+
+  for (const [label, path] of Object.entries(configs)) {
+    const cfg = JSON.parse(readFileSync(path, 'utf8'));
+
+    // Vercel's schema sets additionalProperties:false, so a "//" comment key —
+    // the convention npm allows in package.json — fails the build outright with
+    // "should NOT have additional property //". JSON has no comments; rationale
+    // belongs in the commit message or the docs.
+    const commentKeys = [];
+    (function scan(node, trail) {
+      if (Array.isArray(node)) return node.forEach((v, i) => scan(v, `${trail}[${i}]`));
+      if (node === null || typeof node !== 'object') return;
+      for (const [k, v] of Object.entries(node)) {
+        if (k === '//' || k.startsWith('//')) commentKeys.push(`${trail}.${k}`);
+        scan(v, `${trail}.${k}`);
+      }
+    })(cfg, label);
+    check(`${label} carries no "//" comment keys`, commentKeys.length === 0,
+          `Vercel rejects these: ${commentKeys.join(', ')}`);
+
+    const sources = cfg.headers.map((h) => h.source);
+    check(`${label} serves the site root uncached`, sources.includes('/'),
+          'a request to / never carries the /index.html path, so it needs its own rule');
+    check(`${label} serves index.html uncached`, sources.includes('/index.html'));
+    const rootRule = cfg.headers.find((h) => h.source === '/');
+    check(`${label} root cache header actually disables caching`,
+          rootRule.headers.some((x) => /no-store/.test(x.value)),
+          JSON.stringify(rootRule));
+  }
+
+  const rootCfg = JSON.parse(readFileSync(configs['vercel.json'], 'utf8'));
+  check('the root config serves the dashboard out of web/',
+        rootCfg.outputDirectory === 'web',
+        `outputDirectory is ${JSON.stringify(rootCfg.outputDirectory)}; with the ` +
+        'Root Directory unset, anything else leaves / with no index.html to serve');
 }
 
 console.log('\n' + '='.repeat(60));

@@ -176,10 +176,42 @@ and the exchange.
 
 ---
 
+## The dashboard on Vercel
+
+The dashboard is static: `web/index.html` plus an icon and a manifest, no
+build step. Two deploy configs exist, and which one Vercel reads depends on
+the project's **Root Directory** setting:
+
+| Root Directory | Config Vercel reads | How it finds the dashboard |
+|---|---|---|
+| empty (repository root) | `vercel.json` | `outputDirectory: "web"` points at it |
+| `web` | `web/vercel.json` | already inside it, `outputDirectory: "."` |
+
+They are kept equivalent so either setting deploys correctly. Leaving Root
+Directory empty is the default and needs no console changes.
+
+Two rules that are easy to get wrong:
+
+- **Never put `"//"` keys in either file.** npm tolerates that comment
+  convention in `package.json`, so it looks safe, but Vercel's schema sets
+  `additionalProperties: false` and fails the build with *"should NOT have
+  additional property `//`"*. The build fails before any deployment is
+  produced, so the site keeps serving whatever was live before. `$schema` is
+  the one non-config key Vercel does accept. The dashboard test suite scans
+  both files for comment keys and fails if one reappears.
+- **`/` and `/index.html` both need the no-store header.** A request to `/`
+  never carries the `/index.html` path, so a rule on only the latter leaves
+  the root cached and users keep seeing an old dashboard. The build stamp on
+  the login screen is what makes a stale cache visible — check it after every
+  deploy.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| Vercel build fails, `should NOT have additional property` | A key Vercel's schema rejects, usually `"//"` | Remove it; JSON has no comments |
+| Vercel deploy is Ready but the site 404s | Root Directory empty and no root `vercel.json`, so `/` has no `index.html` | Keep `outputDirectory: "web"` in the root config |
+| Dashboard loads but looks old | `/` served from cache | Check the build stamp on the login screen; confirm both `/` and `/index.html` send `no-store` |
 | `Missing credentials` on start | `.env` incomplete | Fill the five `ANGEL_*` values, restart |
 | Login rejected | Wrong TOTP secret, or clock drift | Re-copy the base32 seed; `sudo timedatectl set-ntp true` |
 | Bot starts at the wrong hour | Container not on IST | `docker compose exec meridian date`; rebuild if wrong |

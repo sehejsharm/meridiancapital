@@ -1,6 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "//": "The dashboard lives in web/, but a Vercel project whose Root Directory is left at the repository root would look for index.html here and serve 404. Pointing outputDirectory at web/ makes the deploy correct either way: with Root Directory unset this file applies, and with Root Directory set to web/ this file is ignored in favour of web/vercel.json, which is kept identical.",
   "framework": null,
   "buildCommand": null,
   "outputDirectory": "web",
@@ -20,7 +19,6 @@
       ]
     },
     {
-      "//": "The dashboard is a single HTML file that changes on every deploy. A request to / never carries the /index.html path, so that rule alone leaves the root cached — both are listed, and the icon is pinned too because a stale favicon reads as a stale app.",
       "source": "/",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0" }
