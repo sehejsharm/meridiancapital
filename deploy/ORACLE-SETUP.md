@@ -227,6 +227,39 @@ https://meridian.tail1a2b3c.ts.net
 
 **This is your server address.** Write it down.
 
+### Turn off key expiry on the server — do not skip this
+
+Tailscale expires every node's key after about six months by default. On a
+laptop that means one more sign-in. On this box it means the server silently
+drops off the tailnet, the Funnel address stops resolving, and the dashboard
+cannot reach the bot — months from now, with no warning and no obvious cause,
+quite possibly in the middle of a trading day.
+
+1. Open **[login.tailscale.com/admin/machines](https://login.tailscale.com/admin/machines)**.
+2. Find the server (the machine you just added, not your laptop).
+3. Click the **⋯** menu on its row → **Disable key expiry**.
+
+The row should then read *Expiry disabled*. Leave your laptop's expiry alone —
+it is a real security control there; it is only a liability on an unattended
+server.
+
+### If Funnel refuses to start
+
+`tailscale funnel` fails with a terse error when the tailnet has not been set
+up for it. Two prerequisites, both in the admin console:
+
+- **[HTTPS certificates](https://login.tailscale.com/admin/dns)** must be
+  enabled, along with MagicDNS. Funnel cannot issue a certificate without them.
+- The **`funnel` node attribute** must be granted in the
+  **[access controls](https://login.tailscale.com/admin/acls)** policy. If it
+  is missing, add:
+
+  ```json
+  "nodeAttrs": [
+    { "target": ["autogroup:member"], "attr": ["funnel"] }
+  ]
+  ```
+
 ---
 
 ## 7. Connect the app
