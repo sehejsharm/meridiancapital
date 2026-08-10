@@ -138,21 +138,25 @@ for _ in $(seq 1 30); do
     say "Running."
     echo "  Local health check:  ${BOLD}http://localhost:8000/api/health${OFF}"
     echo "  API token:           (the API_TOKEN line in .env)"
-    echo
-    warn "One step left: give it an HTTPS address."
-    echo
-    echo "  The dashboard is served over HTTPS, and a browser will not let an"
-    echo "  HTTPS page call a plain-HTTP server. Tailscale Funnel fixes that for"
-    echo "  free, and because it dials out there is nothing to open on the"
-    echo "  firewall or in your cloud security list:"
-    echo
-    echo "     curl -fsSL https://tailscale.com/install.sh | sudo sh"
-    echo "     sudo tailscale up"
-    echo "     sudo tailscale funnel --bg 8000"
-    echo "     sudo tailscale funnel status"
-    echo
-    echo "  The address it prints (https://….ts.net) is what you paste into the"
-    echo "  dashboard's Server field."
+    # bootstrap.sh drives Tailscale itself and prints its own summary, so the
+    # advice below would only be a confusing duplicate when called from there.
+    if [[ -z "${MERIDIAN_BOOTSTRAP:-}" ]]; then
+      echo
+      warn "One step left: give it an HTTPS address."
+      echo
+      echo "  The dashboard is served over HTTPS, and a browser will not let an"
+      echo "  HTTPS page call a plain-HTTP server. Tailscale Funnel fixes that for"
+      echo "  free, and because it dials out there is nothing to open on the"
+      echo "  firewall or in your cloud security list:"
+      echo
+      echo "     curl -fsSL https://tailscale.com/install.sh | sudo sh"
+      echo "     sudo tailscale up"
+      echo "     sudo tailscale funnel --bg 8000"
+      echo "     sudo tailscale funnel status"
+      echo
+      echo "  The address it prints (https://….ts.net) is what you paste into the"
+      echo "  dashboard's Server field."
+    fi
     exit 0
   fi
   sleep 2
