@@ -305,7 +305,8 @@ curl -H "X-API-Token: <the token from Step 4>" http://localhost:8000/api/schedul
 | `docker: command not found` after setup | The setup script failed partway — scroll up in the terminal output for the actual error, or re-run it. |
 | `date` shows the wrong time | `sudo timedatectl set-ntp true` then wait 30 seconds and check again. |
 | App says "cannot reach server" | Confirm `sudo tailscale funnel status` still shows the address as active. Confirm you're using `https://`, not `http://`. |
-| Forgot the passcode | SSH in, `sudo nano /opt/meridiancapital/.env`, change `ADMIN_PASSWORD`, then `cd /opt/meridiancapital && sudo docker compose -f deploy/docker-compose.yml restart`. |
+| Forgot the passcode | SSH in, `sudo nano /opt/meridiancapital/.env`, change `ADMIN_PASSWORD`, then `cd /opt/meridiancapital && sudo docker compose -f deploy/docker-compose.yml up -d --force-recreate`. Use `up -d`, never `restart` — see below. |
+| Changed `.env` but nothing changed | `docker compose restart` stops and starts the *same* container, and environment variables are fixed when a container is created. The old values are still in there. Any `.env` edit needs `up -d --force-recreate`, which builds a new container from the new file. |
 
 ---
 

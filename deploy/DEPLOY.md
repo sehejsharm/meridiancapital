@@ -169,10 +169,25 @@ you must, hit Stop in the app first so any open position is flattened properly.
 sudo docker compose -f deploy/docker-compose.yml logs -f --tail 200
 ```
 
-**Going live with real money.** Set `PAPER_MODE=false` in `.env` and restart.
+**Going live with real money.** Set `PAPER_MODE=false` in `.env`, then apply it
+with `up -d --force-recreate` (see below — `restart` will not pick it up).
 Read the warning in the root README first — the app turns red and says
 LIVE MONEY when this is set, which is the only guardrail between simulation
 and the exchange.
+
+**Applying any `.env` change.** Environment variables are fixed at the moment a
+container is created, and `docker compose restart` stops and starts the *same*
+container — so an edited `.env` has no effect and the old values keep running,
+silently and with no error. Recreate the container instead:
+
+```bash
+cd /opt/meridiancapital
+sudo docker compose -f deploy/docker-compose.yml up -d --force-recreate
+```
+
+This is the single most confusing failure in the whole deployment: the file on
+disk says one thing, the running bot believes another, and nothing reports a
+problem.
 
 ---
 
@@ -212,7 +227,8 @@ Two rules that are easy to get wrong:
 | Vercel build fails, `should NOT have additional property` | A key Vercel's schema rejects, usually `"//"` | Remove it; JSON has no comments |
 | Vercel deploy is Ready but the site 404s | Root Directory empty and no root `vercel.json`, so `/` has no `index.html` | Keep `outputDirectory: "web"` in the root config |
 | Dashboard loads but looks old | `/` served from cache | Check the build stamp on the login screen; confirm both `/` and `/index.html` send `no-store` |
-| `Missing credentials` on start | `.env` incomplete | Fill the five `ANGEL_*` values, restart |
+| `Missing credentials` on start | `.env` incomplete | Fill the five `ANGEL_*` values, then `up -d --force-recreate` |
+| Edited `.env`, nothing changed | `restart` reuses the existing container, which keeps the environment it was created with | `up -d --force-recreate` |
 | Login rejected | Wrong TOTP secret, or clock drift | Re-copy the base32 seed; `sudo timedatectl set-ntp true` |
 | Bot starts at the wrong hour | Container not on IST | `docker compose exec meridian date`; rebuild if wrong |
 | App connects but no live feed | WebSocket blocked by a proxy | Use the Caddy profile; it upgrades correctly |
