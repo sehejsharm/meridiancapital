@@ -432,11 +432,6 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.5;
 
     <div class="gate-form">
       <div>
-        <label class="lbl" for="g-url">Server</label>
-        <input class="field" id="g-url" placeholder="https://xxx.ts.net"
-               autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="url">
-      </div>
-      <div>
         <label class="lbl" for="g-user">Operator</label>
         <input class="field" id="g-user" placeholder="Sehej" autocapitalize="off"
                autocorrect="off" spellcheck="false" autocomplete="username">
@@ -765,7 +760,14 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.5;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.05-gold.2-admin";
+const BUILD = "2026.08.05-gold.3-noserver";
+
+/* The dashboard is a static file with nowhere of its own to keep state, so it
+   has to be told which trading server to talk to. Rather than ask for that
+   address at every login, it is pinned here to the one server this build is
+   deployed against. Moving to a different server is a one-line change to this
+   constant and a redeploy, not something an operator should be typing. */
+const SERVER_URL = "https://meridian.tail3606fd.ts.net";
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -783,7 +785,7 @@ const VIEWS = [
 ];
 
 const S = {
-  url: localStorage.getItem("mc_url") || "",
+  url: SERVER_URL,
   token: localStorage.getItem("mc_token") || "",
   user: localStorage.getItem("mc_user") || "",
   role: localStorage.getItem("mc_role") || "viewer",
@@ -906,7 +908,6 @@ async function bioUnlock() {
 
 /* ---------------- gate ---------------- */
 $("#g-build").textContent = BUILD;
-$("#g-url").value = S.url;
 $("#g-user").value = S.user || "Sehej";
 
 function gateMsg(text, isErr) {
@@ -915,23 +916,15 @@ function gateMsg(text, isErr) {
   el.className = "gate-msg" + (isErr ? " err" : "");
 }
 
-function normaliseUrl(raw) {
-  let u = raw.trim().replace(/\/+$/, "");
-  if (!u) return "";
-  if (!/^https?:\/\//.test(u)) u = "https://" + u;
-  return u;
-}
-
 function mixedContentBlocked(u) {
   return location.protocol === "https:" && u.startsWith("http://");
 }
 
 async function doLogin() {
-  const url = normaliseUrl($("#g-url").value);
+  const url = SERVER_URL;
   const user = $("#g-user").value.trim();
   const pass = $("#g-pass").value;
 
-  if (!url) { gateMsg("Enter the server address.", true); return; }
   if (mixedContentBlocked(url)) {
     gateMsg("This page is HTTPS, so the browser blocks a plain-HTTP server.<br>" +
             "Give the bot an HTTPS address — <span class='gold'>tailscale funnel --bg 8000</span>.", true);
@@ -952,7 +945,6 @@ async function doLogin() {
     if (!r.ok) throw new Error(body.detail || ("HTTP " + r.status));
 
     S.token = body.token; S.user = body.user; S.role = body.role || "viewer";
-    localStorage.setItem("mc_url", url);
     localStorage.setItem("mc_token", S.token);
     localStorage.setItem("mc_user", S.user);
     localStorage.setItem("mc_role", S.role);
@@ -974,17 +966,15 @@ $("#g-go").onclick = doLogin;
 $("#g-pass").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
 
 $("#g-token-go").onclick = async () => {
-  const url = normaliseUrl($("#g-url").value);
   const token = $("#g-token").value.trim();
-  if (!url || !token) { gateMsg("Server address and token are required.", true); return; }
-  if (mixedContentBlocked(url)) {
+  if (!token) { gateMsg("An API token is required.", true); return; }
+  if (mixedContentBlocked(SERVER_URL)) {
     gateMsg("HTTPS page cannot call a plain-HTTP server.", true); return;
   }
-  S.url = url; S.token = token;
+  S.token = token;
   try {
     const me = await api("/api/auth/me");
     S.user = me.user; S.role = me.role || "viewer";
-    localStorage.setItem("mc_url", url);
     localStorage.setItem("mc_token", token);
     localStorage.setItem("mc_user", S.user);
     localStorage.setItem("mc_role", S.role);
@@ -996,7 +986,6 @@ $("#g-bio").onclick = async () => {
   const label = $("#g-bio-label");
   label.textContent = "Verifying…";
   if (await bioUnlock()) {
-    S.url = localStorage.getItem("mc_url") || S.url;
     S.token = localStorage.getItem("mc_token") || "";
     S.user = localStorage.getItem("mc_user") || "";
     try { await api("/api/auth/me"); enterApp(); }
