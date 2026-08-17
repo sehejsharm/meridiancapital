@@ -89,9 +89,26 @@ if ! command -v docker >/dev/null 2>&1; then
   else
     curl -fsSL https://get.docker.com | sh
   fi
-  systemctl enable --now docker
 else
   say "Docker already present"
+fi
+
+# Installed is not the same as running. A first pass interrupted between the
+# package landing and the service starting — a dropped SSH session is enough —
+# leaves the binary present with a dead socket, and the "already present"
+# branch above would then never start it on any later run. So bring the daemon
+# up unconditionally (enable and start are both no-ops once it is running) and
+# wait for the socket to actually answer before building against it.
+if ! docker info >/dev/null 2>&1; then
+  say "Starting the Docker daemon"
+  systemctl enable --now docker \
+    || die "Could not start Docker — see: systemctl status docker"
+  for _ in $(seq 1 20); do
+    docker info >/dev/null 2>&1 && break
+    sleep 1
+  done
+  docker info >/dev/null 2>&1 \
+    || die "Docker is installed but its daemon did not come up — see: journalctl -u docker -n 50 --no-pager"
 fi
 
 docker compose version >/dev/null 2>&1 \
