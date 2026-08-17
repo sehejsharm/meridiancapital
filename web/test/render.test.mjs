@@ -197,7 +197,9 @@ console.log('\nCandle chart');
   const empty = sandbox.drawCandles({ candles: [], reason: 'Bot is not running.' });
   check('empty candles show the reason', empty.includes('Bot is not running.'));
   const one = sandbox.drawCandles({ candles: candles(1) });
-  check('a single candle degrades to the empty state', one.includes('class="empty"'));
+  check('a single candle degrades to the empty state', one.includes('chart-empty'));
+  check('the empty chart explains what happens next, not just that it is empty',
+        one.includes('ce-s') && one.length > 200, one.slice(0, 160));
 }
 
 console.log('\nTrade box');
@@ -266,7 +268,16 @@ console.log('\nFormatting');
 console.log('\nBrand');
 {
   const html = readFileSync(HTML, 'utf8');
-  check('gold is the accent variable', html.includes('--au:#d4af37'));
+  // Pinning the exact hex made this fail on a palette refresh that kept the
+  // brand intact, so it asserts the identity instead: --au is defined, and it
+  // is a gold — red high, green mid, blue low.
+  const au = (html.match(/--au:\s*#([0-9a-f]{6})/i) || [])[1];
+  check('gold is the accent variable', !!au, 'no --au hex found');
+  if (au) {
+    const [r, g, b] = [0, 2, 4].map(i => parseInt(au.slice(i, i + 2), 16));
+    check(`--au (#${au}) is still a gold`, r > 180 && g > 120 && g < r && b < 120,
+          `rgb(${r},${g},${b})`);
+  }
   check('no leftover green accent from the old palette',
         !html.includes('#35d6a0'), 'old accent still present');
   check('compass mark is inline in the login', html.includes('class="mark"'));

@@ -433,6 +433,96 @@ async def status(_: str = Depends(require_token)):
     }
 
 
+def _diagnostics() -> dict:
+    """Everything needed to answer "is the algorithm actually alive and well?".
+
+    The supervisor knows whether a process exists, but a process that is up and
+    silently failing every broker call looks identical to a healthy one from the
+    outside. So this also reports how long it has been since the child last said
+    anything, and what it has been complaining about — an algorithm that stopped
+    emitting is the failure mode that would otherwise go unnoticed until the P&L
+    came out wrong.
+    """
+    st = supervisor.status()
+    now = datetime.now()
+    today = db.today_str()
+
+    def age(iso: Optional[str]) -> Optional[int]:
+        if not iso:
+            return None
+        try:
+            return max(0, int((now - datetime.fromisoformat(iso)).total_seconds()))
+        except (ValueError, TypeError):
+            return None
+
+    snap = st.get("snapshot") or {}
+    last_event = st.get("last_event") or {}
+    event_age = age(last_event.get("ts"))
+    tick_age = age(snap.get("_ts"))
+
+    faults = db.query(
+        """SELECT ts, kind, level, message FROM events
+           WHERE session_date = ? AND (level = 'error' OR kind IN ('fatal','error'))
+           ORDER BY id DESC LIMIT 12""",
+        (today,),
+    )
+    counts = db.query(
+        """SELECT level, COUNT(*) AS n FROM events
+           WHERE session_date = ? GROUP BY level""",
+        (today,),
+    )
+    by_level = {r["level"]: r["n"] for r in counts}
+
+    # A running child that has gone quiet for longer than two status intervals is
+    # not obviously healthy, and saying so is the whole point of this endpoint.
+    if not st.get("running"):
+        heartbeat = "stopped"
+    elif event_age is None:
+        heartbeat = "unknown"
+    elif event_age > 120:
+        heartbeat = "stale"
+    else:
+        heartbeat = "live"
+
+    ok = (
+        st.get("state") != "error"
+        and not st.get("last_error")
+        and heartbeat in ("live", "stopped")
+        and not by_level.get("error")
+    )
+
+    return {
+        "ok": ok,
+        "heartbeat": heartbeat,
+        "state": st.get("state"),
+        "running": st.get("running"),
+        "pid": st.get("pid"),
+        "uptime_seconds": st.get("uptime_seconds"),
+        "restarts": st.get("restarts"),
+        "last_error": st.get("last_error"),
+        "stop_reason": st.get("stop_reason"),
+        "last_event_age": event_age,
+        "last_event_kind": last_event.get("kind"),
+        "last_tick_age": tick_age,
+        "has_market_data": bool((snap.get("market") or {}).get("spot")),
+        "paper": snap.get("paper", settings.paper_mode),
+        "is_trading_day": st.get("is_trading_day"),
+        "not_trading_reason": st.get("not_trading_reason"),
+        "inside_window": st.get("inside_window"),
+        "schedule": st.get("schedule"),
+        "schedule_next": next_runs(),
+        "errors_today": by_level.get("error", 0),
+        "warnings_today": by_level.get("warn", 0),
+        "faults": faults,
+        "server_time": now.isoformat(timespec="seconds"),
+    }
+
+
+@app.get("/api/diagnostics")
+async def diagnostics(_: str = Depends(require_token)):
+    return await asyncio.to_thread(_diagnostics)
+
+
 @app.post("/api/bot/start")
 async def bot_start(body: StartRequest, _: str = Depends(require_operator)):
     result = await asyncio.to_thread(supervisor.start, "manual", body.force)

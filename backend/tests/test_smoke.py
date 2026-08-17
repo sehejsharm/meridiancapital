@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -302,6 +302,37 @@ def test_api() -> None:
         check("strategy endpoint needs no bot running", r.status_code == 200)
         r = client.get("/api/strategy")
         check("strategy endpoint is authenticated", r.status_code == 401)
+
+        # ---- diagnostics ----
+        # The question this has to answer is "is the algorithm alive?", and the
+        # dangerous answer is a confident yes when it is not. With the bot
+        # stopped the honest report is heartbeat=stopped, not ok=False — a bot
+        # that was never started is idle, not faulty.
+        r = client.get("/api/diagnostics", headers=h)
+        check("diagnostics endpoint answers", r.status_code == 200)
+        d = r.json()
+        check("diagnostics reports the heartbeat", d["heartbeat"] == "stopped", str(d.get("heartbeat")))
+        check("diagnostics knows the bot is not running", d["running"] is False)
+        check("diagnostics counts today's errors", d["errors_today"] == 0, str(d.get("errors_today")))
+        check("diagnostics lists a faults array", isinstance(d["faults"], list))
+        check("diagnostics carries the schedule for the next run", "schedule_next" in d)
+        check("diagnostics says whether it is a trading day", "is_trading_day" in d)
+        check("a stopped bot is not reported as faulty", d["ok"] is True, str(d))
+        r = client.get("/api/diagnostics")
+        check("diagnostics is authenticated", r.status_code == 401)
+
+        # An error event today must show up in the count and the fault list —
+        # this is the path that tells the operator the algorithm is broken.
+        db.insert_event(ts=datetime.now().isoformat(timespec="seconds"),
+                        session_date=db.today_str(), kind="fatal",
+                        message="Angel One login rejected", level="error")
+        r = client.get("/api/diagnostics", headers=h)
+        d = r.json()
+        check("a fatal event raises the error count", d["errors_today"] == 1, str(d["errors_today"]))
+        check("the fault text is surfaced, not just counted",
+              any("Angel One login rejected" in (f["message"] or "") for f in d["faults"]),
+              str(d["faults"])[:200])
+        check("an error today makes the report not ok", d["ok"] is False)
 
         # ---- chart ----
         r = client.get("/api/chart", headers=h)
