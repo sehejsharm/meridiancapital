@@ -92,9 +92,30 @@ def _index_path() -> Path:
 def _load_index() -> dict:
     try:
         with open(_index_path()) as f:
-            return json.load(f)
+            idx = json.load(f)
     except Exception:
-        return {"active": BUILTIN_ID, "versions": []}
+        idx = {"active": BUILTIN_ID, "versions": []}
+    idx.setdefault("versions", [])
+    # Slot assignments arrived after the single-algorithm index. An older file
+    # has only "active", which described what is now slot 0, so it is adopted
+    # as such rather than resetting a live bot to the built-in.
+    if "slots" not in idx:
+        idx["slots"] = {"0": idx.get("active", BUILTIN_ID)}
+    return idx
+
+
+def slot_active(slot: int = 0) -> Optional[str]:
+    """The version id assigned to a slot, or None when the slot is empty.
+
+    Slot 0 defaults to the built-in so the original bot keeps running with no
+    configuration. Slots 1-4 default to empty — inheriting slot 0's algorithm
+    would silently double the position size.
+    """
+    idx = _load_index()
+    val = (idx.get("slots") or {}).get(str(slot))
+    if val is None and slot == 0:
+        return BUILTIN_ID
+    return val
 
 
 def _save_index(idx: dict) -> None:
@@ -348,23 +369,38 @@ def _report(checks: list[Check], source: str, filename: str) -> dict:
 # ---------------------------------------------------------------- versions
 
 
-def list_versions() -> dict:
+def list_versions(max_slots: int = 5) -> dict:
     idx = _load_index()
+    slots = idx.get("slots") or {}
+    assigned = {str(k): v for k, v in slots.items()}
+
+    def slots_using(vid: str) -> list[int]:
+        return sorted(int(k) for k, v in assigned.items() if v == vid)
+
     versions = [{
         "id": BUILTIN_ID,
         "name": "Built-in v11 (original)",
         "uploaded_at": None,
         "uploaded_by": "shipped",
         "lines": None,
-        "active": idx.get("active", BUILTIN_ID) == BUILTIN_ID,
+        "slots": slots_using(BUILTIN_ID),
         "builtin": True,
         "warnings": [],
     }]
     for v in idx.get("versions", []):
-        versions.append({**v, "active": idx.get("active") == v["id"], "builtin": False})
+        versions.append({**v, "slots": slots_using(v["id"]), "builtin": False})
+
     return {
-        "active": idx.get("active", BUILTIN_ID),
         "versions": sorted(versions, key=lambda v: v.get("uploaded_at") or "", reverse=True),
+        "slots": [
+            {
+                "slot": i,
+                "algorithm": slot_active(i),
+                "description": active_description(i),
+                "empty": slot_active(i) is None,
+            }
+            for i in range(max_slots)
+        ],
     }
 
 
@@ -408,16 +444,29 @@ def get_source(version_id: str) -> Optional[str]:
     return None
 
 
-def activate(version_id: str) -> dict:
+def activate(version_id: Optional[str], slot: int = 0) -> dict:
+    """Assign a version to a slot. `version_id=None` empties the slot."""
     idx = _load_index()
-    if version_id != BUILTIN_ID:
-        known = {v["id"] for v in idx.get("versions", [])}
-        if version_id not in known:
-            raise ValueError(f"No such version: {version_id}")
-        path = _dir() / f"{version_id}.py"
-        if not path.exists():
-            raise ValueError("That version's file is missing from disk.")
-    idx["active"] = version_id
+    idx.setdefault("slots", {})
+
+    if version_id is None:
+        if slot == 0:
+            raise ValueError(
+                "Slot 1 always runs something — assign the built-in rather than "
+                "emptying it."
+            )
+        idx["slots"].pop(str(slot), None)
+    else:
+        if version_id != BUILTIN_ID:
+            known = {v["id"] for v in idx.get("versions", [])}
+            if version_id not in known:
+                raise ValueError(f"No such version: {version_id}")
+            if not (_dir() / f"{version_id}.py").exists():
+                raise ValueError("That version's file is missing from disk.")
+        idx["slots"][str(slot)] = version_id
+
+    if slot == 0:                       # keep the legacy key honest
+        idx["active"] = idx["slots"].get("0", BUILTIN_ID)
     _save_index(idx)
     return list_versions()
 
@@ -426,8 +475,12 @@ def delete_version(version_id: str) -> dict:
     if version_id == BUILTIN_ID:
         raise ValueError("The built-in algorithm cannot be deleted.")
     idx = _load_index()
-    if idx.get("active") == version_id:
-        raise ValueError("That version is active. Activate another one first.")
+    # Checking only the legacy "active" key would happily delete the file that
+    # slot 4 is running, so every slot assignment is consulted.
+    using = sorted(int(k) for k, v in (idx.get("slots") or {}).items() if v == version_id)
+    if using:
+        where = ", ".join(f"slot {s + 1}" for s in using)
+        raise ValueError(f"That version is assigned to {where}. Change it there first.")
     remaining = []
     for v in idx.get("versions", []):
         if v["id"] == version_id:
@@ -439,20 +492,23 @@ def delete_version(version_id: str) -> dict:
     return list_versions()
 
 
-def active_target() -> tuple[str, Optional[str]]:
-    """What the supervisor should launch.
+def active_target(slot: int = 0) -> tuple[str, Optional[str]]:
+    """What the supervisor should launch for a slot.
 
-    Returns `(kind, value)` — either `("module", "app.bot.strategy")` for the
-    built-in, or `("file", "/path/to/version.py")` for an upload.
+    Returns `(kind, value)` — `("module", "app.bot.strategy")` for the built-in,
+    `("file", "/path/to/version.py")` for an upload, or `("none", None)` when
+    the slot has nothing assigned and must not start.
     """
-    idx = _load_index()
-    active = idx.get("active", BUILTIN_ID)
+    active = slot_active(slot)
+    if active is None:
+        return "none", None
     if active == BUILTIN_ID:
         return "module", BUILTIN_MODULE
     path = _dir() / f"{active}.py"
     if not path.exists():
-        # The active upload vanished — fall back rather than refuse to trade.
-        return "module", BUILTIN_MODULE
+        # The assigned upload vanished from disk. Slot 0 falls back to the
+        # built-in rather than refusing to trade; an empty slot stays empty.
+        return ("module", BUILTIN_MODULE) if slot == 0 else ("none", None)
     return "file", str(path)
 
 
@@ -562,12 +618,13 @@ def template() -> str:
     return TEMPLATE
 
 
-def active_description() -> str:
-    idx = _load_index()
-    active = idx.get("active", BUILTIN_ID)
+def active_description(slot: int = 0) -> str:
+    active = slot_active(slot)
+    if active is None:
+        return "Empty — no algorithm assigned"
     if active == BUILTIN_ID:
         return "Built-in v11 (original)"
-    for v in idx.get("versions", []):
+    for v in _load_index().get("versions", []):
         if v["id"] == active:
             return f"{v['name']} ({v['id']})"
-    return "Built-in v11 (original)"
+    return "Built-in v11 (original)" if slot == 0 else "Empty — no algorithm assigned"

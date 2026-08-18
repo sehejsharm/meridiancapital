@@ -304,3 +304,173 @@ def _fmt(v) -> str:
     if isinstance(v, float):
         return f"{v:.2f}"
     return str(v)
+
+
+def _xml(text: str) -> str:
+    """Escape for reportlab's paragraph markup parser."""
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def to_pdf(payload: dict) -> bytes:
+    """A report someone can send to an accountant without reformatting it.
+
+    reportlab is imported here rather than at module scope: the PDF path is
+    occasional, and the trading server runs on 1 GB, so the ~20 MB the library
+    pulls in should not be resident for every process that touches exports.
+    """
+    from io import BytesIO
+
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_RIGHT
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (PageBreak, Paragraph, SimpleDocTemplate,
+                                    Spacer, Table, TableStyle)
+
+    INK = colors.HexColor("#101014")
+    GOLD = colors.HexColor("#8a6d1f")
+    RULE = colors.HexColor("#d8d2c4")
+    UP = colors.HexColor("#0f7a4a")
+    DOWN = colors.HexColor("#b3242f")
+
+    rng = payload.get("range") or {}
+    summary = payload.get("summary") or {}
+    trades = payload.get("trades") or []
+    sessions = payload.get("sessions") or []
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=landscape(A4),
+        leftMargin=12 * mm, rightMargin=12 * mm,
+        topMargin=12 * mm, bottomMargin=14 * mm,
+        title=f"Meridian Capital — {rng.get('label', '')}",
+        author="Meridian Capital",
+    )
+
+    ss = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=ss["Title"], fontName="Helvetica-Bold",
+                        fontSize=17, textColor=INK, alignment=0, spaceAfter=2)
+    sub = ParagraphStyle("sub", parent=ss["Normal"], fontName="Helvetica",
+                         fontSize=9, textColor=colors.HexColor("#6a6558"))
+    h2 = ParagraphStyle("h2", parent=ss["Heading2"], fontName="Helvetica-Bold",
+                        fontSize=11, textColor=GOLD, spaceBefore=10, spaceAfter=5)
+    small = ParagraphStyle("small", parent=ss["Normal"], fontName="Helvetica",
+                           fontSize=7.5, textColor=INK)
+
+    story = [
+        Paragraph("MERIDIAN CAPITAL", h1),
+        Paragraph(
+            f"{rng.get('label', '')} &nbsp;·&nbsp; {rng.get('start', '')} to "
+            f"{rng.get('end', '')} &nbsp;·&nbsp; generated "
+            f"{payload.get('generated_at', '')} IST", sub),
+        Spacer(1, 7),
+    ]
+
+    def money(v) -> str:
+        try:
+            return f"{float(v):,.2f}"
+        except (TypeError, ValueError):
+            return "—"
+
+    net = summary.get("net_pnl") or 0
+    cards = [
+        ("Net P&L", money(net), UP if net >= 0 else DOWN),
+        ("Trades", str(summary.get("trades") or 0), INK),
+        ("Win rate", f"{summary.get('win_rate') or 0:.1f}%", INK),
+        ("Profit factor",
+         "—" if summary.get("profit_factor") in (None, "") else f"{summary['profit_factor']:.2f}",
+         INK),
+        ("Charges", money(summary.get("charges")), INK),
+        ("Return", f"{summary.get('return_pct') or 0:.2f}%", INK),
+        ("Max drawdown", f"{summary.get('max_drawdown_pct') or 0:.2f}%", DOWN),
+    ]
+    head = Table(
+        [[Paragraph(f"<font size=7 color='#6a6558'>{k.upper()}</font>", small) for k, _, _ in cards],
+         [Paragraph(f"<font size=13 color='#{c.hexval()[2:]}'><b>{v}</b></font>", small)
+          for _, v, c in cards]],
+        colWidths=[doc.width / len(cards)] * len(cards),
+    )
+    head.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.6, RULE),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, RULE),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#faf8f3")),
+    ]))
+    story += [head, Spacer(1, 4)]
+
+    def table(title: str, headers: list[tuple[str, str]], rows: list[dict],
+              highlight: str = "") -> None:
+        story.append(Paragraph(title, h2))
+        if not rows:
+            story.append(Paragraph("<i>Nothing in this window.</i>", small))
+            return
+        keys = [k for k, _ in headers]
+        data = [[Paragraph(f"<b>{lbl}</b>", small) for _, lbl in headers]]
+        for r in rows:
+            # Cell text is parsed as markup, so an exit reason containing "&"
+            # or "<" would abort the whole render. Entry reasons are free text
+            # written by the algorithm, so this is not hypothetical.
+            data.append([Paragraph(_xml(_fmt(r.get(k))), small) for k in keys])
+
+        t = Table(data, repeatRows=1, colWidths=[doc.width / len(keys)] * len(keys))
+        style = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2eee4")),
+            ("GRID", (0, 0), (-1, -1), 0.3, RULE),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+             [colors.white, colors.HexColor("#fbfaf7")]),
+        ]
+        # Colour the P&L column so a losing row is visible at a glance.
+        if highlight in keys:
+            col = keys.index(highlight)
+            for i, r in enumerate(rows, start=1):
+                try:
+                    val = float(r.get(highlight) or 0)
+                except (TypeError, ValueError):
+                    continue
+                style.append(("TEXTCOLOR", (col, i), (col, i), UP if val >= 0 else DOWN))
+        t.setStyle(TableStyle(style))
+        story.append(t)
+
+    # The full trade table is far too wide for a page, so the PDF carries the
+    # columns a human reads and the CSV/XLSX keep every field.
+    pdf_trade_cols = [
+        ("session_date", "Date"), ("entry_time", "Entry"), ("exit_time", "Exit"),
+        ("symbol", "Symbol"), ("qty", "Qty"), ("avg_entry", "Entry"),
+        ("exit_fill", "Exit"), ("charges", "Charges"), ("net_pnl", "Net P&L"),
+        ("reason", "Exit Reason"), ("stage", "Stage"),
+    ]
+    pdf_session_cols = [
+        ("session_date", "Date"), ("trades", "Trades"), ("open_equity", "Open"),
+        ("close_equity", "Close"), ("day_pnl", "Day P&L"), ("charges", "Charges"),
+        ("win_rate", "Win %"), ("drawdown_pct", "DD %"), ("trend", "Trend"),
+    ]
+
+    table(f"Daily sessions ({len(sessions)})", pdf_session_cols, sessions,
+          highlight="day_pnl")
+    if trades:
+        story.append(PageBreak())
+    table(f"Trades ({len(trades)})", pdf_trade_cols, trades, highlight="net_pnl")
+
+    def chrome(canvas, doc_):
+        canvas.saveState()
+        canvas.setStrokeColor(RULE)
+        canvas.setLineWidth(0.5)
+        canvas.line(doc_.leftMargin, 9 * mm,
+                    doc_.pagesize[0] - doc_.rightMargin, 9 * mm)
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(colors.HexColor("#8a857a"))
+        canvas.drawString(doc_.leftMargin, 5.5 * mm,
+                          "Meridian Capital — algorithmic trading record")
+        canvas.drawRightString(doc_.pagesize[0] - doc_.rightMargin, 5.5 * mm,
+                               f"Page {canvas.getPageNumber()}")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=chrome, onLaterPages=chrome)
+    return buf.getvalue()

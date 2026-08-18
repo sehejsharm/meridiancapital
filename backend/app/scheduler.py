@@ -17,7 +17,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from .config import settings
 from .holidays import is_trading_day, why_not_trading
-from .runner import supervisor
+from .runner import fleet, supervisor
 
 log = logging.getLogger("meridian.scheduler")
 
@@ -40,24 +40,29 @@ def _session_start_job() -> None:
             level="info",
         )
         return
-    supervisor.restarts = 0
     supervisor._emit_local(
         "scheduler",
         f"Scheduled start — {settings.session_start.strftime('%H:%M')} {settings.tz}",
         level="success",
     )
-    supervisor.start(trigger="schedule")
+    # Every slot holding an algorithm starts. An empty slot refuses on its own
+    # and says so, so there is nothing to filter for here.
+    for lane in fleet:
+        lane.restarts = 0
+        lane.start(trigger="schedule")
 
 
 def _session_stop_job() -> None:
-    if not supervisor.running:
+    live = [lane for lane in fleet if lane.running]
+    if not live:
         return
     supervisor._emit_local(
         "scheduler",
         f"Scheduled stop — {settings.session_stop.strftime('%H:%M')} {settings.tz}",
         level="warn",
     )
-    supervisor.stop(reason="scheduled stop")
+    for lane in live:
+        lane.stop(reason="scheduled stop")
 
 
 def start_scheduler() -> BackgroundScheduler:
@@ -101,10 +106,11 @@ def _catch_up() -> None:
     if settings.session_start <= now.time() < settings.session_stop:
         supervisor._emit_local(
             "scheduler",
-            "Server came up inside the session window — starting bot now",
+            "Server came up inside the session window — starting bots now",
             level="warn",
         )
-        supervisor.start(trigger="schedule")
+        for lane in fleet:
+            lane.start(trigger="schedule")
 
 
 def shutdown_scheduler() -> None:

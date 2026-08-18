@@ -25,3 +25,4 @@ openpyxl==3.1.5
 
 # --- push notifications ---
 httpx==0.28.1
+reportlab==4.2.5

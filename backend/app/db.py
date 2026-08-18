@@ -76,13 +76,18 @@ CREATE TABLE IF NOT EXISTS trades (
     day_pnl        REAL,
     equity_after   REAL,
     latency_ms     REAL,
-    UNIQUE(session_date, entry_time, symbol)
+    slot           INTEGER NOT NULL DEFAULT 0,
+    -- slot belongs in the key: five algorithms share one instrument, so two of
+    -- them entering the same contract in the same second is ordinary, not a
+    -- duplicate. Without it the second fill would replace the first.
+    UNIQUE(session_date, entry_time, symbol, slot)
 );
 CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(session_date);
 
 -- One row per trading session (the EOD report).
 CREATE TABLE IF NOT EXISTS sessions (
-    session_date   TEXT PRIMARY KEY,
+    session_date   TEXT NOT NULL,
+    slot           INTEGER NOT NULL DEFAULT 0,
     mode           TEXT,
     trades         INTEGER DEFAULT 0,
     open_equity    REAL,
@@ -104,7 +109,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     drawdown_pct   REAL,
     win_rate       REAL,
     profit_factor  REAL,
-    created_at     TEXT
+    created_at     TEXT,
+    -- One EOD row per slot per day, not one per day.
+    PRIMARY KEY (session_date, slot)
 );
 
 -- Intraday equity / P&L marks so the app can draw a curve.
@@ -115,7 +122,8 @@ CREATE TABLE IF NOT EXISTS equity_marks (
     equity       REAL NOT NULL,
     day_pnl      REAL NOT NULL DEFAULT 0,
     open_position INTEGER NOT NULL DEFAULT 0,
-    unrealised   REAL NOT NULL DEFAULT 0
+    unrealised   REAL NOT NULL DEFAULT 0,
+    slot         INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_marks_date ON equity_marks(session_date);
 
@@ -128,7 +136,8 @@ CREATE TABLE IF NOT EXISTS runs (
     pid          INTEGER,
     trigger      TEXT,          -- schedule | manual | restart
     stop_reason  TEXT,
-    exit_code    INTEGER
+    exit_code    INTEGER,
+    slot         INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_runs_date ON runs(session_date);
 
@@ -147,11 +156,62 @@ CREATE TABLE IF NOT EXISTS kv (
 """
 
 
+# Every row the bot writes is tagged with the slot that produced it, so five
+# algorithms can share one database and still be reported on separately. Slot 0
+# is the original single-bot lane: the column defaults to 0, which silently
+# adopts every row written before slots existed rather than orphaning a live
+# trading history.
+SLOT_TABLES = ("events", "equity_marks", "runs")
+
+# trades and sessions cannot take a plain ADD COLUMN: their uniqueness keys have
+# to widen to include the slot, and SQLite will not alter a constraint in place.
+# Those two are rebuilt instead — renamed aside, recreated from the schema above,
+# and copied back with slot defaulting to 0.
+REBUILD_TABLES = ("trades", "sessions")
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    return [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bring an older database up to the current schema.
+
+    Runs on every boot and must stay safe against a populated, live database —
+    this is somebody's trading history, so every path here either preserves the
+    rows or does nothing at all.
+    """
+    for table in SLOT_TABLES:
+        if "slot" not in _columns(conn, table):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN slot INTEGER NOT NULL DEFAULT 0")
+
+    for table in REBUILD_TABLES:
+        cols = _columns(conn, table)
+        if not cols or "slot" in cols:
+            continue
+        carried = ",".join(cols)
+        conn.execute(f"ALTER TABLE {table} RENAME TO {table}_pre_slot")
+        conn.executescript(SCHEMA)          # recreates just the renamed table
+        conn.execute(
+            f"INSERT INTO {table} ({carried}) SELECT {carried} FROM {table}_pre_slot"
+        )
+        conn.execute(f"DROP TABLE {table}_pre_slot")
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_slot ON events(slot)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_slot ON trades(slot)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_slot ON sessions(slot)")
+
+
 def init(db_path: Path) -> None:
     global _DB_PATH
     _DB_PATH = Path(db_path)
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with connect() as conn:
+        conn.executescript(SCHEMA)
+        _migrate(conn)
+        # A rebuild drops the renamed table's indexes with it; every statement in
+        # SCHEMA is IF NOT EXISTS, so replaying it restores them and does nothing
+        # on the common path where no rebuild happened.
         conn.executescript(SCHEMA)
 
 
@@ -208,12 +268,14 @@ def insert_event(
     payload: Optional[dict] = None,
     seq: int = 0,
     run_id: Optional[int] = None,
+    slot: int = 0,
 ) -> int:
     return execute(
-        """INSERT INTO events (ts, session_date, seq, run_id, kind, level, message, payload)
-           VALUES (?,?,?,?,?,?,?,?)""",
+        """INSERT INTO events (ts, session_date, seq, run_id, kind, level, message,
+                               payload, slot)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
         (ts, session_date, seq, run_id, kind, level, message,
-         json.dumps(payload, default=str) if payload else None),
+         json.dumps(payload, default=str) if payload else None, slot),
     )
 
 
@@ -222,12 +284,17 @@ def recent_events(
     since_id: int = 0,
     session_date: Optional[str] = None,
     kinds: Optional[list[str]] = None,
+    slot: Optional[int] = None,
 ) -> list[dict]:
+    """`slot=None` reads every slot — the combined feed the deck shows."""
     sql = "SELECT * FROM events WHERE id > ?"
     params: list[Any] = [since_id]
     if session_date:
         sql += " AND session_date = ?"
         params.append(session_date)
+    if slot is not None:
+        sql += " AND slot = ?"
+        params.append(slot)
     if kinds:
         sql += f" AND kind IN ({','.join('?' * len(kinds))})"
         params.extend(kinds)
@@ -247,7 +314,7 @@ TRADE_COLUMNS = [
     "lot_cost", "real_margin", "risk_rs", "gross_pnl", "brokerage", "stt",
     "exch_txn", "sebi", "stamp", "gst", "charges", "net_pnl", "reason",
     "stage", "entry_reason", "spot_at_entry", "garch_vol", "entry_iv",
-    "day_pnl", "equity_after", "latency_ms",
+    "day_pnl", "equity_after", "latency_ms", "slot",
 ]
 
 
@@ -260,12 +327,13 @@ def upsert_trade(rec: dict) -> None:
     execute(sql, [rec.get(c) for c in cols])
 
 
-def trades_between(start: str, end: str) -> list[dict]:
-    return query(
-        "SELECT * FROM trades WHERE session_date >= ? AND session_date <= ?"
-        " ORDER BY session_date, entry_time",
-        (start, end),
-    )
+def trades_between(start: str, end: str, slot: Optional[int] = None) -> list[dict]:
+    sql = "SELECT * FROM trades WHERE session_date >= ? AND session_date <= ?"
+    params: list[Any] = [start, end]
+    if slot is not None:
+        sql += " AND slot = ?"
+        params.append(slot)
+    return query(sql + " ORDER BY session_date, entry_time", params)
 
 
 # ---------------------------------------------------------------- sessions
@@ -275,7 +343,7 @@ SESSION_COLUMNS = [
     "charges", "killed", "chop_blocked", "chop_score", "garch", "adx",
     "vol_regime", "trend", "direction", "efficiency", "day_range_pts",
     "avg_latency_ms", "peak_equity", "drawdown_pct", "win_rate",
-    "profit_factor", "created_at",
+    "profit_factor", "created_at", "slot",
 ]
 
 
@@ -290,12 +358,13 @@ def upsert_session(rec: dict) -> None:
     )
 
 
-def sessions_between(start: str, end: str) -> list[dict]:
-    return query(
-        "SELECT * FROM sessions WHERE session_date >= ? AND session_date <= ?"
-        " ORDER BY session_date",
-        (start, end),
-    )
+def sessions_between(start: str, end: str, slot: Optional[int] = None) -> list[dict]:
+    sql = "SELECT * FROM sessions WHERE session_date >= ? AND session_date <= ?"
+    params: list[Any] = [start, end]
+    if slot is not None:
+        sql += " AND slot = ?"
+        params.append(slot)
+    return query(sql + " ORDER BY session_date", params)
 
 
 # ---------------------------------------------------------------- equity
@@ -303,19 +372,23 @@ def sessions_between(start: str, end: str) -> list[dict]:
 
 def insert_equity_mark(
     ts: str, session_date: str, equity: float, day_pnl: float,
-    open_position: bool = False, unrealised: float = 0.0,
+    open_position: bool = False, unrealised: float = 0.0, slot: int = 0,
 ) -> None:
     execute(
-        """INSERT INTO equity_marks (ts, session_date, equity, day_pnl, open_position, unrealised)
-           VALUES (?,?,?,?,?,?)""",
-        (ts, session_date, equity, day_pnl, 1 if open_position else 0, unrealised),
+        """INSERT INTO equity_marks (ts, session_date, equity, day_pnl, open_position,
+                                     unrealised, slot)
+           VALUES (?,?,?,?,?,?,?)""",
+        (ts, session_date, equity, day_pnl, 1 if open_position else 0, unrealised, slot),
     )
 
 
-def equity_marks(session_date: str) -> list[dict]:
-    return query(
-        "SELECT * FROM equity_marks WHERE session_date = ? ORDER BY id", (session_date,)
-    )
+def equity_marks(session_date: str, slot: Optional[int] = None) -> list[dict]:
+    sql = "SELECT * FROM equity_marks WHERE session_date = ?"
+    params: list[Any] = [session_date]
+    if slot is not None:
+        sql += " AND slot = ?"
+        params.append(slot)
+    return query(sql + " ORDER BY id", params)
 
 
 def equity_curve(start: str, end: str) -> list[dict]:
@@ -332,10 +405,10 @@ def equity_curve(start: str, end: str) -> list[dict]:
 # ---------------------------------------------------------------- runs
 
 
-def start_run(session_date: str, pid: int, trigger: str) -> int:
+def start_run(session_date: str, pid: int, trigger: str, slot: int = 0) -> int:
     return execute(
-        "INSERT INTO runs (session_date, started_at, pid, trigger) VALUES (?,?,?,?)",
-        (session_date, datetime.now().isoformat(timespec="seconds"), pid, trigger),
+        "INSERT INTO runs (session_date, started_at, pid, trigger, slot) VALUES (?,?,?,?,?)",
+        (session_date, datetime.now().isoformat(timespec="seconds"), pid, trigger, slot),
     )
 
 
@@ -391,10 +464,14 @@ def remove_push_token(token: str) -> None:
 # ---------------------------------------------------------------- stats
 
 
-def aggregate(start: str, end: str) -> dict:
-    """Headline numbers for any date range — powers the Reports screen."""
-    trades = trades_between(start, end)
-    sess = sessions_between(start, end)
+def aggregate(start: str, end: str, slot: Optional[int] = None) -> dict:
+    """Headline numbers for any date range — powers the Reports screen.
+
+    `slot=None` combines every algorithm, which is the portfolio-level answer;
+    pass a slot to report on one of them alone.
+    """
+    trades = trades_between(start, end, slot=slot)
+    sess = sessions_between(start, end, slot=slot)
 
     n = len(trades)
     wins = [t for t in trades if (t.get("net_pnl") or 0) > 0]

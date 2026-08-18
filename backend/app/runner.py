@@ -48,9 +48,16 @@ def _strip_ansi(text: str) -> str:
 
 
 class BotSupervisor:
-    """Owns the bot process and fans its output out to listeners."""
+    """Owns one bot process and fans its output out to listeners.
 
-    def __init__(self) -> None:
+    One instance per slot. Slot 0 is the original lane — every row written
+    before slots existed belongs to it — and slots 1-4 start empty, waiting for
+    an algorithm to be uploaded to them.
+    """
+
+    def __init__(self, slot: int = 0, name: str = "") -> None:
+        self.slot = slot
+        self.name = name or (f"Slot {slot + 1}" if slot else "Primary")
         self.proc: Optional[subprocess.Popen] = None
         self.run_id: Optional[int] = None
         self.state: str = "stopped"          # stopped|starting|running|stopping|error
@@ -182,11 +189,19 @@ class BotSupervisor:
             command = [sys.executable, "-u", "-m", BOT_MODULE]
             try:
                 from . import algorithms
-                kind, value = algorithms.active_target()
+                kind, value = algorithms.active_target(self.slot)
+                if kind == "none":
+                    # Only slot 0 falls back to the built-in v11. An empty slot
+                    # silently running the same algorithm as slot 0 would double
+                    # the position without anyone asking for it.
+                    msg = f"{self.name} has no algorithm — upload one before starting it."
+                    self.state = "stopped"
+                    return {"ok": False, "reason": msg, "state": self.state}
                 if kind == "file":
                     command = [sys.executable, "-u", value]
                     self._emit_local(
-                        "algorithm", f"Running uploaded algorithm: {algorithms.active_description()}",
+                        "algorithm",
+                        f"Running uploaded algorithm: {algorithms.active_description(self.slot)}",
                         level="warn", target=value)
             except Exception as exc:
                 self._emit_local(
@@ -214,7 +229,8 @@ class BotSupervisor:
 
             self.started_at = datetime.now()
             self.state = "running"
-            self.run_id = db.start_run(self.session_date, self.proc.pid, trigger)
+            self.run_id = db.start_run(self.session_date, self.proc.pid, trigger,
+                                       slot=self.slot)
             self._emit_local(
                 "supervisor",
                 f"Bot process started (pid {self.proc.pid}, trigger {trigger})",
@@ -309,6 +325,7 @@ class BotSupervisor:
         event = {
             "ts": rec.get("ts") or datetime.now().isoformat(timespec="milliseconds"),
             "session_date": self.session_date,
+            "slot": self.slot, "slot_name": self.name,
             "kind": kind,
             "level": rec.get("level", "info"),
             "message": rec.get("message", ""),
@@ -338,6 +355,7 @@ class BotSupervisor:
         event = {
             "ts": datetime.now().isoformat(timespec="milliseconds"),
             "session_date": self.session_date,
+            "slot": self.slot, "slot_name": self.name,
             "kind": "log",
             "level": _guess_level(clean),
             "message": clean,
@@ -361,7 +379,7 @@ class BotSupervisor:
                 ts=event["ts"], session_date=event["session_date"],
                 kind=event["kind"], message=event["message"],
                 level=event["level"], payload=event["payload"],
-                seq=event.get("seq", 0), run_id=self.run_id,
+                seq=event.get("seq", 0), run_id=self.run_id, slot=self.slot,
             )
             event["id"] = event_id
         except Exception:
@@ -371,9 +389,9 @@ class BotSupervisor:
         """Turn certain events into rows the Reports screen reads."""
         try:
             if kind == "exit" and payload.get("ledger"):
-                db.upsert_trade(_ledger_to_row(payload["ledger"]))
+                db.upsert_trade({**_ledger_to_row(payload["ledger"]), "slot": self.slot})
             elif kind == "eod" and payload.get("report"):
-                db.upsert_session(_eod_to_row(payload))
+                db.upsert_session({**_eod_to_row(payload), "slot": self.slot})
             elif kind == "minute":
                 db.insert_equity_mark(
                     ts=event["ts"], session_date=event["session_date"],
@@ -381,6 +399,7 @@ class BotSupervisor:
                     day_pnl=float(payload.get("day_pnl") or 0),
                     open_position=bool(self.snapshot.get("position")),
                     unrealised=float(self.snapshot.get("unrealised") or 0),
+                    slot=self.slot,
                 )
         except Exception:
             pass
@@ -445,6 +464,7 @@ class BotSupervisor:
         event = {
             "ts": datetime.now().isoformat(timespec="milliseconds"),
             "session_date": self.session_date,
+            "slot": self.slot, "slot_name": self.name,
             "kind": kind, "level": level, "message": message,
             "payload": payload or None, "seq": self._seq,
         }
@@ -464,6 +484,7 @@ class BotSupervisor:
             "started_at": self.started_at.isoformat(timespec="seconds") if self.started_at else None,
             "uptime_seconds": int(uptime),
             "session_date": self.session_date,
+            "slot": self.slot, "slot_name": self.name,
             "restarts": self.restarts,
             "stop_reason": self.stop_reason,
             "last_error": self.last_error,
@@ -560,4 +581,89 @@ def _eod_to_row(payload: dict) -> dict:
     }
 
 
-supervisor = BotSupervisor()
+# ---------------------------------------------------------------- the fleet
+
+MAX_SLOTS = 5
+
+fleet: list[BotSupervisor] = [
+    BotSupervisor(slot=i, name="Primary" if i == 0 else f"Slot {i + 1}")
+    for i in range(MAX_SLOTS)
+]
+
+# Everything written before slots existed talks to `supervisor`, and slot 0 is
+# that same lane, so the old name keeps working rather than being churned
+# through every call site.
+supervisor = fleet[0]
+
+
+def get_slot(slot: int) -> BotSupervisor:
+    if not 0 <= slot < MAX_SLOTS:
+        raise ValueError(f"Slot must be 0–{MAX_SLOTS - 1}")
+    return fleet[slot]
+
+
+def available_mb() -> Optional[int]:
+    """Free memory including reclaimable cache, or None where unknowable."""
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+# Measured against the running v11: a Python process with pandas, numpy and
+# scipy resident sits around this once the scrip master is cached to disk.
+SLOT_FOOTPRINT_MB = 190
+
+
+def capacity_warning() -> Optional[str]:
+    """What starting one more slot would do to this box, in plain terms.
+
+    The free Oracle shape is 1 GB. Four algorithms will not fit in it, and a
+    trading process that is swapping is worse than one that never started —
+    it misses fills rather than failing loudly.
+    """
+    free = available_mb()
+    if free is None:
+        return None
+    if free < SLOT_FOOTPRINT_MB:
+        return (f"Only {free} MB of memory is free and an algorithm needs about "
+                f"{SLOT_FOOTPRINT_MB} MB. Starting another one will push this "
+                f"server into swap, which costs fills.")
+    if free < SLOT_FOOTPRINT_MB * 2:
+        return (f"{free} MB free — room for about one more algorithm. "
+                f"Watch the memory reading before starting others.")
+    return None
+
+
+def fleet_status() -> dict:
+    running = [s for s in fleet if s.running]
+    free = available_mb()
+    return {
+        "max_slots": MAX_SLOTS,
+        "running_count": len(running),
+        "memory_free_mb": free,
+        "slot_footprint_mb": SLOT_FOOTPRINT_MB,
+        "headroom_slots": None if free is None else max(0, free // SLOT_FOOTPRINT_MB),
+        "capacity_warning": capacity_warning(),
+        "slots": [
+            {
+                "slot": s.slot,
+                "name": s.name,
+                "state": s.state,
+                "running": s.running,
+                "uptime_seconds": int((datetime.now() - s.started_at).total_seconds())
+                                  if s.started_at and s.running else 0,
+                "last_error": s.last_error,
+                "restarts": s.restarts,
+                "day_pnl": (s.snapshot or {}).get("day_pnl"),
+                "equity": (s.snapshot or {}).get("equity"),
+                "position": bool((s.snapshot or {}).get("position")),
+                "trades": (s.snapshot or {}).get("trades"),
+            }
+            for s in fleet
+        ],
+    }

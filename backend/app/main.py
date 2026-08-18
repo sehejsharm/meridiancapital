@@ -31,11 +31,11 @@ from pydantic import BaseModel, Field
 
 from . import algorithms
 from . import auth as auth_mod
-from . import db, exports, strategy_config, users
+from . import db, exports, news, strategy_config, users
 from .auth import (authorise_websocket, require_operator, require_super_admin,
                    require_token, require_token_query)
 from .config import settings
-from .runner import supervisor
+from .runner import MAX_SLOTS, fleet, fleet_status, get_slot, supervisor
 from .scheduler import (next_runs, reschedule, set_schedule_enabled,
                         shutdown_scheduler, start_scheduler)
 
@@ -61,7 +61,8 @@ WEB_DIR = _find_web_dir()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init(settings.db_path)
-    supervisor.bind_loop(asyncio.get_running_loop())
+    for lane in fleet:
+        lane.bind_loop(asyncio.get_running_loop())
     log.info("Data directory: %s", settings.data_dir)
     log.info("Mode: %s", "PAPER" if settings.paper_mode else "LIVE — REAL MONEY")
     try:
@@ -85,8 +86,11 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         shutdown_scheduler()
-        if supervisor.running:
-            supervisor.stop(reason="server shutdown")
+        # Every slot gets the same graceful stop, so an open position in slot 3
+        # is flattened on shutdown just like one in slot 1.
+        for lane in fleet:
+            if lane.running:
+                lane.stop(reason="server shutdown")
 
 
 app = FastAPI(
@@ -112,10 +116,12 @@ app.add_middleware(
 
 class StartRequest(BaseModel):
     force: bool = Field(default=False, description="Start even on a weekend or holiday")
+    slot: int = Field(default=0, ge=0, le=4)
 
 
 class StopRequest(BaseModel):
     reason: str = Field(default="manual stop from app")
+    slot: int = Field(default=0, ge=0, le=4)
 
 
 class ScheduleRequest(BaseModel):
@@ -163,6 +169,7 @@ class AlgorithmUploadRequest(BaseModel):
     name: str = Field(default="Uploaded algorithm", max_length=80)
     source: str = Field(min_length=1)
     activate: bool = False
+    slot: int = Field(default=0, ge=0, le=4)
 
 
 class AlgorithmValidateRequest(BaseModel):
@@ -171,7 +178,9 @@ class AlgorithmValidateRequest(BaseModel):
 
 
 class ActivateRequest(BaseModel):
-    version_id: str
+    # None empties the slot; only slots 1-4 may be emptied.
+    version_id: Optional[str] = None
+    slot: int = Field(default=0, ge=0, le=4)
 
 
 # ============================================================ health
@@ -331,9 +340,10 @@ async def delete_user(user_id: int, token: str = Depends(require_super_admin)):
 @app.get("/api/algorithm")
 async def algorithm_list(_: str = Depends(require_token)):
     return {
-        **algorithms.list_versions(),
+        **algorithms.list_versions(MAX_SLOTS),
         "active_description": algorithms.active_description(),
         "bot_running": supervisor.running,
+        "running_slots": [s.slot for s in fleet if s.running],
         "applies_at": "next start",
     }
 
@@ -369,7 +379,7 @@ async def algorithm_upload(body: AlgorithmUploadRequest,
 
     activated = False
     if body.activate:
-        algorithms.activate(entry["id"])
+        algorithms.activate(entry["id"], slot=body.slot)
         activated = True
         supervisor._emit_local(
             "algorithm",
@@ -378,7 +388,7 @@ async def algorithm_upload(body: AlgorithmUploadRequest,
             level="warn")
 
     return {"stored": True, "activated": activated, "version": entry, "report": report,
-            **algorithms.list_versions()}
+            **algorithms.list_versions(MAX_SLOTS)}
 
 
 @app.post("/api/algorithm/activate")
@@ -387,14 +397,16 @@ async def algorithm_activate(body: ActivateRequest,
     payload = auth_mod.verify_session(token)
     actor = payload["sub"] if payload else "api-token"
     try:
-        result = algorithms.activate(body.version_id)
+        result = algorithms.activate(body.version_id, slot=body.slot)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    supervisor._emit_local(
-        "algorithm", f"{actor} activated algorithm {body.version_id}"
-        + (" — applies when the bot next starts" if supervisor.running else ""),
+    lane = get_slot(body.slot)
+    lane._emit_local(
+        "algorithm",
+        f"{actor} assigned {body.version_id or 'nothing'} to {lane.name}"
+        + (" — applies when it next starts" if lane.running else ""),
         level="warn")
-    return {**result, "active_description": algorithms.active_description()}
+    return {**result, "active_description": algorithms.active_description(body.slot)}
 
 
 @app.delete("/api/algorithm/{version_id}")
@@ -523,9 +535,39 @@ async def diagnostics(_: str = Depends(require_token)):
     return await asyncio.to_thread(_diagnostics)
 
 
+@app.get("/api/news")
+async def market_news(_: str = Depends(require_token)):
+    """Cached market headlines. Never allowed to fail the request."""
+    try:
+        data = await asyncio.to_thread(news.headlines)
+    except Exception as exc:                          # noqa: BLE001
+        log.debug("news unavailable: %s", exc)
+        return {"items": [], "sources": [], "error": "News is unavailable."}
+    return {
+        "items": data.get("items", []),
+        "sources": data.get("sources", []),
+        "age_seconds": news.age_seconds(),
+        "stale": data.get("stale", False),
+        "error": data.get("error"),
+    }
+
+
+@app.get("/api/fleet")
+async def fleet_state(_: str = Depends(require_token)):
+    """Every slot at a glance — what the deck lays itself out from."""
+    state = await asyncio.to_thread(fleet_status)
+    assignments = {s["slot"]: s for s in algorithms.list_versions(MAX_SLOTS)["slots"]}
+    for lane in state["slots"]:
+        a = assignments.get(lane["slot"], {})
+        lane["algorithm"] = a.get("description", "Empty — no algorithm assigned")
+        lane["empty"] = a.get("empty", lane["slot"] != 0)
+    return state
+
+
 @app.post("/api/bot/start")
 async def bot_start(body: StartRequest, _: str = Depends(require_operator)):
-    result = await asyncio.to_thread(supervisor.start, "manual", body.force)
+    lane = get_slot(body.slot)
+    result = await asyncio.to_thread(lane.start, "manual", body.force)
     if not result.get("ok"):
         return JSONResponse(status_code=409, content=result)
     return result
@@ -533,7 +575,8 @@ async def bot_start(body: StartRequest, _: str = Depends(require_operator)):
 
 @app.post("/api/bot/stop")
 async def bot_stop(body: StopRequest, _: str = Depends(require_operator)):
-    result = await asyncio.to_thread(supervisor.stop, body.reason)
+    lane = get_slot(body.slot)
+    result = await asyncio.to_thread(lane.stop, body.reason)
     if not result.get("ok"):
         return JSONResponse(status_code=409, content=result)
     return result
@@ -608,18 +651,28 @@ async def websocket_feed(ws: WebSocket):
     if not await authorise_websocket(ws):
         return
 
-    queue = supervisor.subscribe()
+    # One queue per slot: the feed is the whole fleet, and each event already
+    # carries the slot that produced it so the dashboard can split them again.
+    queues = [lane.subscribe() for lane in fleet]
+    merged = sorted(
+        (e for lane in fleet for e in lane.tail[-80:]),
+        key=lambda e: e.get("ts") or "",
+    )[-120:]
     try:
         await ws.send_text(json.dumps({
             "kind": "hello",
             "status": supervisor.status(),
-            "tail": supervisor.tail[-80:],
+            "fleet": fleet_status(),
+            "tail": merged,
         }, default=str))
 
-        async def pump():
+        async def pump_one(q):
             while True:
-                event = await queue.get()
+                event = await q.get()
                 await ws.send_text(json.dumps(event, default=str))
+
+        async def pump():
+            await asyncio.gather(*(pump_one(q) for q in queues))
 
         async def heartbeat():
             # Keeps mobile networks and proxies from dropping an idle socket.
@@ -644,7 +697,8 @@ async def websocket_feed(ws: WebSocket):
     except Exception as exc:
         log.debug("websocket closed: %s", exc)
     finally:
-        supervisor.unsubscribe(queue)
+        for lane, q in zip(fleet, queues):
+            lane.unsubscribe(q)
 
 
 # ============================================================ strategy
@@ -743,12 +797,13 @@ async def trades(
     end: Optional[str] = None,
     period: str = "month",
     anchor: Optional[str] = None,
+    slot: Optional[int] = Query(default=None, ge=0, le=4),
     _: str = Depends(require_token),
 ):
     s, e, label = _range(period, anchor, start, end)
-    rows = db.trades_between(s, e)
+    rows = db.trades_between(s, e, slot=slot)
     return {"range": {"start": s, "end": e, "label": label},
-            "count": len(rows), "trades": rows}
+            "slot": slot, "count": len(rows), "trades": rows}
 
 
 @app.get("/api/sessions")
@@ -757,10 +812,11 @@ async def sessions(
     end: Optional[str] = None,
     period: str = "month",
     anchor: Optional[str] = None,
+    slot: Optional[int] = Query(default=None, ge=0, le=4),
     _: str = Depends(require_token),
 ):
     s, e, label = _range(period, anchor, start, end)
-    rows = db.sessions_between(s, e)
+    rows = db.sessions_between(s, e, slot=slot)
     return {"range": {"start": s, "end": e, "label": label},
             "count": len(rows), "sessions": rows}
 
@@ -771,24 +827,32 @@ async def summary(
     anchor: Optional[str] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
+    slot: Optional[int] = Query(default=None, ge=0, le=4),
     _: str = Depends(require_token),
 ):
     s, e, label = _range(period, anchor, start, end)
     return {
         "range": {"start": s, "end": e, "label": label},
-        "summary": db.aggregate(s, e),
+        "slot": slot,
+        "summary": db.aggregate(s, e, slot=slot),
         "curve": db.equity_curve(s, e),
-        "sessions": db.sessions_between(s, e),
+        "sessions": db.sessions_between(s, e, slot=slot),
+        # Per-slot breakdown so the report can attribute P&L to each algorithm
+        # rather than only showing the combined number.
+        "by_slot": [
+            {"slot": i, **db.aggregate(s, e, slot=i)} for i in range(MAX_SLOTS)
+        ],
     }
 
 
 @app.get("/api/equity/intraday")
 async def equity_intraday(
     session_date: Optional[str] = None,
+    slot: Optional[int] = Query(default=None, ge=0, le=4),
     _: str = Depends(require_token),
 ):
     d = session_date or db.today_str()
-    return {"date": d, "marks": db.equity_marks(d)}
+    return {"date": d, "slot": slot, "marks": db.equity_marks(d, slot=slot)}
 
 
 @app.get("/api/runs")
@@ -806,7 +870,7 @@ async def export(
     anchor: Optional[str] = Query(default=None, description="any date inside the window"),
     start: Optional[str] = None,
     end: Optional[str] = None,
-    format: str = Query(default="csv", pattern="^(csv|json|xlsx)$"),
+    format: str = Query(default="csv", pattern="^(csv|json|xlsx|pdf)$"),
     events: bool = Query(default=False, description="include the full event log"),
     _: str = Depends(require_token_query),
 ):
@@ -819,6 +883,9 @@ async def export(
     elif format == "xlsx":
         body = exports.to_xlsx(payload)
         media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    elif format == "pdf":
+        body = await asyncio.to_thread(exports.to_pdf, payload)
+        media = "application/pdf"
     else:
         body = exports.to_csv(payload).encode()
         media = "text/csv"
@@ -846,7 +913,7 @@ async def export_preview(
         "summary": db.aggregate(s, e),
         "sessions": len(db.sessions_between(s, e)),
         "trades": len(db.trades_between(s, e)),
-        "formats": ["csv", "json", "xlsx"],
+        "formats": ["csv", "pdf", "xlsx", "json"],
     }
 
 
