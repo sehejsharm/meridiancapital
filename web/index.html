@@ -24,8 +24,15 @@
   --au-bg:rgba(232,196,88,.09); --au-bg-2:rgba(232,196,88,.17);
   --glow:rgba(232,196,88,.5);
 
-  /* ---- type ---- */
-  --text:#f2ece0; --muted:#9a9384; --dim:#645f54; --faint:#3d3a34;
+  /* ---- type ----
+     Raised across the board. The old ramp bottomed out at 8px with #38352f on
+     #050506, which is roughly 2:1 contrast — unreadable on a phone in daylight
+     and failing WCAG by a distance. Nothing meaningful is below 10px now, and
+     the greys are light enough to actually read. */
+  --text:#f6f1e8; --muted:#b3ab9a; --dim:#8a8377; --faint:#635d53;
+
+  /* label / caption / body / figure — used instead of ad-hoc px everywhere */
+  --t-label:10px; --t-cap:11.5px; --t-body:13px; --t-fig:19px;
 
   /* ---- semantics: only P&L and health get colour ---- */
   --up:#38e08f; --down:#ff5566;
@@ -100,7 +107,7 @@ body::after{content:"";position:fixed;inset:-30%;pointer-events:none;z-index:0;
 .rule{height:1px;background:linear-gradient(90deg,transparent,var(--line-3),transparent);
   margin:26px 0}
 .gate-form{display:flex;flex-direction:column;gap:10px;text-align:left}
-.lbl{font-size:9.5px;letter-spacing:1.7px;text-transform:uppercase;color:var(--dim);
+.lbl{font-size:11px;letter-spacing:1.7px;text-transform:uppercase;color:var(--dim);
   font-family:var(--mono);margin-bottom:6px;display:block}
 .field{background:var(--surface-2);border:1px solid var(--line-2);border-radius:8px;
   padding:14px 15px;color:var(--text);font-size:15px;width:100%;outline:none;
@@ -144,7 +151,7 @@ header{position:sticky;top:0;z-index:40;padding:calc(var(--safe-t) + 12px) 15px 
 .wordmark{font-size:11px;font-weight:600;letter-spacing:3.1px;text-transform:uppercase;
   color:var(--au);font-family:var(--mono)}
 .pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;
-  font-size:9px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;
+  font-size:10.5px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;
   white-space:nowrap;font-family:var(--mono);border:1px solid transparent}
 .pill.live{box-shadow:0 0 16px -5px var(--up-glow)}
 .pill.err{box-shadow:0 0 16px -5px var(--down-glow)}
@@ -187,7 +194,7 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
   border-top:1px solid var(--au);border-left:1px solid var(--au);
   border-top-left-radius:var(--r);pointer-events:none;opacity:.55}
 .card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;gap:8px}
-.card-t{font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+.card-t{font-size:10.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
   color:var(--au);font-family:var(--mono);display:flex;align-items:center;gap:7px}
 .card-t::before{content:"";width:3px;height:11px;border-radius:2px;
   background:linear-gradient(180deg,var(--au-lit),var(--au-deep));
@@ -224,7 +231,7 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .sys-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:15px;
   padding-top:14px;border-top:1px solid var(--line)}
 .sx{min-width:0}
-.sx-k{font-size:8px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);
+.sx-k{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);
   font-family:var(--mono)}
 .sx-v{font-size:13.5px;margin-top:4px;font-family:var(--mono);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
@@ -263,7 +270,7 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .spark{margin-top:15px;height:56px;width:100%;display:block;overflow:visible}
 .hero-foot{display:flex;gap:16px;margin-top:15px;padding-top:14px;border-top:1px solid var(--line)}
 .hf-i{flex:1;min-width:0}
-.hf-k{font-size:8.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);
+.hf-k{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);
   font-family:var(--mono)}
 .hf-v{font-size:15px;margin-top:5px;font-family:var(--mono)}
 
@@ -273,7 +280,7 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
   border:1px solid var(--line);border-radius:8px;padding:12px 13px;
   transition:border-color .25s var(--ease),transform .25s var(--ease)}
 .metric:hover{border-color:var(--line-2);transform:translateY(-1px)}
-.m-k{font-size:8.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);
+.m-k{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);
   font-family:var(--mono)}
 .m-v{font-size:19px;margin-top:6px;font-family:var(--mono);font-weight:500;letter-spacing:-.4px}
 .m-s{font-size:10.5px;color:var(--muted);margin-top:3px;font-family:var(--mono)}
@@ -291,7 +298,7 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .pos-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:13px}
 .pos-sym{font-size:16px;font-family:var(--mono);letter-spacing:-.2px}
 .pos-meta{font-size:10.5px;color:var(--muted);margin-top:4px;font-family:var(--mono)}
-.stage{padding:3px 8px;border-radius:2px;font-size:8.5px;font-weight:700;letter-spacing:1.3px;
+.stage{padding:3px 8px;border-radius:2px;font-size:10px;font-weight:700;letter-spacing:1.3px;
   background:var(--au-bg);color:var(--au);white-space:nowrap;font-family:var(--mono);
   border:1px solid var(--line-2)}
 .stage.BE,.stage.LOCK1,.stage.LOCK2,.stage.FREE{background:var(--up-bg);color:var(--up);
@@ -305,28 +312,28 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .fill{height:100%;background:linear-gradient(90deg,var(--au-deep),var(--au-lit));
   transition:width .5s cubic-bezier(.4,0,.2,1)}
 .rungs{display:flex;margin-top:10px}
-.rung{flex:1;text-align:center;font-size:8px;letter-spacing:1.1px;color:var(--faint);
+.rung{flex:1;text-align:center;font-size:10px;letter-spacing:1.1px;color:var(--faint);
   font-family:var(--mono)}
 .rung.done{color:var(--au)}
 .rung .rd{width:5px;height:5px;background:var(--faint);margin:0 auto 6px;transform:rotate(45deg)}
 .rung.done .rd{background:var(--au);box-shadow:0 0 8px rgba(212,175,55,.6)}
 .pos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:16px;
   padding-top:14px;border-top:1px solid var(--line)}
-.pg-k{font-size:8.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim);
+.pg-k{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim);
   font-family:var(--mono)}
 .pg-v{font-size:14px;margin-top:4px;font-family:var(--mono)}
 
 .reason{display:flex;gap:12px;align-items:flex-start}
 .reason-icon{width:32px;height:32px;border:1px solid var(--line-2);background:var(--au-bg);
   color:var(--au);display:grid;place-items:center;font-size:14px;flex-shrink:0}
-.reason-code{font-size:9.5px;font-weight:700;letter-spacing:1.6px;color:var(--au);
+.reason-code{font-size:11px;font-weight:700;letter-spacing:1.6px;color:var(--au);
   text-transform:uppercase;font-family:var(--mono)}
 .reason-text{font-size:13px;line-height:1.55;margin-top:6px;color:var(--muted)}
 
 /* ================= feed ================= */
 .feedbar{display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none}
 .feedbar::-webkit-scrollbar{display:none}
-.fchip{padding:6px 13px;border-radius:2px;font-size:9.5px;font-weight:700;white-space:nowrap;
+.fchip{padding:6px 13px;border-radius:2px;font-size:11px;font-weight:700;white-space:nowrap;
   background:var(--surface-2);border:1px solid var(--line);color:var(--dim);
   letter-spacing:1.3px;text-transform:uppercase;font-family:var(--mono)}
 .fchip.on{background:var(--au-bg-2);color:var(--au);border-color:var(--line-3)}
@@ -343,7 +350,7 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .ln.success .ln-m{color:var(--up)} .ln.info .ln-m{color:#b5af9f}
 .ln.evt .ln-m{color:var(--au-lit)}
 .ln .tag{display:inline-block;padding:0 5px;background:var(--au-bg-2);
-  color:var(--au);font-size:8.5px;font-weight:700;margin-right:7px;letter-spacing:1px}
+  color:var(--au);font-size:10px;font-weight:700;margin-right:7px;letter-spacing:1px}
 
 /* ================= trades ================= */
 .trade{background:linear-gradient(165deg,rgba(255,255,255,.028),transparent 52%),var(--surface);
@@ -358,7 +365,7 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .trade-pnl{font-size:17px;text-align:right;font-family:var(--mono);font-weight:500}
 .trade-move{font-size:10.5px;margin-top:2px;font-family:var(--mono)}
 .trade-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:11px}
-.ttag{padding:2px 7px;font-size:9px;letter-spacing:.6px;background:var(--surface-2);
+.ttag{padding:2px 7px;font-size:10.5px;letter-spacing:.6px;background:var(--surface-2);
   color:var(--muted);border:1px solid var(--line);font-family:var(--mono)}
 .trade-why{font-size:11px;color:var(--dim);line-height:1.55;margin-top:10px;
   padding-top:10px;border-top:1px solid var(--line)}
@@ -367,7 +374,7 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;
   padding:3px;gap:3px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none}
 .seg::-webkit-scrollbar{display:none}
-.seg button{flex:1;padding:9px 12px;font-size:9.5px;font-weight:700;color:var(--dim);
+.seg button{flex:1;padding:9px 12px;font-size:11px;font-weight:700;color:var(--dim);
   white-space:nowrap;letter-spacing:1.2px;text-transform:uppercase;font-family:var(--mono);
   border-radius:6px;transition:color .22s var(--ease),background .22s var(--ease)}
 .seg button:hover{color:var(--muted)}
@@ -378,7 +385,7 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
   border:1px solid var(--line);text-decoration:none;color:var(--text)}
 .dl a:hover{border-color:var(--line-3);background:var(--au-bg)}
 .dl .ext{font-size:12px;font-weight:700;letter-spacing:1.6px;font-family:var(--mono);color:var(--au)}
-.dl .lbl{font-size:8.5px;color:var(--faint);margin-top:4px;letter-spacing:1.1px;font-family:var(--mono)}
+.dl .lbl{font-size:10px;color:var(--faint);margin-top:4px;letter-spacing:1.1px;font-family:var(--mono)}
 .day{display:flex;align-items:center;justify-content:space-between;padding:10px 0;
   border-bottom:1px solid var(--line);gap:10px}
 .day:last-child{border-bottom:none}
@@ -401,6 +408,136 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
   font-family:var(--mono)}
 
 /* ================= chart ================= */
+/* ---- live tape ---- */
+.tape{display:flex;gap:0;align-items:stretch;overflow-x:auto;scrollbar-width:none;
+  border:1px solid var(--line);border-radius:var(--r);background:
+  linear-gradient(90deg,rgba(232,196,88,.07),transparent 40%),var(--surface);
+  margin-bottom:13px;box-shadow:0 8px 26px -20px rgba(0,0,0,1)}
+.tape::-webkit-scrollbar{display:none}
+.tp-i{padding:9px 15px;border-right:1px solid var(--line);white-space:nowrap;
+  display:flex;flex-direction:column;gap:3px;flex:0 0 auto}
+.tp-i:last-child{border-right:none}
+.tp-i.lead{flex-direction:row;align-items:center;gap:9px;
+  background:linear-gradient(90deg,var(--au-bg),transparent)}
+.tp-k{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);
+  font-family:var(--mono)}
+.tp-v{font-size:13px;font-family:var(--mono)}
+.tp-spot{font-size:20px;font-family:var(--mono);font-weight:600;letter-spacing:-.5px;
+  transition:color .5s var(--ease)}
+.tp-spot.up{color:var(--up)} .tp-spot.down{color:var(--down)}
+.tp-arrow{font-size:11px;opacity:.9}
+.tp-arrow.up{color:var(--up)} .tp-arrow.down{color:var(--down)}
+
+/* ---- fleet ---- */
+.flgrid{display:grid;grid-template-columns:repeat(var(--fl-cols,1),minmax(0,1fr));gap:10px}
+.fl{border:1px solid var(--line);border-radius:9px;padding:12px 13px;
+  background:linear-gradient(160deg,rgba(255,255,255,.028),transparent 55%),var(--surface-2);
+  transition:border-color .25s var(--ease)}
+.fl.good{border-color:rgba(56,224,143,.3)}
+.fl.bad{border-color:rgba(255,85,102,.4)}
+.fl.empty{opacity:.62;border-style:dashed}
+.fl-top{display:flex;align-items:center;gap:8px}
+.fl-name{font-size:12.5px;font-weight:600;flex:1;min-width:0}
+.fl-state{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);
+  font-family:var(--mono)}
+.fl-algo{font-size:10.5px;color:var(--muted);margin-top:7px;font-family:var(--mono);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fl-hint{font-size:10.5px;color:var(--dim);margin-top:9px;line-height:1.5}
+.fl-nums{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:11px;
+  padding-top:10px;border-top:1px solid var(--line)}
+.fl-k{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);
+  font-family:var(--mono)}
+.fl-v{font-size:13.5px;margin-top:4px;font-family:var(--mono)}
+.fl-err{margin-top:9px;font-size:10.5px;color:var(--down);font-family:var(--mono);
+  line-height:1.5;word-break:break-word}
+.cap-warn{background:var(--au-bg);border:1px solid var(--line-2);border-radius:7px;
+  padding:10px 12px;font-size:11.5px;color:var(--au);line-height:1.55;margin-bottom:11px;
+  font-family:var(--mono)}
+
+/* ---- live activity ---- */
+.livelist{display:flex;flex-direction:column;gap:1px;max-height:330px;overflow-y:auto}
+.lv{display:flex;align-items:baseline;gap:10px;padding:7px 8px;border-radius:6px;
+  font-size:12px;line-height:1.45;animation:lnin .3s var(--ease)}
+.lv:nth-child(odd){background:rgba(255,255,255,.018)}
+.lv-t{color:var(--dim);font-family:var(--mono);font-size:10.5px;flex-shrink:0}
+.lv-kind{font-size:10px;letter-spacing:1.1px;text-transform:uppercase;font-family:var(--mono);
+  color:var(--au);background:var(--au-bg);padding:1px 6px;border-radius:4px;flex-shrink:0}
+.lv-m{flex:1;min-width:0;color:var(--text);word-break:break-word}
+.lv-slot{font-size:10px;font-family:var(--mono);color:var(--dim);flex-shrink:0}
+.lv-error .lv-m{color:var(--down)} .lv-error .lv-kind{color:var(--down);background:var(--down-bg)}
+.lv-warn .lv-m{color:var(--au)}
+.lv-success .lv-m{color:var(--up)} .lv-success .lv-kind{color:var(--up);background:var(--up-bg)}
+
+/* ---- news ---- */
+.newslist{display:flex;flex-direction:column;gap:1px;max-height:360px;overflow-y:auto}
+.nw{display:block;padding:9px 8px;border-radius:6px;text-decoration:none;color:inherit;
+  border-left:2px solid transparent;transition:background .2s,border-color .2s}
+.nw:hover{background:var(--au-bg);border-left-color:var(--au)}
+.nw-h{font-size:12.5px;line-height:1.45;color:var(--text)}
+.nw-m{display:flex;gap:9px;margin-top:5px;font-size:10px;font-family:var(--mono);
+  letter-spacing:.5px}
+.nw-src{color:var(--au)} .nw-t{color:var(--dim)}
+
+/* ---- contract price strip ---- */
+.contract{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin:14px 0 2px;
+  background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.ct-i{background:var(--surface-2);padding:10px 12px}
+.ct-k{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim);
+  font-family:var(--mono)}
+.ct-v{font-size:18px;margin-top:5px;font-family:var(--mono);letter-spacing:-.3px}
+
+/* ---- position box (TradingView-style long overlay) ---- */
+.posbox{border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden;
+  background:var(--surface)}
+.pb-plot{position:relative;background:
+  linear-gradient(90deg,rgba(255,255,255,.02),transparent);overflow:hidden}
+.pb-band{position:absolute;left:0;right:0}
+.pb-band.reward{background:linear-gradient(180deg,rgba(56,224,143,.2),rgba(56,224,143,.07))}
+.pb-band.risk{background:linear-gradient(180deg,rgba(255,85,102,.08),rgba(255,85,102,.2))}
+.pb-line{position:absolute;left:0;right:0;height:0;display:flex;align-items:center;
+  justify-content:space-between;padding:0 10px;transform:translateY(-50%)}
+.pb-line::before{content:"";position:absolute;left:0;right:0;height:1px;
+  background:currentColor;opacity:.55}
+.pb-line.t{color:var(--up)} .pb-line.s{color:var(--down)} .pb-line.e{color:var(--text)}
+.pb-line.e::before{border-top:1px dashed currentColor;background:none;height:0}
+.pb-tag,.pb-px{position:relative;font-size:10px;letter-spacing:1.2px;
+  text-transform:uppercase;font-family:var(--mono);background:var(--surface);
+  padding:2px 6px;border-radius:4px;border:1px solid currentColor}
+.pb-px{letter-spacing:.4px}
+/* the live price rides its own marker so it reads as "now" against the levels */
+.pb-now{position:absolute;left:0;right:0;height:0;transform:translateY(-50%);
+  display:flex;justify-content:flex-end;padding-right:10px}
+.pb-now::before{content:"";position:absolute;left:0;right:0;height:1px;
+  background:currentColor;box-shadow:0 0 10px currentColor}
+.pb-now.up{color:var(--up)} .pb-now.down{color:var(--down)}
+.pb-nowpx{position:relative;font-size:11.5px;font-family:var(--mono);font-weight:700;
+  background:currentColor;color:#08080a;padding:2px 7px;border-radius:4px}
+.pb-mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  text-align:center;background:rgba(8,8,11,.74);backdrop-filter:blur(7px);
+  border:1px solid var(--line-2);border-radius:8px;padding:9px 15px;pointer-events:none}
+.pb-pnl{font-size:24px;font-weight:600;letter-spacing:-.6px;font-family:var(--mono)}
+.pb-mid.up .pb-pnl{color:var(--up)} .pb-mid.down .pb-pnl{color:var(--down)}
+.pb-meta{font-size:10px;color:var(--muted);margin-top:3px;font-family:var(--mono);
+  letter-spacing:.6px}
+.pb-legs{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line)}
+.pb-leg{padding:11px 13px;border-right:1px solid var(--line)}
+.pb-leg:last-child{border-right:none}
+.pb-k{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);
+  font-family:var(--mono)}
+.pb-v{font-size:16px;margin-top:5px;font-family:var(--mono)}
+.pb-leg.reward .pb-v{color:var(--up)} .pb-leg.risk .pb-v{color:var(--down)}
+.pb-s{font-size:10.5px;color:var(--muted);margin-top:3px;font-family:var(--mono);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---- TradingView embed ---- */
+.tvwrap{width:100%;height:clamp(340px,52vh,560px);border-radius:8px;overflow:hidden;
+  border:1px solid var(--line);background:#0b0b0e}
+.tvwrap #tv-chart{width:100%;height:100%}
+.tv-fallback{padding:22px;text-align:center;color:var(--muted);font-size:var(--t-cap);
+  border:1px dashed var(--line-2);border-radius:8px;line-height:1.6;font-family:var(--mono)}
+.seg.tvseg{margin-bottom:0;padding:2px;gap:2px}
+.seg.tvseg button{flex:0 0 auto;padding:6px 10px;font-size:10px}
+
 .chartwrap{width:100%;overflow:hidden;border-radius:8px}
 .chartwrap svg{display:block;width:100%;height:auto}
 .chart-empty{text-align:center;padding:40px 22px;
@@ -412,13 +549,13 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .ce-s{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.65;
   max-width:390px;margin-inline:auto;font-family:var(--mono)}
 .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:11px}
-.lg{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--dim);
+.lg{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--dim);
   letter-spacing:1.1px;text-transform:uppercase;font-family:var(--mono)}
 .lg i{width:12px;height:2px;display:block}
 .tbgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:15px;
   padding-top:14px;border-top:1px solid var(--line)}
 .tbb{background:var(--surface-2);border:1px solid var(--line);padding:9px 10px}
-.tbb .k{font-size:8.5px;letter-spacing:1.3px;color:var(--dim);font-family:var(--mono)}
+.tbb .k{font-size:10px;letter-spacing:1.3px;color:var(--dim);font-family:var(--mono)}
 .tbb .v{font-size:14px;margin-top:4px;font-family:var(--mono)}
 .tbb .s{font-size:10px;color:var(--muted);margin-top:2px;font-family:var(--mono)}
 .lrow{display:flex;align-items:center;gap:9px;padding:6px 0;font-size:11px;font-family:var(--mono)}
@@ -426,11 +563,11 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .lrow.done .d{background:var(--up)}
 .lrow .nm{width:108px;color:var(--muted)}
 .lrow.done .nm{color:var(--up)}
-.lrow .tg{font-size:8.5px;color:var(--faint);display:block;letter-spacing:.8px}
+.lrow .tg{font-size:10px;color:var(--faint);display:block;letter-spacing:.8px}
 .lrow .pr{width:68px}
 .lrow .aw{flex:1;font-size:10px;color:var(--faint)}
 .lrow.done .aw{color:var(--up)}
-.lrow .fl{font-size:9.5px;color:var(--faint)}
+.lrow .fl{font-size:11px;color:var(--faint)}
 .ladnote{color:var(--faint);font-size:10px;line-height:1.6;margin:6px 0 10px;font-family:var(--mono)}
 
 /* ================= strategy ================= */
@@ -440,9 +577,9 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .param .info{flex:1;min-width:0}
 .param .nm{font-size:12.5px;display:flex;align-items:center;gap:7px}
 .param .hp{font-size:10.5px;color:var(--dim);line-height:1.5;margin-top:4px}
-.param .df{font-size:9.5px;color:var(--au);margin-top:4px;font-family:var(--mono);letter-spacing:.5px}
+.param .df{font-size:11px;color:var(--au);margin-top:4px;font-family:var(--mono);letter-spacing:.5px}
 .edited{width:5px;height:5px;background:var(--au);flex-shrink:0;transform:rotate(45deg)}
-.crit{font-size:8px;font-weight:700;letter-spacing:1.1px;color:var(--au);
+.crit{font-size:10px;font-weight:700;letter-spacing:1.1px;color:var(--au);
   background:var(--au-bg);padding:2px 5px;border:1px solid var(--line-2);font-family:var(--mono)}
 .stepper{display:flex;align-items:center;gap:3px;flex-shrink:0}
 .stepper button{width:26px;height:26px;background:var(--surface-2);border:1px solid var(--line);
@@ -464,7 +601,7 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;
   -webkit-backdrop-filter:blur(26px) saturate(1.5);
   border-top:1px solid var(--line);padding-bottom:var(--safe-b)}
 nav button{flex:1;padding:11px 2px 10px;display:flex;flex-direction:column;align-items:center;
-  gap:5px;color:var(--faint);font-size:8px;font-weight:700;letter-spacing:.9px;
+  gap:5px;color:var(--faint);font-size:10px;font-weight:700;letter-spacing:.9px;
   text-transform:uppercase;font-family:var(--mono);position:relative;
   transition:color .25s var(--ease)}
 nav button.on{color:var(--au)}
@@ -503,7 +640,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
   .rail-brand svg{width:32px;height:32px;flex-shrink:0}
   .rail-brand .t{font-size:10.5px;letter-spacing:2.9px;text-transform:uppercase;color:var(--au);
     font-family:var(--mono);line-height:1.5}
-  .rail-brand .s{font-size:8px;letter-spacing:1.6px;color:var(--faint);font-family:var(--mono);
+  .rail-brand .s{font-size:10px;letter-spacing:1.6px;color:var(--faint);font-family:var(--mono);
     display:block;margin-top:3px}
   .rail-nav{display:flex;flex-direction:column;gap:1px;padding:0 12px;flex:1}
   .rail-nav button{display:flex;align-items:center;gap:12px;padding:11px 12px;
@@ -520,7 +657,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
   .rail-foot{padding:16px 20px 0;border-top:1px solid var(--line);margin-top:16px;
     display:flex;flex-direction:column;gap:9px}
   .rail-stat{display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .rail-stat .k{font-size:8px;letter-spacing:1.3px;color:var(--faint);font-family:var(--mono);
+  .rail-stat .k{font-size:10px;letter-spacing:1.3px;color:var(--faint);font-family:var(--mono);
     text-transform:uppercase}
   .rail-stat .v{font-size:10.5px;font-family:var(--mono);color:var(--muted)}
 
@@ -539,6 +676,11 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
   .sys{padding:20px 24px}
   .sys-grid{grid-template-columns:repeat(6,1fr);gap:14px}
   .sys-h{font-size:17px}
+  /* With the room, the fleet lays out as many lanes as are actually in use. */
+  .flgrid{grid-template-columns:repeat(var(--fl-cols,1),minmax(0,1fr))}
+  .tape{position:sticky;top:0;z-index:35;
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+  .livelist,.newslist{max-height:420px}
 }
 @media (min-width:1500px){
   .deck{grid-template-columns:repeat(auto-fit,minmax(390px,1fr))}
@@ -549,6 +691,14 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
   .sys-grid{grid-template-columns:repeat(2,1fr)}
   main{padding:13px 12px 20px}
   .card,.hero,.sys{padding:14px}
+  .pb-legs,.contract{grid-template-columns:1fr}
+  .pb-leg{border-right:none;border-bottom:1px solid var(--line)}
+}
+/* On any phone the fleet stacks: five columns of numbers on a 390px screen is
+   the unreadable-text problem all over again. */
+@media (max-width:640px){
+  .flgrid{grid-template-columns:1fr !important}
+  .tvwrap{height:320px}
 }
 </style>
 </head>
@@ -683,8 +833,13 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 <main>
   <!-- ============ DASHBOARD ============ -->
   <section class="view on" id="v-dash">
+    <!-- Always-on tape. Ticks every second so the page is visibly alive even
+         when the algorithm is flat and nothing else on screen is moving. -->
+    <div class="tape" id="d-tape"></div>
+
     <div class="deck">
       <div class="span-all" id="d-sys"></div>
+      <div class="span-all" id="d-fleet"></div>
 
       <div class="hero">
         <div class="hf-k">Equity</div>
@@ -719,26 +874,62 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
         <div class="card-h"><span class="card-t">Link telemetry</span></div>
         <div id="d-lat"></div>
       </div>
+
+      <div class="card span-all">
+        <div class="card-h"><span class="card-t">Live activity</span>
+          <span class="dim mono" id="d-livecount" style="font-size:10px"></span></div>
+        <div id="d-live" class="livelist"></div>
+      </div>
+
+      <div class="card span-all">
+        <div class="card-h"><span class="card-t">Market news</span>
+          <span class="dim mono" id="d-newsage" style="font-size:10px"></span></div>
+        <div id="d-news" class="newslist"></div>
+      </div>
     </div>
   </section>
 
   <!-- ============ CHART ============ -->
   <section class="view" id="v-chart">
     <div class="deck">
+      <!-- TradingView carries the underlying: real depth, real drawing tools,
+           and it is the chart people already know. The bot's own view of the
+           feed stays below it, because that is what it actually traded on. -->
       <div class="card span-all">
-        <div class="card-h"><span class="card-t" id="ch-title">Underlying · 1 min</span>
+        <div class="card-h">
+          <span class="card-t" id="ch-title">NIFTY 50 · TradingView</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="seg tvseg" id="tv-tf">
+              <button data-i="1">1m</button>
+              <button class="on" data-i="5">5m</button>
+              <button data-i="15">15m</button>
+              <button data-i="60">1H</button>
+              <button data-i="D">1D</button>
+            </div>
+          </div>
+        </div>
+        <div id="tv-host" class="tvwrap"><div id="tv-chart"></div></div>
+        <div class="tv-fallback" id="tv-fallback" hidden>
+          TradingView could not load — the network may be blocking it.
+          The bot's own chart below is unaffected.
+        </div>
+      </div>
+
+      <div id="ch-tradebox" class="span-all"></div>
+
+      <div class="card span-all">
+        <div class="card-h"><span class="card-t">Bot feed · 1 min</span>
           <span class="num mono" id="ch-spot" style="font-size:12px"></span></div>
         <div class="chartwrap" id="ch-candles"></div>
         <div class="legend">
-          <span class="lg"><i style="background:#d4af37"></i>EMA 9</span>
+          <span class="lg"><i style="background:#e8c458"></i>EMA 9</span>
           <span class="lg"><i style="background:#8b6914"></i>EMA 21</span>
-          <span class="lg"><i style="background:#f2da92"></i>VWAP</span>
-          <span class="lg"><i style="background:#3ecf8e"></i>Up</span>
-          <span class="lg"><i style="background:#f0505a"></i>Down</span>
+          <span class="lg"><i style="background:#fbeab4"></i>VWAP</span>
+          <span class="lg"><i style="background:#38e08f"></i>Up</span>
+          <span class="lg"><i style="background:#ff5566"></i>Down</span>
         </div>
-        <div class="dim mono" id="ch-meta" style="font-size:9.5px;margin-top:9px;letter-spacing:.8px"></div>
+        <div class="dim mono" id="ch-meta" style="font-size:10px;margin-top:9px;letter-spacing:.8px"></div>
       </div>
-      <div id="ch-tradebox" class="span-all"></div>
       <div class="card" id="ch-context"></div>
     </div>
   </section>
@@ -787,6 +978,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       <div class="card">
         <div class="card-h"><span class="card-t">Export</span></div>
         <div class="dl">
+          <a id="dl-pdf"><div class="ext">PDF</div><div class="lbl">REPORT</div></a>
           <a id="dl-csv"><div class="ext">CSV</div><div class="lbl">SHEET</div></a>
           <a id="dl-xlsx"><div class="ext">XLSX</div><div class="lbl">BOOK</div></a>
           <a id="dl-json"><div class="ext">JSON</div><div class="lbl">RAW</div></a>
@@ -856,6 +1048,15 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
         <div class="gold mono" style="font-size:11px;line-height:1.6;margin-top:10px"
              id="a-applies"></div>
 
+        <!-- Five lanes trade the same instrument independently. Which one an
+             upload lands in is the first decision, not an afterthought. -->
+        <div style="margin-top:14px">
+          <label class="lbl">Assign to</label>
+          <div class="seg" id="a-slot" style="margin-bottom:0"></div>
+          <div class="dim" id="a-slot-note"
+               style="font-size:11px;line-height:1.5;margin-top:7px"></div>
+        </div>
+
         <div style="margin-top:14px">
           <label class="lbl">Name this version</label>
           <input class="field" id="a-name" placeholder="e.g. v12 wider stops">
@@ -887,6 +1088,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
     <div class="deck">
       <div class="card">
         <div class="card-h"><span class="card-t">Session control</span></div>
+        <div id="c-slots" style="margin-bottom:12px"></div>
         <div class="ctrl">
           <button class="btn" id="c-start">Start</button>
           <button class="btn danger" id="c-stop">Stop</button>
@@ -935,7 +1137,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.17-obsidian.1";
+const BUILD = "2026.08.17-obsidian.2-fleet";
 
 /* The dashboard is a static file with nowhere of its own to keep state, so it
    has to be told which trading server to talk to. Rather than ask for that
@@ -966,7 +1168,8 @@ const S = {
   role: localStorage.getItem("mc_role") || "viewer",
   roles: [], algo: null,
   view: "dash",
-  snap: {}, status: {}, diag: null, chart: null, strategy: null, stratEdits: {},
+  snap: {}, status: {}, diag: null, fleet: null, news: null,
+  chart: null, strategy: null, stratEdits: {},
   lines: [], filter: "all", follow: true,
   tradePeriod: "day", reportPeriod: "month",
   anchor: new Date().toISOString().slice(0, 10),
@@ -1216,7 +1419,7 @@ function go(id) {
   if (id === "reports") loadReports();
   if (id === "ctrl") loadControl();
   if (id === "feed") renderFeed();
-  if (id === "chart") loadChart();
+  if (id === "chart") { loadChart(); mountTV(); }
   if (id === "strategy") loadStrategy();
   if (id === "admin") { loadUsers(); loadAlgorithm(); }
   window.scrollTo(0, 0);
@@ -1257,10 +1460,14 @@ function connectWS() {
     if (m.kind === "hello") {
       S.status = m.status || {};
       S.snap = S.status.snapshot || {};
+      if (m.fleet) { S.fleet = m.fleet; renderFleet(); }
       (m.tail || []).forEach(pushLine);
-      renderDash(); renderFeed(); return;
+      renderDash(); renderFeed(); renderLive(); return;
     }
-    if (m.kind === "status") { S.snap = m.payload || {}; renderDash(); return; }
+    if (m.kind === "status") {
+      S.snap = m.payload || {};
+      renderDash(); tapeTick(); return;
+    }
     if (m.kind === "chart") { S.chart = m.payload; if (S.view === "chart") loadChart(); return; }
     pushLine(m);
     if (["entry", "exit", "ladder", "eod", "daily_kill"].includes(m.kind)) {
@@ -1272,6 +1479,9 @@ function connectWS() {
       refreshStatus();
     }
     if (S.view === "feed") renderFeed();
+    // The activity list lives on the deck, so it refreshes whichever tab is up.
+    if (S.view === "dash") renderLive();
+    if (["entry", "exit", "eod", "fatal", "boot", "shutdown"].includes(m.kind)) loadFleet();
   };
   S.ws.onclose = () => {
     if (!S.token) return;
@@ -1368,6 +1578,148 @@ function renderSys() {
     </div>`;
 }
 
+/* ================= live tape =================
+   The spot arrives with each status event, a few seconds apart. Rendering it
+   raw makes a busy market look frozen, so the displayed figure eases toward
+   each new reading a frame at a time. It is a presentation smoothing only —
+   S.snap.market.spot is never overwritten, so nothing downstream trades on an
+   interpolated number.
+==================================================== */
+const TAPE = { shown: null, target: null, last: null, dir: 0 };
+
+function tapeTick() {
+  const el = $("#d-tape"); if (!el) return;
+  const m = (S.snap && S.snap.market) || {};
+  const spot = Number(m.spot);
+
+  if (isFinite(spot) && spot > 0) {
+    if (TAPE.target !== spot) {
+      TAPE.dir = TAPE.target == null ? 0 : Math.sign(spot - TAPE.target);
+      TAPE.target = spot;
+      if (TAPE.shown == null) TAPE.shown = spot;
+    }
+    const gap = TAPE.target - TAPE.shown;
+    TAPE.shown += Math.abs(gap) < 0.02 ? gap : gap * 0.18;
+  }
+
+  const idx = m.index || "NIFTY";
+  const move = Number(m.day_move) || 0;
+  const val = TAPE.shown == null ? null : TAPE.shown;
+  const dirCls = TAPE.dir > 0 ? "up" : TAPE.dir < 0 ? "down" : "";
+  const clock = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata" });
+
+  const cell = (k, v, c) =>
+    `<div class="tp-i"><span class="tp-k">${esc(k)}</span>
+       <span class="tp-v num ${c || ""}">${esc(v)}</span></div>`;
+
+  el.innerHTML = `
+    <div class="tp-i lead">
+      <span class="tp-k">${esc(idx)}</span>
+      <span class="tp-spot num ${dirCls}">${val == null ? "—"
+        : val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      <span class="tp-arrow ${dirCls}">${TAPE.dir > 0 ? "▲" : TAPE.dir < 0 ? "▼" : "·"}</span>
+    </div>
+    ${cell("Day", (move >= 0 ? "+" : "") + move.toFixed(1) + " pts", cls(move))}
+    ${cell("VWAP", m.vwap ? Number(m.vwap).toFixed(1) : "—")}
+    ${cell("ADX", m.adx ? Number(m.adx).toFixed(1) : "—")}
+    ${cell("Vol", m.garch ? Number(m.garch).toFixed(1) + "%" : "—")}
+    ${cell("P&L today", signed(S.snap.day_pnl ?? 0, 0), cls(S.snap.day_pnl ?? 0))}
+    ${cell("IST", clock)}`;
+}
+
+/* ---------------- fleet ---------------- */
+async function loadFleet() {
+  try {
+    S.fleet = await api("/api/fleet");
+    renderFleet();
+    renderCtrlSlots();
+  } catch (e) {}
+}
+
+function renderFleet() {
+  const f = S.fleet, box = $("#d-fleet");
+  if (!f || !box) return;
+
+  // With one algorithm this is a single wide strip; with five it becomes a
+  // grid. The deck follows what is actually running rather than reserving
+  // empty space for slots nobody has filled.
+  const active = f.slots.filter(s => !s.empty || s.running);
+  const cols = Math.min(Math.max(active.length, 1), 3);
+
+  const card = s => {
+    const tone = s.last_error ? "bad" : s.running ? "good" : "idle";
+    const pnl = s.day_pnl;
+    return `<div class="fl ${tone} ${s.empty ? "empty" : ""}">
+      <div class="fl-top">
+        <span class="beacon ${tone}"></span>
+        <span class="fl-name">${esc(s.name)}</span>
+        <span class="fl-state">${esc(s.running ? "running" : s.empty ? "empty" : s.state)}</span>
+      </div>
+      <div class="fl-algo">${esc(s.algorithm || "—")}</div>
+      ${s.empty ? `<div class="fl-hint">Upload an algorithm in Admin to use this slot.</div>` : `
+        <div class="fl-nums">
+          <div><div class="fl-k">Day P&L</div>
+            <div class="fl-v num ${cls(pnl ?? 0)}">${pnl == null ? "—" : signed(pnl, 0)}</div></div>
+          <div><div class="fl-k">Trades</div>
+            <div class="fl-v num">${s.trades ?? "—"}</div></div>
+          <div><div class="fl-k">Position</div>
+            <div class="fl-v num">${s.position ? "open" : "flat"}</div></div>
+        </div>`}
+      ${s.last_error ? `<div class="fl-err">${esc(s.last_error)}</div>` : ""}
+    </div>`;
+  };
+
+  box.innerHTML = `
+    <div class="card">
+      <div class="card-h"><span class="card-t">Algorithms</span>
+        <span class="dim mono" style="font-size:10px">
+          ${f.running_count} of ${f.max_slots} running${
+            f.memory_free_mb != null ? ` · ${f.memory_free_mb} MB free` : ""}</span></div>
+      ${f.capacity_warning ? `<div class="cap-warn">${esc(f.capacity_warning)}</div>` : ""}
+      <div class="flgrid" style="--fl-cols:${cols}">${f.slots.map(card).join("")}</div>
+    </div>`;
+}
+
+/* ---------------- live activity ---------------- */
+function renderLive() {
+  const box = $("#d-live"); if (!box) return;
+  const rows = S.lines.filter(l => l.kind !== "log").slice(-14).reverse();
+  $("#d-livecount").textContent = S.lines.length ? S.lines.length + " events today" : "";
+  if (!rows.length) {
+    box.innerHTML = `<div class="empty">Nothing yet today. Entries, exits and
+      decisions appear here the moment the algorithm makes them.</div>`;
+    return;
+  }
+  box.innerHTML = rows.map(l => `
+    <div class="lv lv-${esc(l.level || "info")}">
+      <span class="lv-t num">${esc((l.ts || "").slice(11, 19))}</span>
+      <span class="lv-kind">${esc(l.kind)}</span>
+      <span class="lv-m">${esc(l.message)}</span>
+      ${l.slot ? `<span class="lv-slot">S${l.slot + 1}</span>` : ""}
+    </div>`).join("");
+}
+
+/* ---------------- news ---------------- */
+async function loadNews() {
+  try { S.news = await api("/api/news"); renderNews(); } catch (e) {}
+}
+
+function renderNews() {
+  const n = S.news, box = $("#d-news"); if (!n || !box) return;
+  $("#d-newsage").textContent = n.age_seconds == null ? ""
+    : (n.stale ? "cached · " : "") + ago(n.age_seconds);
+  if (!n.items || !n.items.length) {
+    box.innerHTML = `<div class="empty">${esc(n.error || "No headlines right now.")}</div>`;
+    return;
+  }
+  box.innerHTML = n.items.slice(0, 12).map(i => `
+    <a class="nw" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">
+      <div class="nw-h">${esc(i.title)}</div>
+      <div class="nw-m"><span class="nw-src">${esc(i.source)}</span>
+        ${i.published ? `<span class="nw-t">${esc(String(i.published).slice(11, 16))}</span>` : ""}</div>
+    </a>`).join("");
+}
+
 function renderDash() {
   const s = S.snap || {}, st = S.status || {};
   const running = st.running;
@@ -1409,6 +1761,17 @@ function renderDash() {
         <div><div class="pos-sym">${esc(q.symbol)}</div>
           <div class="pos-meta">${q.qty} QTY · ENTRY ${money(q.entry, 2)} · ${esc((q.entry_time || "").slice(11))}</div></div>
         <span class="stage ${esc(q.stage)}">${esc(q.stage)}</span></div>
+      <!-- What the contract is worth right now, next to what it cost. This is
+           the number an operator looks for first and it used to be buried in
+           the grid below the ladder. -->
+      <div class="contract">
+        <div class="ct-i"><div class="ct-k">Contract now</div>
+          <div class="ct-v num ${cls(q.pnl)}">${money(q.current, 2)}</div></div>
+        <div class="ct-i"><div class="ct-k">Paid</div>
+          <div class="ct-v num">${money(q.entry, 2)}</div></div>
+        <div class="ct-i"><div class="ct-k">Position value</div>
+          <div class="ct-v num">${money((q.current || 0) * (q.qty || 0), 0)}</div></div>
+      </div>
       <div><span class="pnl-big num ${cls(q.pnl)}">${signed(q.pnl, 0)}</span
         ><span class="pnl-pct num ${cls(q.pnl)}">${pct(q.pnl_pct, 1)}</span></div>
       <div class="ladder">
@@ -1541,6 +1904,13 @@ function renderFeed() {
 }
 
 /* ---------------- trades ---------------- */
+$$("#tv-tf button").forEach(b => b.onclick = () => {
+  tvInterval = b.dataset.i;
+  $$("#tv-tf button").forEach(x => x.classList.toggle("on", x === b));
+  // The widget has no public setInterval, so a timeframe change is a remount.
+  mountTV(true);
+});
+
 $$("#t-seg button").forEach(b => b.onclick = () => {
   S.tradePeriod = b.dataset.p;
   $$("#t-seg button").forEach(x => x.classList.toggle("on", x === b));
@@ -1592,6 +1962,81 @@ async function loadTrades() {
       </div>`;
     }).join("");
   } catch (e) { toast(e.message); }
+}
+
+/* ================= TradingView =================
+   Loaded lazily, only when the Chart tab is first opened, and only once. The
+   script is third-party and ~400 KB, so it has no business on the critical
+   path of a dashboard whose job is showing whether the bot is alive.
+==================================================== */
+const TV_SRC = "https://s3.tradingview.com/tv.js";
+const TV_SYMBOL = { NIFTY: "NSE:NIFTY", BANKNIFTY: "NSE:BANKNIFTY",
+                    FINNIFTY: "NSE:CNXFINANCE" };
+
+let tvWidget = null, tvLoading = null, tvInterval = "5";
+
+function tvScript() {
+  if (tvLoading) return tvLoading;
+  tvLoading = new Promise((resolve, reject) => {
+    if (window.TradingView) return resolve();
+    const el = document.createElement("script");
+    el.src = TV_SRC; el.async = true;
+    el.onload = () => resolve();
+    el.onerror = () => reject(new Error("blocked"));
+    document.head.appendChild(el);
+  });
+  return tvLoading;
+}
+
+function tvInstrument() {
+  const idx = ((S.strategy && S.strategy.values && S.strategy.values.INDEX_NAME)
+               || (S.snap.market && S.snap.market.index) || "NIFTY");
+  return TV_SYMBOL[String(idx).toUpperCase()] || TV_SYMBOL.NIFTY;
+}
+
+async function mountTV(force) {
+  const host = $("#tv-chart");
+  if (!host) return;
+  if (tvWidget && !force) return;
+  try {
+    await tvScript();
+  } catch (e) {
+    $("#tv-fallback").hidden = false;
+    $("#tv-host").style.display = "none";
+    return;
+  }
+  host.innerHTML = "";
+  tvWidget = new TradingView.widget({
+    container_id: "tv-chart",
+    symbol: tvInstrument(),
+    interval: tvInterval,
+    timezone: "Asia/Kolkata",
+    theme: "dark",
+    style: "1",
+    locale: "in",
+    autosize: true,
+    hide_side_toolbar: false,
+    allow_symbol_change: true,
+    withdateranges: true,
+    details: false,
+    studies: ["STD;EMA", "STD;VWAP"],
+    // Tuned to the dashboard's palette so the embed does not read as a
+    // foreign rectangle dropped into the page.
+    toolbar_bg: "#0b0b0e",
+    backgroundColor: "#0b0b0e",
+    gridColor: "rgba(232,196,88,0.06)",
+    overrides: {
+      "mainSeriesProperties.candleStyle.upColor": "#38e08f",
+      "mainSeriesProperties.candleStyle.downColor": "#ff5566",
+      "mainSeriesProperties.candleStyle.borderUpColor": "#38e08f",
+      "mainSeriesProperties.candleStyle.borderDownColor": "#ff5566",
+      "mainSeriesProperties.candleStyle.wickUpColor": "#38e08f",
+      "mainSeriesProperties.candleStyle.wickDownColor": "#ff5566",
+      "paneProperties.background": "#0b0b0e",
+      "paneProperties.backgroundType": "solid",
+      "scalesProperties.textColor": "#b3ab9a",
+    },
+  });
 }
 
 /* ---------------- chart ---------------- */
@@ -1735,13 +2180,89 @@ function drawTradeBox(opt, cur) {
   };
 
   g += mark(lv.lock2 && lv.lock2.price, "#8b6914", "LOCK 2", "3 3");
-  g += mark(lv.lock1 && lv.lock1.price, "#b8912b", "LOCK 1", "3 3");
-  g += mark(lv.breakeven && lv.breakeven.price, "#d4af37", "BREAKEVEN", "3 3");
-  g += mark(opt.entry, "#ece5d6", "ENTRY");
-  g += mark(opt.sl, "#f0505a", "STOP");
-  if (opt.high_prem > opt.entry) g += mark(opt.high_prem, "#3ecf8e", "PEAK", "1 4");
+  g += mark(lv.lock1 && lv.lock1.price, "#c9a13a", "LOCK 1", "3 3");
+  g += mark(lv.breakeven && lv.breakeven.price, "#e8c458", "BREAKEVEN", "3 3");
+  g += mark(opt.entry, "#f6f1e8", "ENTRY");
+  g += mark(opt.sl, "#ff5566", "STOP");
+  if (opt.high_prem > opt.entry) g += mark(opt.high_prem, "#38e08f", "PEAK", "1 4");
 
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${g}</svg>`;
+}
+
+/* ================= position box =================
+   The TradingView long-position overlay: a green reward band up to the target,
+   a red risk band down to the stop, and the numbers that actually decide
+   whether to sit in the trade — open P&L, quantity, and the ratio between what
+   is being risked and what is being chased.
+==================================================== */
+function positionBox(q, opt) {
+  // Number(null) is 0, so a missing price would otherwise sail through this
+  // guard and render a box full of zeroes as if it were a real position.
+  const num = v => (v === null || v === undefined || v === "") ? NaN : Number(v);
+  const entry = num(q.entry), cur = num(q.current), stop = num(q.sl_price);
+  if (![entry, cur, stop].every(v => isFinite(v)) || entry <= 0) return "";
+
+  const lv = (opt && opt.levels) || {};
+  // The ladder has no fixed take-profit, so the target shown is the highest
+  // rung the algorithm is still working towards; failing that, mirror the risk.
+  const rung = lv.lock2 || lv.lock1 || lv.breakeven;
+  const target = (rung && Number(rung.price) > entry) ? Number(rung.price)
+                                                     : entry + (entry - stop);
+  const qty = Number(q.qty) || 0;
+  const risk = Math.max(0, (entry - stop) * qty);
+  const reward = Math.max(0, (target - entry) * qty);
+  const rr = risk > 0 ? reward / risk : 0;
+  const pnl = Number(q.pnl) || 0;
+  const up = pnl >= 0;
+
+  const lo = Math.min(stop, cur, entry) * 0.995;
+  const hi = Math.max(target, cur, entry) * 1.005;
+  const span = (hi - lo) || 1;
+  const H = 250, pos = v => H - ((v - lo) / span) * H;   // price -> y
+
+  const yT = pos(target), yE = pos(entry), yS = pos(stop), yC = pos(cur);
+  const band = (y1, y2, cls) =>
+    `<div class="pb-band ${cls}" style="top:${Math.min(y1, y2)}px;
+      height:${Math.abs(y2 - y1)}px"></div>`;
+  const line = (y, cls, label, price) =>
+    `<div class="pb-line ${cls}" style="top:${y}px">
+       <span class="pb-tag">${label}</span>
+       <span class="pb-px num">${price.toFixed(2)}</span></div>`;
+
+  return `
+    <div class="posbox">
+      <div class="pb-plot" style="height:${H}px">
+        ${band(yT, yE, "reward")}
+        ${band(yE, yS, "risk")}
+        ${line(yT, "t", "Target", target)}
+        ${line(yE, "e", "Entry", entry)}
+        ${line(yS, "s", "Stop", stop)}
+        <div class="pb-now ${up ? "up" : "down"}" style="top:${yC}px">
+          <span class="pb-nowpx num">${cur.toFixed(2)}</span>
+        </div>
+        <div class="pb-mid ${up ? "up" : "down"}">
+          <div class="pb-pnl num">${signed(pnl, 0)}</div>
+          <div class="pb-meta num">Qty ${qty} · R:R ${rr ? rr.toFixed(2) : "—"}</div>
+        </div>
+      </div>
+      <div class="pb-legs">
+        <div class="pb-leg reward">
+          <div class="pb-k">Target</div>
+          <div class="pb-v num">${money(target, 2)}</div>
+          <div class="pb-s num">+${money(reward, 0)} · ${pct((target / entry - 1) * 100, 2)}</div>
+        </div>
+        <div class="pb-leg contract">
+          <div class="pb-k">Contract</div>
+          <div class="pb-v num">${money(cur, 2)}</div>
+          <div class="pb-s">${esc(q.symbol || "")}</div>
+        </div>
+        <div class="pb-leg risk">
+          <div class="pb-k">Stop</div>
+          <div class="pb-v num">${money(stop, 2)}</div>
+          <div class="pb-s num">−${money(risk, 0)} · ${pct((stop / entry - 1) * 100, 2)}</div>
+        </div>
+      </div>
+    </div>`;
 }
 
 const tbb = (k, v, s2, c) => `<div class="tbb"><div class="k">${esc(k)}</div>
@@ -1785,7 +2306,8 @@ async function loadChart() {
         <div style="margin-bottom:14px">
           <span class="pnl-big num ${cls(pos.pnl)}">${signed(pos.pnl, 0)}</span>
           <span class="pnl-pct num ${cls(pos.pnl)}">${pct(pos.pnl_pct, 1)}</span></div>
-        <div class="chartwrap">${drawTradeBox(d.option, pos.current)}</div>
+        ${positionBox(pos, d.option)}
+        <div class="chartwrap" style="margin-top:12px">${drawTradeBox(d.option, pos.current)}</div>
         <div class="tbgrid">
           ${tbb("Entry", money(pos.entry, 2), "")}
           ${tbb("Live", money(pos.current, 2), "", cls(pos.pnl))}
@@ -1844,6 +2366,7 @@ $("#r-events").onclick = () => {
 };
 
 function setDownloads() {
+  $("#dl-pdf").href = dlUrl(S.reportPeriod, "pdf");
   $("#dl-csv").href = dlUrl(S.reportPeriod, "csv");
   $("#dl-xlsx").href = dlUrl(S.reportPeriod, "xlsx");
   $("#dl-json").href = dlUrl(S.reportPeriod, "json");
@@ -2149,31 +2672,63 @@ async function loadAlgorithm() {
   try {
     const d = await api("/api/algorithm");
     S.algo = d;
-    $("#a-active").textContent = (d.active_description || "").toUpperCase();
-    $("#a-applies").textContent = d.bot_running
-      ? "BOT RUNNING — A NEW ALGORITHM TAKES EFFECT ON THE NEXT START"
-      : "TAKES EFFECT ON THE NEXT START";
-    $("#a-versions").innerHTML = d.versions.map(v => `
-      <div class="day">
+    const slots = d.slots || [];
+    const sel = S.algoSlot ?? 0;
+    const here = slots[sel] || {};
+
+    // Slot picker
+    $("#a-slot").innerHTML = slots.map(s => `
+      <button data-slot="${s.slot}" class="${s.slot === sel ? "on" : ""}">
+        ${s.slot === 0 ? "Primary" : "Slot " + (s.slot + 1)}${s.empty ? "" : " ●"}
+      </button>`).join("");
+    $$("#a-slot button").forEach(b => b.onclick = () => {
+      S.algoSlot = Number(b.dataset.slot); loadAlgorithm();
+    });
+
+    const runningHere = (d.running_slots || []).includes(sel);
+    $("#a-slot-note").innerHTML = here.empty
+      ? `This slot is empty. Upload an algorithm and it will run alongside the
+         others on the same instrument, with its own P&amp;L.`
+      : `Currently: <span class="gold">${esc(here.description || "")}</span>${
+          runningHere ? " · running now" : ""}`;
+
+    $("#a-active").textContent = (here.description || "").toUpperCase();
+    $("#a-applies").textContent = runningHere
+      ? "THIS SLOT IS RUNNING — A CHANGE TAKES EFFECT ON ITS NEXT START"
+      : "TAKES EFFECT WHEN THIS SLOT NEXT STARTS";
+
+    const where = v => (v.slots || []).length
+      ? ` <span class="gold">· ${v.slots.map(n => n === 0 ? "PRIMARY" : "SLOT " + (n + 1)).join(", ")}</span>`
+      : "";
+
+    $("#a-versions").innerHTML = d.versions.map(v => {
+      const inThisSlot = (v.slots || []).includes(sel);
+      return `<div class="day">
         <div style="min-width:0">
-          <div class="day-d">${esc(v.name)}${v.active ? ' <span class="gold">· ACTIVE</span>' : ""}</div>
+          <div class="day-d">${esc(v.name)}${where(v)}</div>
           <div class="day-m">${v.builtin ? "shipped with the app"
             : `${v.lines} lines · ${esc((v.uploaded_at || "").replace("T", " "))} · by ${esc(v.uploaded_by || "?")}`}
             ${(v.warnings || []).length ? ` · <span class="warn">${v.warnings.length} warning(s)</span>` : ""}</div>
         </div>
         <div style="display:flex;gap:6px">
-          ${v.active ? "" : `<button class="btn ghost" data-aact="${esc(v.id)}"
-             style="width:auto;padding:6px 12px;font-size:10px">Activate</button>`}
-          ${v.builtin || v.active ? "" : `<button class="btn danger" data-adel="${esc(v.id)}"
+          ${inThisSlot ? "" : `<button class="btn ghost" data-aact="${esc(v.id)}"
+             style="width:auto;padding:6px 12px;font-size:10px">Use here</button>`}
+          ${v.builtin || (v.slots || []).length ? "" : `<button class="btn danger" data-adel="${esc(v.id)}"
              style="width:auto;padding:6px 12px;font-size:10px">Delete</button>`}
-        </div></div>`).join("");
+        </div></div>`;
+    }).join("")
+      + (sel > 0 && !here.empty ? `<div class="day">
+          <div class="day-m">Stop using this slot entirely.</div>
+          <button class="btn danger" id="a-clear"
+            style="width:auto;padding:6px 12px;font-size:10px">Empty slot</button></div>` : "");
 
     $$("[data-aact]").forEach(el => el.onclick = async () => {
-      if (!confirm("Make this the algorithm the bot runs?\n\nIt takes effect on the next start — a position open right now finishes under the current one.")) return;
+      const label = sel === 0 ? "the primary algorithm" : `Slot ${sel + 1}`;
+      if (!confirm(`Run this as ${label}?\n\nIt takes effect on the next start — a position open right now finishes under the current one.`)) return;
       try {
         await api("/api/algorithm/activate",
-          { method: "POST", body: JSON.stringify({ version_id: el.dataset.aact }) });
-        toast("Activated — applies on next start"); loadAlgorithm();
+          { method: "POST", body: JSON.stringify({ version_id: el.dataset.aact, slot: sel }) });
+        toast("Assigned — applies on next start"); loadAlgorithm(); loadFleet();
       } catch (e) { toast(e.message); }
     });
     $$("[data-adel]").forEach(el => el.onclick = async () => {
@@ -2181,6 +2736,15 @@ async function loadAlgorithm() {
       try { await api(`/api/algorithm/${encodeURIComponent(el.dataset.adel)}`, { method: "DELETE" });
         loadAlgorithm(); } catch (e) { toast(e.message); }
     });
+    const clr = $("#a-clear");
+    if (clr) clr.onclick = async () => {
+      if (!confirm(`Empty slot ${sel + 1}? It will stop running at its next scheduled start.`)) return;
+      try {
+        await api("/api/algorithm/activate",
+          { method: "POST", body: JSON.stringify({ version_id: null, slot: sel }) });
+        toast("Slot emptied"); loadAlgorithm(); loadFleet();
+      } catch (e) { toast(e.message); }
+    };
   } catch (e) { toast(e.message); }
 }
 
@@ -2222,7 +2786,7 @@ $("#a-upload").onclick = async () => {
     const r = await fetch(S.url + "/api/algorithm/upload", {
       method: "POST",
       headers: { "X-API-Token": S.token, "Content-Type": "application/json" },
-      body: JSON.stringify({ name, source, activate: false })
+      body: JSON.stringify({ name, source, activate: false, slot: S.algoSlot ?? 0 })
     });
     const body = await r.json();
     renderReport(body.report);
@@ -2238,17 +2802,36 @@ $("#a-upload").onclick = async () => {
 /* ---------------- control ---------------- */
 const row = (k, v) => `<div class="row"><span class="row-k">${esc(k)}</span><span class="row-v">${esc(v)}</span></div>`;
 
+/* Start/stop act on whichever slot the Control tab has selected; the picker
+   only appears once more than one slot is actually usable. */
+function ctrlSlot() { return S.ctrlSlot ?? 0; }
+
+function renderCtrlSlots() {
+  const box = $("#c-slots"); if (!box || !S.fleet) return;
+  const usable = S.fleet.slots.filter(s => !s.empty);
+  if (usable.length < 2) { box.innerHTML = ""; return; }
+  box.innerHTML = `<label class="lbl">Algorithm</label>
+    <div class="seg" style="margin-bottom:0">${usable.map(s => `
+      <button data-cs="${s.slot}" class="${s.slot === ctrlSlot() ? "on" : ""}">
+        ${esc(s.name)}${s.running ? " ●" : ""}</button>`).join("")}</div>`;
+  $$("[data-cs]").forEach(b => b.onclick = () => {
+    S.ctrlSlot = Number(b.dataset.cs); renderCtrlSlots();
+  });
+}
+
 $("#c-start").onclick = async () => {
-  try { await api("/api/bot/start", { method: "POST", body: JSON.stringify({ force: false }) });
+  try { await api("/api/bot/start",
+      { method: "POST", body: JSON.stringify({ force: false, slot: ctrlSlot() }) });
     toast("Starting…"); } catch (e) { toast(e.message); }
-  refreshStatus();
+  refreshStatus(); loadFleet();
 };
 $("#c-stop").onclick = async () => {
   if (!confirm("Stop the bot? Any open position is flattened first.")) return;
   toast("Stopping — flattening position…");
-  try { await api("/api/bot/stop", { method: "POST", body: JSON.stringify({ reason: "manual stop from app" }) });
+  try { await api("/api/bot/stop", { method: "POST",
+      body: JSON.stringify({ reason: "manual stop from app", slot: ctrlSlot() }) });
     toast("Stopped"); } catch (e) { toast(e.message); }
-  refreshStatus();
+  refreshStatus(); loadFleet();
 };
 $("#c-auto").onclick = async () => {
   const on = !$("#c-auto").classList.contains("on");
@@ -2322,15 +2905,20 @@ async function refreshMarks() {
 }
 
 function boot() {
-  refreshStatus(); refreshMarks(); loadDiag(); connectWS();
-  clearInterval(boot._a); clearInterval(boot._b);
-  clearInterval(boot._c); clearInterval(boot._d);
+  refreshStatus(); refreshMarks(); loadDiag(); loadFleet(); loadNews(); connectWS();
+  ["_a", "_b", "_c", "_d", "_e", "_f", "_g"].forEach(k => clearInterval(boot[k]));
   boot._a = setInterval(refreshStatus, 15000);
   boot._b = setInterval(refreshMarks, 60000);
   boot._c = setInterval(() => { if (S.view === "chart") loadChart(); }, 15000);
   // Faster than the others: this is the panel that says whether the algorithm
   // is alive, and a stale "running" badge is worse than no badge at all.
   boot._d = setInterval(loadDiag, 10000);
+  boot._e = setInterval(loadFleet, 12000);
+  boot._f = setInterval(loadNews, 180000);        // the cache is 5 min server-side
+  // The tape animates on its own clock so the page keeps moving between the
+  // status events that actually carry new prices.
+  boot._g = setInterval(tapeTick, 1000);
+  tapeTick();
 }
 
 /* ---------------- start ---------------- */

@@ -245,11 +245,14 @@ console.log('\nTrade box');
   check('still renders the in-range levels', svg.includes('ENTRY'));
 }
 
+// `const` declarations in the dashboard script do not become properties of the
+// sandbox global — only function declarations do — so anything declared that
+// way (S, TAPE, the formatting helpers) is reached by evaluating inside the
+// context rather than off the sandbox object.
+const evaluate = (expr) => vm.runInContext(expr, context);
+
 console.log('\nFormatting');
 {
-  // The helpers are `const` arrow functions, which do not become properties
-  // of the sandbox global, so they are evaluated inside the context.
-  const evaluate = (expr) => vm.runInContext(expr, context);
 
   check('money uses Indian grouping',
         evaluate('money(2500000, 0)') === '₹25,00,000',
@@ -263,6 +266,126 @@ console.log('\nFormatting');
         evaluate('esc("<img src=x onerror=alert(1)>")').includes('&lt;img'));
   check('tone class follows the sign',
         evaluate('cls(5)') === 'up' && evaluate('cls(-5)') === 'down');
+}
+
+console.log('\nPosition box');
+{
+  // A long that is currently under water: entry 142.5, stop 128, now 135.
+  const q = { entry: 142.5, current: 135.0, sl_price: 128.0, qty: 75,
+              pnl: -562.5, symbol: 'NIFTY24500CE' };
+  const opt = { levels: { lock1: { price: 171.0, pct: 20 } } };
+  const box = sandbox.positionBox(q, opt);
+
+  check('position box renders', box.includes('posbox'));
+  check('it shows a reward band and a risk band',
+        box.includes('pb-band reward') && box.includes('pb-band risk'));
+  check('the contract price is on screen', box.includes('135.00'), box.slice(0, 200));
+  check('the symbol is named', box.includes('NIFTY24500CE'));
+  check('a losing position reads as down', box.includes('pb-mid down'));
+  // risk = (142.5-128)*75 = 1087.5, reward = (171-142.5)*75 = 2137.5 -> 1.97
+  check('risk/reward is computed from the ladder rung',
+        box.includes('R:R 1.97'), box.match(/R:R [\d.—]+/)?.[0]);
+
+  const winner = sandbox.positionBox({ ...q, current: 160, pnl: 1312.5 }, opt);
+  check('a winning position reads as up', winner.includes('pb-mid up'));
+
+  // Without a ladder rung the target mirrors the risk, so R:R is 1.
+  const noLadder = sandbox.positionBox(q, { levels: {} });
+  check('with no rung the target mirrors the stop', noLadder.includes('R:R 1.00'),
+        noLadder.match(/R:R [\d.—]+/)?.[0]);
+
+  check('a position with no price yet renders nothing rather than NaN',
+        sandbox.positionBox({ entry: null, current: null, sl_price: null }, {}) === '');
+}
+
+console.log('\nLive tape');
+{
+  evaluate(`S.snap = { market: { spot: 24500.5, day_move: 42.3, vwap: 24480,
+                                adx: 22.4, garch: 12.1, index: 'NIFTY' },
+                      day_pnl: 2609 }`);
+  evaluate('TAPE.shown = null; TAPE.target = null; TAPE.dir = 0');
+  sandbox.tapeTick();
+  const el = sandbox.document.querySelector('#d-tape');
+  check('tape renders the instrument', el.innerHTML.includes('NIFTY'));
+  check('tape shows the spot', el.innerHTML.includes('24,500') , el.innerHTML.slice(0, 160));
+  check('tape carries the day move', el.innerHTML.includes('+42.3 pts'));
+  check('tape shows P&L', el.innerHTML.includes('pb') || el.innerHTML.includes('2,609'));
+
+  // The displayed figure eases toward a new reading rather than jumping.
+  evaluate('S.snap.market.spot = 24600');
+  sandbox.tapeTick();
+  const mid = evaluate('TAPE.shown');
+  check(`tape eases toward the new price (${mid.toFixed(1)})`,
+        mid > 24500.5 && mid < 24600, String(mid));
+  check('tape records the direction', evaluate('TAPE.dir') === 1);
+  for (let i = 0; i < 80; i++) sandbox.tapeTick();
+  check('tape converges on the real price',
+        Math.abs(evaluate('TAPE.shown') - 24600) < 0.05, String(evaluate('TAPE.shown')));
+
+  // Never invent a price when the feed has not produced one.
+  evaluate('S.snap = {}');
+  evaluate('TAPE.shown = null; TAPE.target = null');
+  sandbox.tapeTick();
+  check('tape shows a dash with no feed',
+        sandbox.document.querySelector('#d-tape').innerHTML.includes('—'));
+}
+
+console.log('\nFleet');
+{
+  evaluate(`S.fleet = ${JSON.stringify({
+    max_slots: 5, running_count: 1, memory_free_mb: 430, headroom_slots: 2,
+    capacity_warning: null,
+    slots: [
+      { slot: 0, name: 'Primary', state: 'running', running: true, empty: false,
+        algorithm: 'Built-in v11 (original)', day_pnl: 2609.08, trades: 2, position: true },
+      { slot: 1, name: 'Slot 2', state: 'stopped', running: false, empty: true,
+        algorithm: 'Empty — no algorithm assigned' },
+      { slot: 2, name: 'Slot 3', state: 'error', running: false, empty: false,
+        algorithm: 'v12 wider stops', last_error: 'Angel One login rejected' },
+      { slot: 3, name: 'Slot 4', state: 'stopped', running: false, empty: true },
+      { slot: 4, name: 'Slot 5', state: 'stopped', running: false, empty: true },
+    ],
+  })}`);
+  sandbox.renderFleet();
+  const out = sandbox.document.querySelector('#d-fleet').innerHTML;
+
+  check('every slot is shown', (out.match(/class="fl /g) || []).length === 5,
+        String((out.match(/class="fl /g) || []).length));
+  check('the running slot reads good', out.includes('fl good'));
+  check('the faulted slot reads bad', out.includes('fl bad'));
+  check('a faulted slot prints its error', out.includes('Angel One login rejected'));
+  check('empty slots say what to do', out.includes('Upload an algorithm'));
+  check('memory headroom is reported', out.includes('430 MB free'));
+  check('the running count is shown', out.includes('1 of 5 running'));
+  check('per-slot P&L is attributed', out.includes('2,609'));
+
+  // The layout follows how many lanes are in use, not a fixed five.
+  check('two lanes in use lays out two columns', out.includes('--fl-cols:2'),
+        out.match(/--fl-cols:\d/)?.[0]);
+
+  evaluate("S.fleet.capacity_warning = 'Only 90 MB of memory is free'");
+  sandbox.renderFleet();
+  check('a memory warning surfaces',
+        sandbox.document.querySelector('#d-fleet').innerHTML.includes('cap-warn'));
+}
+
+console.log('\nNews');
+{
+  evaluate(`S.news = { age_seconds: 90, items: [
+    { title: 'Nifty ends higher', url: 'https://x/a', source: 'Moneycontrol',
+      published: '2026-08-17T15:35:00+05:30' },
+  ] }`);
+  sandbox.renderNews();
+  const out = sandbox.document.querySelector('#d-news').innerHTML;
+  check('a headline renders', out.includes('Nifty ends higher'));
+  check('the source is credited', out.includes('Moneycontrol'));
+  check('headlines open in a new tab safely',
+        out.includes('rel="noopener noreferrer"'));
+
+  evaluate("S.news = { items: [], error: 'News is unavailable.' }");
+  sandbox.renderNews();
+  check('an empty feed explains itself',
+        sandbox.document.querySelector('#d-news').innerHTML.includes('News is unavailable'));
 }
 
 console.log('\nBrand');
