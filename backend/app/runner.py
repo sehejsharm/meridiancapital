@@ -663,6 +663,11 @@ def fleet_status() -> dict:
                 "equity": (s.snapshot or {}).get("equity"),
                 "position": bool((s.snapshot or {}).get("position")),
                 "trades": (s.snapshot or {}).get("trades"),
+                # The full snapshot rides along so the deck can render any slot
+                # from this one call, rather than only ever showing slot 0
+                # because that is whose status the websocket happened to carry.
+                "snapshot": s.snapshot or {},
+                "last_event_ts": (s.last_event or {}).get("ts"),
             }
             for s in fleet
         ],

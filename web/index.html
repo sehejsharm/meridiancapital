@@ -380,12 +380,24 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .seg button:hover{color:var(--muted)}
 .seg button.on{background:var(--au-bg-2);color:var(--au);
   box-shadow:0 0 16px -8px var(--glow),0 1px 0 rgba(255,255,255,.06) inset}
-.dl{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:11px}
-.dl a{display:block;text-align:center;padding:14px 8px;background:var(--surface-2);
-  border:1px solid var(--line);text-decoration:none;color:var(--text)}
-.dl a:hover{border-color:var(--line-3);background:var(--au-bg)}
-.dl .ext{font-size:12px;font-weight:700;letter-spacing:1.6px;font-family:var(--mono);color:var(--au)}
-.dl .lbl{font-size:10px;color:var(--faint);margin-top:4px;letter-spacing:1.1px;font-family:var(--mono)}
+.rgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media (max-width:640px){ .rgrid{grid-template-columns:1fr} }
+.rsum{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+  padding:12px 14px;font-size:12.5px;line-height:1.65;color:var(--muted);
+  font-family:var(--mono);margin-bottom:12px}
+.rsum b{color:var(--au);font-weight:600}
+.dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:13px}
+.dl a{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;padding:16px 10px;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:9px;text-decoration:none;color:var(--text);
+  transition:border-color .22s var(--ease),background .22s var(--ease),transform .18s var(--ease)}
+.dl a:hover{border-color:var(--line-3);background:var(--au-bg);transform:translateY(-1px)}
+/* PDF is the one most people want, so it reads as the default action. */
+.dl a.primary{background:linear-gradient(180deg,var(--au-bg-2),var(--au-bg));
+  border-color:var(--line-3)}
+.dl .ext{font-size:14px;font-weight:800;letter-spacing:1.6px;font-family:var(--mono);
+  color:var(--au)}
+.dl .lbl{font-size:10.5px;color:var(--muted);letter-spacing:.4px;font-family:var(--sans)}
 .day{display:flex;align-items:center;justify-content:space-between;padding:10px 0;
   border-bottom:1px solid var(--line);gap:10px}
 .day:last-child{border-bottom:none}
@@ -432,9 +444,14 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .flgrid{display:grid;grid-template-columns:repeat(var(--fl-cols,1),minmax(0,1fr));gap:10px}
 .fl{border:1px solid var(--line);border-radius:9px;padding:12px 13px;
   background:linear-gradient(160deg,rgba(255,255,255,.028),transparent 55%),var(--surface-2);
-  transition:border-color .25s var(--ease)}
+  transition:border-color .25s var(--ease),background .25s var(--ease);
+  display:block;width:100%;text-align:left;font-family:inherit;color:inherit;cursor:pointer}
+.fl:hover{border-color:var(--line-2)}
 .fl.good{border-color:rgba(56,224,143,.3)}
 .fl.bad{border-color:rgba(255,85,102,.4)}
+/* the selected lane is the one the deck above is reporting on */
+.fl.sel{border-color:var(--au);box-shadow:0 0 0 1px var(--au) inset,0 0 24px -12px var(--glow);
+  background:linear-gradient(160deg,var(--au-bg),transparent 60%),var(--surface-2)}
 .fl.empty{opacity:.62;border-style:dashed}
 .fl-top{display:flex;align-items:center;gap:8px}
 .fl-name{font-size:12.5px;font-weight:600;flex:1;min-width:0}
@@ -454,7 +471,13 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
   padding:10px 12px;font-size:11.5px;color:var(--au);line-height:1.55;margin-bottom:11px;
   font-family:var(--mono)}
 
-/* ---- live activity ---- */
+/* ---- live activity (collapsible) ---- */
+details.card > summary{list-style:none}
+details.card > summary::-webkit-details-marker{display:none}
+details.card > summary::after{content:"▾";color:var(--au);font-size:11px;
+  transition:transform .25s var(--ease);margin-left:auto;padding-left:10px}
+details.card[open] > summary::after{transform:rotate(180deg)}
+details.card > summary:hover .card-t{color:var(--au-lit)}
 .livelist{display:flex;flex-direction:column;gap:1px;max-height:330px;overflow-y:auto}
 .lv{display:flex;align-items:baseline;gap:10px;padding:7px 8px;border-radius:6px;
   font-size:12px;line-height:1.45;animation:lnin .3s var(--ease)}
@@ -839,7 +862,6 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 
     <div class="deck">
       <div class="span-all" id="d-sys"></div>
-      <div class="span-all" id="d-fleet"></div>
 
       <div class="hero">
         <div class="hf-k">Equity</div>
@@ -856,6 +878,8 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
           <div class="hf-i"><div class="hf-k">Sessions</div><div class="hf-v num" id="d-sess">—</div></div>
         </div>
       </div>
+
+      <div class="span-all" id="d-fleet"></div>
 
       <div id="d-posbox" class="span-all"></div>
 
@@ -876,16 +900,20 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       </div>
 
       <div class="card span-all">
-        <div class="card-h"><span class="card-t">Live activity</span>
-          <span class="dim mono" id="d-livecount" style="font-size:10px"></span></div>
-        <div id="d-live" class="livelist"></div>
-      </div>
-
-      <div class="card span-all">
         <div class="card-h"><span class="card-t">Market news</span>
           <span class="dim mono" id="d-newsage" style="font-size:10px"></span></div>
         <div id="d-news" class="newslist"></div>
       </div>
+
+      <!-- Collapsed by default: it is a running log, useful on demand rather
+           than something to keep half a screen reserved for. -->
+      <details class="card span-all" id="d-livewrap">
+        <summary class="card-h" style="cursor:pointer;margin-bottom:0">
+          <span class="card-t">Live activity</span>
+          <span class="dim mono" id="d-livecount" style="font-size:10px"></span>
+        </summary>
+        <div id="d-live" class="livelist" style="margin-top:13px"></div>
+      </details>
     </div>
   </section>
 
@@ -898,7 +926,8 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       <div class="card span-all">
         <div class="card-h">
           <span class="card-t" id="ch-title">NIFTY 50 · TradingView</span>
-          <div style="display:flex;align-items:center;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div class="seg tvseg" id="tv-src"></div>
             <div class="seg tvseg" id="tv-tf">
               <button data-i="1">1m</button>
               <button class="on" data-i="5">5m</button>
@@ -909,6 +938,10 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
           </div>
         </div>
         <div id="tv-host" class="tvwrap"><div id="tv-chart"></div></div>
+        <div class="dim" style="font-size:10.5px;margin-top:8px;line-height:1.5">
+          NSE index feeds need a TradingView data subscription. The CFD mirrors
+          track the same index and quote for free — switch above if one is blank.
+        </div>
         <div class="tv-fallback" id="tv-fallback" hidden>
           TradingView could not load — the network may be blocking it.
           The bot's own chart below is unaffected.
@@ -970,23 +1003,36 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       <button data-p="all">All</button>
     </div>
     <div class="deck">
-      <div class="card">
-        <div class="card-h"><span class="card-t">Window</span></div>
-        <input class="field num" type="date" id="r-anchor">
-        <div class="dim mono" style="font-size:10.5px;margin-top:9px;letter-spacing:.5px" id="r-range">—</div>
-      </div>
-      <div class="card">
-        <div class="card-h"><span class="card-t">Export</span></div>
-        <div class="dl">
-          <a id="dl-pdf"><div class="ext">PDF</div><div class="lbl">REPORT</div></a>
-          <a id="dl-csv"><div class="ext">CSV</div><div class="lbl">SHEET</div></a>
-          <a id="dl-xlsx"><div class="ext">XLSX</div><div class="lbl">BOOK</div></a>
-          <a id="dl-json"><div class="ext">JSON</div><div class="lbl">RAW</div></a>
+      <!-- One card, read top to bottom: which algorithm, which dates, then
+           what the download will contain, then the buttons. The old layout
+           split those across two cards in no particular order. -->
+      <div class="card span-all">
+        <div class="card-h"><span class="card-t">Download a report</span></div>
+
+        <div class="rgrid">
+          <div>
+            <label class="lbl">Algorithm</label>
+            <div class="seg" id="r-slot" style="margin-bottom:0"></div>
+          </div>
+          <div>
+            <label class="lbl">Any date inside the window</label>
+            <input class="field num" type="date" id="r-anchor">
+          </div>
         </div>
-        <label class="sw" style="margin-top:8px">
-          <span style="font-size:12px">Include full event log</span>
+
+        <div class="rsum" id="r-what">—</div>
+
+        <label class="sw">
+          <span style="font-size:12.5px">Include the full event log</span>
           <span class="toggle" id="r-events"></span>
         </label>
+
+        <div class="dl">
+          <a id="dl-pdf" class="primary"><div class="ext">PDF</div><div class="lbl">Formatted report</div></a>
+          <a id="dl-csv"><div class="ext">CSV</div><div class="lbl">Spreadsheet</div></a>
+          <a id="dl-xlsx"><div class="ext">XLSX</div><div class="lbl">Excel workbook</div></a>
+          <a id="dl-json"><div class="ext">JSON</div><div class="lbl">Raw data</div></a>
+        </div>
       </div>
       <div class="card span-all" id="r-summary"></div>
       <div class="card span-all">
@@ -1137,7 +1183,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.17-obsidian.2-fleet";
+const BUILD = "2026.08.18-obsidian.3";
 
 /* The dashboard is a static file with nowhere of its own to keep state, so it
    has to be told which trading server to talk to. Rather than ask for that
@@ -1208,6 +1254,9 @@ async function api(path, opts = {}) {
 const dlUrl = (period, fmt) => {
   const p = new URLSearchParams({ period, format: fmt, token: S.token, anchor: S.anchor });
   if (S.includeEvents) p.set("events", "true");
+  // Omitted entirely for "all algorithms" — the endpoint reads a missing slot
+  // as the combined book, which is not the same as slot 0.
+  if (S.reportSlot != null) p.set("slot", String(S.reportSlot));
   return S.url + "/api/export?" + p.toString();
 };
 
@@ -1419,7 +1468,7 @@ function go(id) {
   if (id === "reports") loadReports();
   if (id === "ctrl") loadControl();
   if (id === "feed") renderFeed();
-  if (id === "chart") { loadChart(); mountTV(); }
+  if (id === "chart") { loadChart(); renderTVSources(); mountTV(); }
   if (id === "strategy") loadStrategy();
   if (id === "admin") { loadUsers(); loadAlgorithm(); }
   window.scrollTo(0, 0);
@@ -1636,48 +1685,72 @@ async function loadFleet() {
   } catch (e) {}
 }
 
+/* Which algorithm the deck is showing. Everything above this card — equity,
+   position, market, risk — is rendered from the selected slot's snapshot. */
+function deckSlot() { return S.deckSlot ?? 0; }
+
+function deckSnapshot() {
+  const f = S.fleet;
+  if (!f) return S.snap || {};
+  const lane = f.slots.find(s => s.slot === deckSlot());
+  return (lane && lane.snapshot) || {};
+}
+
 function renderFleet() {
   const f = S.fleet, box = $("#d-fleet");
   if (!f || !box) return;
 
-  // With one algorithm this is a single wide strip; with five it becomes a
-  // grid. The deck follows what is actually running rather than reserving
-  // empty space for slots nobody has filled.
-  const active = f.slots.filter(s => !s.empty || s.running);
-  const cols = Math.min(Math.max(active.length, 1), 3);
+  // Empty slots belong in Admin, where they can be filled. On the deck they
+  // are five identical grey rectangles saying nothing about the trading day.
+  const shown = f.slots.filter(s => !s.empty || s.running);
+  if (!shown.length) { box.innerHTML = ""; return; }
+  const cols = Math.min(shown.length, 3);
+
+  // A selection that points at a slot that has since been emptied would leave
+  // the deck rendering nothing, so it falls back to the first live lane.
+  if (!shown.some(s => s.slot === deckSlot())) S.deckSlot = shown[0].slot;
 
   const card = s => {
     const tone = s.last_error ? "bad" : s.running ? "good" : "idle";
     const pnl = s.day_pnl;
-    return `<div class="fl ${tone} ${s.empty ? "empty" : ""}">
+    return `<button class="fl ${tone} ${s.slot === deckSlot() ? "sel" : ""}"
+        data-deck="${s.slot}" type="button">
       <div class="fl-top">
         <span class="beacon ${tone}"></span>
         <span class="fl-name">${esc(s.name)}</span>
-        <span class="fl-state">${esc(s.running ? "running" : s.empty ? "empty" : s.state)}</span>
+        <span class="fl-state">${esc(s.running ? "running" : s.state)}</span>
       </div>
       <div class="fl-algo">${esc(s.algorithm || "—")}</div>
-      ${s.empty ? `<div class="fl-hint">Upload an algorithm in Admin to use this slot.</div>` : `
-        <div class="fl-nums">
-          <div><div class="fl-k">Day P&L</div>
-            <div class="fl-v num ${cls(pnl ?? 0)}">${pnl == null ? "—" : signed(pnl, 0)}</div></div>
-          <div><div class="fl-k">Trades</div>
-            <div class="fl-v num">${s.trades ?? "—"}</div></div>
-          <div><div class="fl-k">Position</div>
-            <div class="fl-v num">${s.position ? "open" : "flat"}</div></div>
-        </div>`}
+      <div class="fl-nums">
+        <div><div class="fl-k">Day P&L</div>
+          <div class="fl-v num ${cls(pnl ?? 0)}">${pnl == null ? "—" : signed(pnl, 0)}</div></div>
+        <div><div class="fl-k">Trades</div>
+          <div class="fl-v num">${s.trades ?? "—"}</div></div>
+        <div><div class="fl-k">Position</div>
+          <div class="fl-v num">${s.position ? "open" : "flat"}</div></div>
+      </div>
       ${s.last_error ? `<div class="fl-err">${esc(s.last_error)}</div>` : ""}
-    </div>`;
+    </button>`;
   };
 
+  const emptyCount = f.slots.length - shown.length;
   box.innerHTML = `
     <div class="card">
       <div class="card-h"><span class="card-t">Algorithms</span>
         <span class="dim mono" style="font-size:10px">
           ${f.running_count} of ${f.max_slots} running${
-            f.memory_free_mb != null ? ` · ${f.memory_free_mb} MB free` : ""}</span></div>
+            f.memory_free_mb != null ? ` · ${f.memory_free_mb} MB free` : ""}${
+            emptyCount ? ` · ${emptyCount} slot${emptyCount > 1 ? "s" : ""} free` : ""}</span></div>
       ${f.capacity_warning ? `<div class="cap-warn">${esc(f.capacity_warning)}</div>` : ""}
-      <div class="flgrid" style="--fl-cols:${cols}">${f.slots.map(card).join("")}</div>
+      ${shown.length > 1 ? `<div class="dim" style="font-size:11px;margin-bottom:10px">
+        Tap an algorithm to show its numbers above.</div>` : ""}
+      <div class="flgrid" style="--fl-cols:${cols}">${shown.map(card).join("")}</div>
     </div>`;
+
+  $$("[data-deck]").forEach(el => el.onclick = () => {
+    S.deckSlot = Number(el.dataset.deck);
+    renderFleet(); renderDash();
+  });
 }
 
 /* ---------------- live activity ---------------- */
@@ -1721,8 +1794,13 @@ function renderNews() {
 }
 
 function renderDash() {
-  const s = S.snap || {}, st = S.status || {};
-  const running = st.running;
+  // Slot 0 keeps using the websocket snapshot, which updates the instant a
+  // status event lands. Other slots read from the fleet poll, because the
+  // socket's own snapshot only ever tracks whichever lane it belongs to.
+  const s = deckSlot() === 0 ? (S.snap || {}) : deckSnapshot();
+  const st = S.status || {};
+  const lane = (S.fleet && S.fleet.slots.find(x => x.slot === deckSlot())) || null;
+  const running = lane ? lane.running : st.running;
 
   const p = $("#h-state"), t = $("#h-state-t");
   const stateTxt = st.state === "error" ? "fault" : running ? "running" : (st.state || "idle");
@@ -1793,13 +1871,25 @@ function renderDash() {
     </div>`;
   } else {
     const d = s.decision || {};
+    // Flat, so there is no live contract. The watched strike and its last
+    // premium are still worth showing — "nothing here" was reading as a bug.
+    const w = s.watching || s.candidate || {};
+    const lastPx = w.premium ?? w.ltp ?? s.last_premium;
     box.innerHTML = `<div class="card"><div class="reason">
       <div class="reason-icon">◈</div>
       <div style="min-width:0">
-        <div class="reason-code">${esc(d.reason || (st.running ? "standing by" : "offline"))}</div>
-        <div class="reason-text">${esc(d.detail || (st.running ? "Evaluating the market." :
+        <div class="reason-code">${esc(d.reason || (running ? "standing by" : "offline"))}</div>
+        <div class="reason-text">${esc(d.detail || (running ? "Evaluating the market." :
           (st.not_trading_reason || "Start the session from Control, or wait for the 09:15 schedule.")))}</div>
-      </div></div></div>`;
+      </div></div>
+      <div class="contract">
+        <div class="ct-i"><div class="ct-k">Contract</div>
+          <div class="ct-v num dim">${w.symbol ? esc(w.symbol) : "none held"}</div></div>
+        <div class="ct-i"><div class="ct-k">Last premium</div>
+          <div class="ct-v num">${lastPx == null ? "—" : money(lastPx, 2)}</div></div>
+        <div class="ct-i"><div class="ct-k">Position value</div>
+          <div class="ct-v num dim">${money(0, 0)}</div></div>
+      </div></div>`;
   }
 
   const m = s.market || {};
@@ -1970,10 +2060,28 @@ async function loadTrades() {
    path of a dashboard whose job is showing whether the bot is alive.
 ==================================================== */
 const TV_SRC = "https://s3.tradingview.com/tv.js";
-const TV_SYMBOL = { NIFTY: "NSE:NIFTY", BANKNIFTY: "NSE:BANKNIFTY",
-                    FINNIFTY: "NSE:CNXFINANCE" };
+/* NSE index symbols are licensed, and the free widget answers "this symbol is
+   only available on TradingView" for NSE:NIFTY. The CFD mirrors of the same
+   index are freely quotable and track it closely enough to read a chart from,
+   so one of those leads and the exchange feed is offered second for anyone
+   whose TradingView account is entitled to it. */
+const TV_SOURCES = {
+  NIFTY: [
+    { label: "India 50", symbol: "CAPITALCOM:INDIA50" },
+    { label: "IN50", symbol: "OANDA:IN50USD" },
+    { label: "NSE", symbol: "NSE:NIFTY" },
+  ],
+  BANKNIFTY: [
+    { label: "Bank Nifty", symbol: "NSE:BANKNIFTY" },
+    { label: "India 50", symbol: "CAPITALCOM:INDIA50" },
+  ],
+  FINNIFTY: [
+    { label: "Fin Nifty", symbol: "NSE:CNXFINANCE" },
+    { label: "India 50", symbol: "CAPITALCOM:INDIA50" },
+  ],
+};
 
-let tvWidget = null, tvLoading = null, tvInterval = "5";
+let tvWidget = null, tvLoading = null, tvInterval = "5", tvSource = 0;
 
 function tvScript() {
   if (tvLoading) return tvLoading;
@@ -1988,10 +2096,26 @@ function tvScript() {
   return tvLoading;
 }
 
-function tvInstrument() {
+function tvSourceList() {
   const idx = ((S.strategy && S.strategy.values && S.strategy.values.INDEX_NAME)
                || (S.snap.market && S.snap.market.index) || "NIFTY");
-  return TV_SYMBOL[String(idx).toUpperCase()] || TV_SYMBOL.NIFTY;
+  return TV_SOURCES[String(idx).toUpperCase()] || TV_SOURCES.NIFTY;
+}
+
+function tvInstrument() {
+  const list = tvSourceList();
+  return (list[tvSource] || list[0]).symbol;
+}
+
+function renderTVSources() {
+  const box = $("#tv-src"); if (!box) return;
+  const list = tvSourceList();
+  box.innerHTML = list.map((s, i) => `
+    <button data-src="${i}" class="${i === tvSource ? "on" : ""}">${esc(s.label)}</button>`).join("");
+  $$("[data-src]").forEach(b => b.onclick = () => {
+    tvSource = Number(b.dataset.src);
+    renderTVSources(); mountTV(true);
+  });
 }
 
 async function mountTV(force) {
@@ -2373,12 +2497,39 @@ function setDownloads() {
   [$("#dl-csv"), $("#dl-xlsx"), $("#dl-json")].forEach(a => a.setAttribute("download", ""));
 }
 
+function renderReportSlots() {
+  const box = $("#r-slot"); if (!box) return;
+  const lanes = ((S.fleet && S.fleet.slots) || []).filter(x => !x.empty);
+  // With a single algorithm there is nothing to choose between, so the picker
+  // stays out of the way rather than offering "All" against one lane.
+  const opts = lanes.length > 1
+    ? [{ v: null, label: "All" }, ...lanes.map(l => ({ v: l.slot, label: l.name }))]
+    : [];
+  if (!opts.length) { box.innerHTML = ""; box.style.display = "none"; return; }
+  box.style.display = "";
+  box.innerHTML = opts.map(o => `
+    <button data-rs="${o.v == null ? "" : o.v}"
+      class="${(o.v ?? null) === (S.reportSlot ?? null) ? "on" : ""}">${esc(o.label)}</button>`).join("");
+  $$("[data-rs]").forEach(b => b.onclick = () => {
+    S.reportSlot = b.dataset.rs === "" ? null : Number(b.dataset.rs);
+    renderReportSlots(); loadReports();
+  });
+}
+
 async function loadReports() {
   setDownloads();
+  renderReportSlots();
   try {
-    const sum = await api(`/api/summary?period=${S.reportPeriod}&anchor=${S.anchor}`);
+    const q = S.reportSlot != null ? `&slot=${S.reportSlot}` : "";
+    const sum = await api(`/api/summary?period=${S.reportPeriod}&anchor=${S.anchor}${q}`);
     const s = sum.summary, r = sum.range;
-    $("#r-range").textContent = `${r.start} → ${r.end}`.toUpperCase();
+    const who = S.reportSlot == null ? "every algorithm"
+      : (((S.fleet && S.fleet.slots) || []).find(x => x.slot === S.reportSlot) || {}).name
+        || `slot ${S.reportSlot + 1}`;
+    $("#r-what").innerHTML =
+      `<b>${esc(r.label)}</b> · ${r.start} → ${r.end}<br>
+       ${s.trades} trade${s.trades === 1 ? "" : "s"} across ${s.sessions}
+       session${s.sessions === 1 ? "" : "s"} · ${esc(who)}`;
     $("#r-summary").innerHTML = `
       <div class="card-h"><span class="card-t">${esc(r.label)}</span></div>
       <div class="mgrid">

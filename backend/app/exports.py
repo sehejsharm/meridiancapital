@@ -11,7 +11,7 @@ import io
 import json
 from calendar import monthrange
 from datetime import date, datetime, timedelta
-from typing import Iterable, Literal
+from typing import Iterable, Literal, Optional
 
 from . import db
 
@@ -92,26 +92,30 @@ def filename(period: str, start: str, end: str, ext: str) -> str:
 # ------------------------------------------------------------------ payload
 
 
-def build_payload(start: str, end: str, label: str, include_events: bool = False) -> dict:
-    trades = db.trades_between(start, end)
-    sessions = db.sessions_between(start, end)
-    summary = db.aggregate(start, end)
+def build_payload(start: str, end: str, label: str, include_events: bool = False,
+                  slot: Optional[int] = None) -> dict:
+    """`slot=None` reports the whole book; a slot reports one algorithm."""
+    trades = db.trades_between(start, end, slot=slot)
+    sessions = db.sessions_between(start, end, slot=slot)
+    summary = db.aggregate(start, end, slot=slot)
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "slot": slot,
         "range": {"start": start, "end": end, "label": label},
         "summary": summary,
         "sessions": sessions,
         "trades": trades,
     }
     if include_events:
-        payload["events"] = db.query(
-            """SELECT ts, session_date, kind, level, message, payload
-                 FROM events
-                WHERE session_date >= ? AND session_date <= ?
-                  AND kind != 'log'
-                ORDER BY id""",
-            (start, end),
-        )
+        sql = ("""SELECT ts, session_date, slot, kind, level, message, payload
+                    FROM events
+                   WHERE session_date >= ? AND session_date <= ?
+                     AND kind != 'log'""")
+        params: list = [start, end]
+        if slot is not None:
+            sql += " AND slot = ?"
+            params.append(slot)
+        payload["events"] = db.query(sql + " ORDER BY id", params)
     return payload
 
 

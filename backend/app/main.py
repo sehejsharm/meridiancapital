@@ -872,10 +872,12 @@ async def export(
     end: Optional[str] = None,
     format: str = Query(default="csv", pattern="^(csv|json|xlsx|pdf)$"),
     events: bool = Query(default=False, description="include the full event log"),
+    slot: Optional[int] = Query(default=None, ge=0, le=4,
+                                description="one algorithm, or every one if omitted"),
     _: str = Depends(require_token_query),
 ):
     s, e, label = _range(period, anchor, start, end)
-    payload = exports.build_payload(s, e, label, include_events=events)
+    payload = exports.build_payload(s, e, label, include_events=events, slot=slot)
 
     if format == "json":
         body = exports.to_json(payload).encode()
@@ -904,15 +906,17 @@ async def export_preview(
     anchor: Optional[str] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
+    slot: Optional[int] = Query(default=None, ge=0, le=4),
     _: str = Depends(require_token),
 ):
     """What the download will contain, so the app can show it before saving."""
     s, e, label = _range(period, anchor, start, end)
     return {
         "range": {"start": s, "end": e, "label": label},
-        "summary": db.aggregate(s, e),
-        "sessions": len(db.sessions_between(s, e)),
-        "trades": len(db.trades_between(s, e)),
+        "slot": slot,
+        "summary": db.aggregate(s, e, slot=slot),
+        "sessions": len(db.sessions_between(s, e, slot=slot)),
+        "trades": len(db.trades_between(s, e, slot=slot)),
         "formats": ["csv", "pdf", "xlsx", "json"],
     }
 

@@ -349,12 +349,23 @@ console.log('\nFleet');
   sandbox.renderFleet();
   const out = sandbox.document.querySelector('#d-fleet').innerHTML;
 
-  check('every slot is shown', (out.match(/class="fl /g) || []).length === 5,
+  // Empty slots belong in Admin where they can be filled — on the deck they
+  // were five identical grey rectangles saying nothing about the trading day.
+  check('only slots with an algorithm are shown',
+        (out.match(/class="fl /g) || []).length === 2,
         String((out.match(/class="fl /g) || []).length));
+  check('the free slots are counted rather than drawn',
+        out.includes('3 slots free'), out.match(/\d+ slots? free/)?.[0]);
   check('the running slot reads good', out.includes('fl good'));
   check('the faulted slot reads bad', out.includes('fl bad'));
   check('a faulted slot prints its error', out.includes('Angel One login rejected'));
-  check('empty slots say what to do', out.includes('Upload an algorithm'));
+
+  // Selecting a lane is what switches the deck above it.
+  check('slots are selectable', out.includes('data-deck="0"') && out.includes('data-deck="2"'));
+  check('one lane is marked as selected', (out.match(/fl [a-z]+ sel/g) || []).length === 1,
+        String((out.match(/sel/g) || []).length));
+  check('with more than one lane it says they are tappable',
+        out.includes('Tap an algorithm'));
   check('memory headroom is reported', out.includes('430 MB free'));
   check('the running count is shown', out.includes('1 of 5 running'));
   check('per-slot P&L is attributed', out.includes('2,609'));
@@ -367,6 +378,29 @@ console.log('\nFleet');
   sandbox.renderFleet();
   check('a memory warning surfaces',
         sandbox.document.querySelector('#d-fleet').innerHTML.includes('cap-warn'));
+
+  // The deck has to read from the selected lane, not always from slot 0 —
+  // that was the bug: slot 2 could not be inspected at all.
+  evaluate('S.fleet.slots[0].snapshot = { equity: 19615, day_pnl: 0 }');
+  evaluate('S.fleet.slots[2].snapshot = { equity: 24100, day_pnl: 1400 }');
+  evaluate('S.deckSlot = 2');
+  check('the deck reads the selected slot',
+        evaluate('deckSnapshot().equity') === 24100,
+        String(evaluate('deckSnapshot().equity')));
+  evaluate('S.deckSlot = 0');
+  check('and switches back', evaluate('deckSnapshot().equity') === 19615);
+
+  // Selecting a lane that is later emptied must not blank the deck.
+  evaluate('S.deckSlot = 4');
+  sandbox.renderFleet();
+  check('a selection on a vanished slot falls back to a live one',
+        evaluate('deckSlot()') === 0, String(evaluate('deckSlot()')));
+
+  // A single algorithm needs no picker and no instruction to tap anything.
+  evaluate('S.fleet.slots = S.fleet.slots.slice(0,1); S.fleet.capacity_warning = null');
+  sandbox.renderFleet();
+  const solo = sandbox.document.querySelector('#d-fleet').innerHTML;
+  check('one algorithm draws no tap hint', !solo.includes('Tap an algorithm'));
 }
 
 console.log('\nNews');
