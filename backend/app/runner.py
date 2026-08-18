@@ -692,12 +692,12 @@ def capacity_warning() -> Optional[str]:
     if free is None:
         return None
     if free < SLOT_FOOTPRINT_MB:
-        return (f"Only {free} MB of memory is free and an algorithm needs about "
-                f"{SLOT_FOOTPRINT_MB} MB. Starting another one will push this "
+        return (f"{free} MB AVAILABLE — CAPACITY EXHAUSTED. An algorithm needs "
+                f"about {SLOT_FOOTPRINT_MB} MB; starting another will force this "
                 f"server into swap, which costs fills.")
     if free < SLOT_FOOTPRINT_MB * 2:
-        return (f"{free} MB free — room for about one more algorithm. "
-                f"Watch the memory reading before starting others.")
+        return (f"{free} MB AVAILABLE — CAPACITY: +1 ALGORITHM. "
+                f"Monitor memory utilisation before deploying further.")
     return None
 
 

@@ -35,6 +35,7 @@ from . import db, exports, news, strategy_config, users
 from .auth import (authorise_websocket, require_operator, require_super_admin,
                    require_token, require_token_query)
 from .config import settings
+from .holidays import expiry_state
 from .runner import MAX_SLOTS, fleet, fleet_status, get_slot, supervisor
 from .scheduler import (next_runs, reschedule, set_schedule_enabled,
                         shutdown_scheduler, start_scheduler)
@@ -223,7 +224,8 @@ async def login(body: LoginRequest, request: Request):
     if session is None:
         auth_mod.record_failure(ip)
         log.warning("failed login for %r from %s", body.username[:32], ip)
-        raise HTTPException(status_code=401, detail="Incorrect username or password")
+        raise HTTPException(status_code=401,
+                            detail="Incorrect operator name or passcode")
 
     auth_mod.clear_failures(ip)
     log.info("login succeeded for %s from %s", session["user"], ip)
@@ -543,6 +545,9 @@ def _diagnostics() -> dict:
         "paper": snap.get("paper", settings.paper_mode),
         "is_trading_day": st.get("is_trading_day"),
         "not_trading_reason": st.get("not_trading_reason"),
+        # Computed here rather than read from the algorithm, so it is on screen
+        # whether or not anything is running.
+        "expiry": expiry_state(now.date(), settings.skip_holidays),
         "inside_window": st.get("inside_window"),
         "schedule": st.get("schedule"),
         "schedule_next": next_runs(),

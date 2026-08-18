@@ -369,8 +369,8 @@ console.log('\nFleet');
   check('slots are selectable', out.includes('data-deck="0"') && out.includes('data-deck="2"'));
   check('one lane is marked as selected', (out.match(/fl [a-z]+ sel/g) || []).length === 1,
         String((out.match(/sel/g) || []).length));
-  check('with more than one lane it says they are tappable',
-        out.includes('Tap an algorithm'));
+  check('with more than one lane it invites a selection',
+        out.includes('Select an algorithm'));
   check('memory headroom is reported', out.includes('430 MB free'));
   check('the running count is shown', out.includes('1 of 5 running'));
   check('per-slot P&L is attributed', out.includes('2,609'));
@@ -414,7 +414,7 @@ console.log('\nFleet');
   sandbox.renderFleet();
   const silent = sandbox.document.querySelector('#d-fleet').innerHTML;
   check('a silent algorithm says so on its card',
-        silent.includes('sending no data'), silent.slice(0, 200));
+        silent.includes('NO TELEMETRY'), silent.slice(0, 200));
   check('and does not print a fake zero P&L for it',
         !/Slot 2[\s\S]*?Day P&L/.test(silent));
 
@@ -438,7 +438,7 @@ console.log('\nFleet');
   evaluate('S.fleet.slots = S.fleet.slots.slice(0,1)');
   sandbox.renderFleet();
   const solo = sandbox.document.querySelector('#d-fleet').innerHTML;
-  check('one algorithm draws no tap hint', !solo.includes('Tap an algorithm'));
+  check('one algorithm draws no selection hint', !solo.includes('Select an algorithm'));
 }
 
 console.log('\nNews');
@@ -458,6 +458,84 @@ console.log('\nNews');
   sandbox.renderNews();
   check('an empty feed explains itself',
         sandbox.document.querySelector('#d-news').innerHTML.includes('News is unavailable'));
+}
+
+console.log('\nLog collapsing');
+{
+  // An uploaded algorithm printing on every tick was pushing every meaningful
+  // line off the screen inside a minute.
+  const spam = [];
+  for (let i = 0; i < 40; i++) {
+    spam.push({ ts: `2026-08-18T12:0${i % 10}:00`, kind: 'log', level: 'info',
+                message: '[EXPIRY_DAY] Not an expiry day' });
+  }
+  const mixed = [
+    { ts: '2026-08-18T11:59:00', kind: 'log', level: 'info', message: 'boot' },
+    ...spam,
+    { ts: '2026-08-18T12:10:00', kind: 'entry', level: 'success', message: 'BOUGHT 24500CE' },
+  ];
+  const rows = sandbox.collapse(mixed);
+  check(`40 identical lines collapse to one (${rows.length} rows)`, rows.length === 3,
+        String(rows.length));
+  check('the repeat count is carried', rows[1]._n === 40, String(rows[1]._n));
+  check('the last occurrence is recorded', !!rows[1]._last);
+  check('the meaningful entry survives the spam',
+        rows[2].message === 'BOUGHT 24500CE');
+
+  // Different messages must not be merged just because they are adjacent.
+  const distinct = sandbox.collapse([
+    { kind: 'log', level: 'info', message: 'a' },
+    { kind: 'log', level: 'info', message: 'b' },
+    { kind: 'log', level: 'info', message: 'a' },
+  ]);
+  check('distinct lines are kept apart', distinct.length === 3);
+  // Same text at a different severity is a different event.
+  const bysev = sandbox.collapse([
+    { kind: 'log', level: 'info', message: 'x' },
+    { kind: 'log', level: 'error', message: 'x' },
+  ]);
+  check('severity change breaks the run', bysev.length === 2);
+}
+
+console.log('\nIdle reason badges');
+{
+  const badge = (reason, running = true) =>
+    sandbox.idleBadge({ running, snapshot: { decision: { reason, detail: 'why' } } });
+
+  check('an expiry block is named and amber',
+        badge('EXPIRY_DAY').includes('EXPIRY BLOCK') && badge('EXPIRY_DAY').includes('idle warn'));
+  check('a tripped kill switch reads as bad',
+        badge('DAILY_KILL').includes('idle bad') && badge('DAILY_KILL').includes('KILL SWITCH'));
+  check('low volatility is explained, not just labelled',
+        badge('LOW_VOL').includes('too quiet'), badge('LOW_VOL'));
+  check('being outside the session is neutral',
+        badge('PRE_WINDOW').includes('idle idle'));
+  check('holding a position needs no badge', badge('IN_POSITION') === '');
+  check('a stopped algorithm shows nothing', badge('LOW_VOL', false) === '');
+  check('an unknown reason still renders readably',
+        badge('SOME_NEW_REASON').includes('SOME NEW REASON'),
+        badge('SOME_NEW_REASON'));
+}
+
+console.log('\nZero P&L');
+{
+  evaluate(`S.fleet = null; S.deckSlot = 0;
+            S.snap = { paper: true, equity: 20000, open_equity: 20000, day_pnl: 0 };
+            S.status = {}`);
+  sandbox.renderDash();
+  const chip = sandbox.document.querySelector('#d-day');
+  check('a flat day reads FLAT, not +₹0', chip.textContent === 'FLAT', chip.textContent);
+  check('and is neutral rather than green',
+        chip.className.includes('flat') && !chip.className.includes('up'), chip.className);
+
+  evaluate('S.snap.day_pnl = 1400');
+  sandbox.renderDash();
+  check('a gain is still green',
+        sandbox.document.querySelector('#d-day').className.includes('up'));
+  evaluate('S.snap.day_pnl = -400');
+  sandbox.renderDash();
+  check('a loss is still red',
+        sandbox.document.querySelector('#d-day').className.includes('down'));
 }
 
 console.log('\nPluralisation');

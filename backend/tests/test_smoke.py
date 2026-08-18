@@ -278,6 +278,48 @@ def test_exports() -> None:
     check(f"filename sensible ({name})", name.endswith(".csv") and "2026-08-01" in name)
 
 
+def test_expiry() -> None:
+    """NSE expiry: every Thursday, monthly on the last one, shifted by holidays."""
+    print("\nExpiry calendar")
+    from app.holidays import expiry_kind, expiry_state, next_expiry
+
+    # August 2026: Thursdays fall on 6, 13, 20, 27 — the 27th is the last.
+    check("a mid-week day is not an expiry", expiry_kind(date(2026, 8, 18)) == "none")
+    check("an ordinary Thursday is a weekly expiry",
+          expiry_kind(date(2026, 8, 13)) == "weekly", expiry_kind(date(2026, 8, 13)))
+    check("the last Thursday is the monthly expiry",
+          expiry_kind(date(2026, 8, 27)) == "monthly", expiry_kind(date(2026, 8, 27)))
+    check("a weekend is never an expiry", expiry_kind(date(2026, 8, 22)) == "none")
+
+    nxt, kind = next_expiry(date(2026, 8, 18))
+    check(f"the next expiry from Tue 18th is Thu 20th ({nxt})",
+          nxt == date(2026, 8, 20) and kind == "weekly", f"{nxt} {kind}")
+
+    st = expiry_state(date(2026, 8, 18))
+    check("state reports no expiry today", st["is_expiry"] is False)
+    check("state counts the days to the next one", st["days_to_next"] == 2,
+          str(st["days_to_next"]))
+    check("state labels a non-expiry day NONE", st["label"] == "NONE")
+    check("state labels the monthly correctly",
+          expiry_state(date(2026, 8, 27))["label"] == "MONTHLY")
+
+    # Only one monthly expiry per month, and it is a Thursday.
+    for month in range(1, 13):
+        monthlies = [d for d in range(1, 29 + 3)
+                     if _valid(2026, month, d)
+                     and expiry_kind(date(2026, month, d)) == "monthly"]
+        check(f"2026-{month:02d} has exactly one monthly expiry",
+              len(monthlies) == 1, str(monthlies))
+
+
+def _valid(y: int, m: int, d: int) -> bool:
+    try:
+        date(y, m, d)
+        return True
+    except ValueError:
+        return False
+
+
 def test_log_severity() -> None:
     """The counter has to be trustworthy or the operator stops reading it."""
     print("\nLog severity")
@@ -570,7 +612,7 @@ def test_api() -> None:
                         json={"username": "someone", "password": "test-passcode-9931"})
         check("wrong username refused", r.status_code == 401)
         check("failure message does not reveal which field was wrong",
-              "username or password" in r.json()["detail"].lower(), r.text[:160])
+              "operator name or passcode" in r.json()["detail"].lower(), r.text[:160])
 
         r = client.post("/api/auth/login",
                         json={"username": "sehej", "password": "test-passcode-9931"})
@@ -617,6 +659,7 @@ def main() -> int:
     test_storage()
     test_aggregate()
     test_exports()
+    test_expiry()
     test_log_severity()
     test_news()
     test_api()

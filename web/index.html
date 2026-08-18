@@ -138,6 +138,40 @@ body::after{content:"";position:fixed;inset:-30%;pointer-events:none;z-index:0;
 .field:focus{border-color:var(--au);background:var(--raised);
   box-shadow:0 0 0 3px rgba(232,196,88,.11),0 0 22px -6px var(--glow)}
 .field::placeholder{color:var(--faint)}
+
+/* Chrome paints its own near-white fill over autofilled inputs, which is why
+   the passcode field flashed white on a failed sign-in — the browser refilled
+   it. background-color is not overridable on :-webkit-autofill, so the fill is
+   pushed out of view with a long inset shadow and the text colour is forced. */
+.field:-webkit-autofill,
+.field:-webkit-autofill:hover,
+.field:-webkit-autofill:focus,
+.field:-webkit-autofill:active{
+  -webkit-text-fill-color:var(--text) !important;
+  -webkit-box-shadow:0 0 0 1000px var(--surface-2) inset !important;
+  box-shadow:0 0 0 1000px var(--surface-2) inset !important;
+  caret-color:var(--text);
+  transition:background-color 9999s ease-out 0s}
+.field:-webkit-autofill:focus{
+  -webkit-box-shadow:0 0 0 1000px var(--raised) inset,
+                     0 0 0 3px rgba(232,196,88,.11) !important}
+
+/* A failed sign-in marks the field rather than repainting it. */
+.field.err{border-color:var(--down);
+  box-shadow:0 0 0 3px rgba(255,85,102,.12),0 0 20px -8px var(--down-glow)}
+.field.err:-webkit-autofill{
+  -webkit-box-shadow:0 0 0 1000px var(--surface-2) inset,
+                     0 0 0 3px rgba(255,85,102,.12) !important}
+
+.pwwrap{position:relative}
+.pwwrap .field{padding-right:44px}
+.pweye{position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  width:32px;height:32px;display:grid;place-items:center;border-radius:6px;
+  color:var(--dim);transition:color .2s var(--ease),background .2s var(--ease)}
+.pweye:hover{color:var(--au);background:var(--au-bg)}
+.pweye svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.6}
+.pweye.on{color:var(--au)}
+.pweye.on svg{opacity:.95}
 .btn{background:linear-gradient(180deg,var(--au-lit),var(--au) 46%,var(--au-mid));
   color:#140f00;border-radius:8px;padding:15px;font-weight:800;
   font-size:12.5px;letter-spacing:1.7px;text-transform:uppercase;font-family:var(--mono);
@@ -160,6 +194,87 @@ body::after{content:"";position:fixed;inset:-30%;pointer-events:none;z-index:0;
 .gate-msg.err{color:var(--down)}
 .gate-foot{font-size:10px;color:var(--faint);letter-spacing:1.4px;text-transform:uppercase;
   margin-top:24px;font-family:var(--mono)}
+
+/* ================= boot sequence =================
+   Plays once per browser session, after a successful sign-in only. A resumed
+   session goes straight to the deck — nobody wants three seconds of ceremony
+   between them and an open position.
+==================================================== */
+#boot{position:fixed;inset:0;z-index:500;background:#000;
+  display:grid;place-items:center;transition:opacity .5s ease}
+#boot[hidden]{display:none}
+#boot.out{opacity:0;pointer-events:none}
+.boot-inner{position:relative;display:flex;flex-direction:column;align-items:center;
+  padding:20px;text-align:center}
+.boot-mark{width:min(190px,42vw);height:auto;
+  filter:drop-shadow(0 0 0 rgba(232,196,88,0));
+  animation:bootPulse 1.1s var(--ease) .1s both}
+/* The dial spins up like a gyroscope finding north, then holds. */
+.boot-ring{transform-origin:256px 256px;animation:bootSpin 9s linear .5s infinite}
+.boot-rose{transform-origin:256px 256px;animation:bootSpinBack 14s linear .5s infinite}
+@keyframes bootPulse{
+  0%{opacity:0;transform:scale(.86);filter:drop-shadow(0 0 0 rgba(232,196,88,0))}
+  55%{opacity:1;transform:scale(1.04);filter:drop-shadow(0 0 38px rgba(232,196,88,.75))}
+  100%{opacity:1;transform:scale(1);filter:drop-shadow(0 0 20px rgba(232,196,88,.38))}}
+@keyframes bootSpin{to{transform:rotate(360deg)}}
+@keyframes bootSpinBack{to{transform:rotate(-360deg)}}
+
+/* Thin rays thrown out from the centre as it comes up. */
+.boot-burst{position:absolute;top:min(95px,21vw);left:50%;width:2px;height:2px;
+  transform:translate(-50%,-50%);pointer-events:none;
+  background:
+    conic-gradient(from 0deg,
+      rgba(232,196,88,.5) 0deg 1deg, transparent 1deg 22deg,
+      rgba(232,196,88,.5) 22deg 23deg, transparent 23deg 45deg,
+      rgba(232,196,88,.5) 45deg 46deg, transparent 46deg 68deg,
+      rgba(232,196,88,.5) 68deg 69deg, transparent 69deg 90deg,
+      rgba(232,196,88,.5) 90deg 91deg, transparent 91deg 113deg,
+      rgba(232,196,88,.5) 113deg 114deg, transparent 114deg 136deg,
+      rgba(232,196,88,.5) 136deg 137deg, transparent 137deg 158deg,
+      rgba(232,196,88,.5) 158deg 159deg, transparent 159deg 180deg,
+      rgba(232,196,88,.5) 180deg 181deg, transparent 181deg 202deg,
+      rgba(232,196,88,.5) 202deg 203deg, transparent 203deg 225deg,
+      rgba(232,196,88,.5) 225deg 226deg, transparent 226deg 248deg,
+      rgba(232,196,88,.5) 248deg 249deg, transparent 249deg 270deg,
+      rgba(232,196,88,.5) 270deg 271deg, transparent 271deg 292deg,
+      rgba(232,196,88,.5) 292deg 293deg, transparent 293deg 315deg,
+      rgba(232,196,88,.5) 315deg 316deg, transparent 316deg 338deg,
+      rgba(232,196,88,.5) 338deg 339deg, transparent 339deg 360deg);
+  mask-image:radial-gradient(circle,transparent 34%,#000 42%,#000 62%,transparent 78%);
+  -webkit-mask-image:radial-gradient(circle,transparent 34%,#000 42%,#000 62%,transparent 78%);
+  animation:bootBurst 1.5s var(--ease) .45s both}
+@keyframes bootBurst{
+  0%{width:2px;height:2px;opacity:0}
+  30%{opacity:.95}
+  100%{width:min(560px,125vw);height:min(560px,125vw);opacity:0}}
+
+.boot-name{margin-top:26px;font-family:var(--mono);font-size:clamp(15px,4.4vw,19px);
+  font-weight:600;letter-spacing:7px;color:var(--au-lit);min-height:1.3em;
+  text-shadow:0 0 26px rgba(232,196,88,.5)}
+.boot-tag{margin-top:11px;font-family:var(--mono);font-size:clamp(9.5px,2.6vw,11.5px);
+  letter-spacing:4px;color:var(--muted);min-height:1.3em}
+.boot-name span,.boot-tag span{opacity:0;animation:bootLetter .34s var(--ease) both}
+@keyframes bootLetter{from{opacity:0;filter:blur(5px)}to{opacity:1;filter:none}}
+.boot-rule{margin-top:26px;height:1px;width:0;
+  background:linear-gradient(90deg,transparent,var(--au),transparent);
+  animation:bootRule 1s var(--ease) 1.65s both}
+@keyframes bootRule{to{width:min(420px,84vw)}}
+.boot-skip{margin-top:22px;font-family:var(--mono);font-size:10px;letter-spacing:2px;
+  color:var(--faint);opacity:0;animation:bootSkip .5s ease 1.9s both}
+@keyframes bootSkip{to{opacity:.75}}
+
+@media (prefers-reduced-motion:reduce){
+  .boot-ring,.boot-rose,.boot-burst{animation:none}
+  .boot-mark{animation:none;filter:drop-shadow(0 0 20px rgba(232,196,88,.38))}
+  .boot-name span,.boot-tag span{animation:none;opacity:1}
+  .boot-rule{animation:none;width:min(420px,84vw)}}
+
+/* ---- button busy state ---- */
+.btn.busy{pointer-events:none;opacity:.9}
+.spin{display:inline-block;width:12px;height:12px;margin-right:8px;
+  vertical-align:-2px;border:2px solid rgba(20,15,0,.3);border-top-color:#140f00;
+  border-radius:99px;animation:spin1 .7s linear infinite}
+@keyframes spin1{to{transform:rotate(360deg)}}
 
 /* ================= chrome ================= */
 #rail{display:none}
@@ -256,7 +371,7 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .sx-k{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);
   font-family:var(--mono)}
 .sx-v{font-size:13.5px;margin-top:4px;font-family:var(--mono);white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis}
+  overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
 .faults{margin-top:13px;border-top:1px solid var(--line);padding-top:11px}
 .faults summary{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;
   color:var(--down);cursor:pointer;font-family:var(--mono)}
@@ -308,7 +423,8 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .metric:hover{border-color:var(--line-2);transform:translateY(-1px)}
 .m-k{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);
   font-family:var(--mono)}
-.m-v{font-size:19px;margin-top:6px;font-family:var(--mono);font-weight:500;letter-spacing:-.4px}
+.m-v{font-size:19px;margin-top:6px;font-family:var(--mono);font-weight:500;
+  letter-spacing:-.4px;text-transform:uppercase}
 .m-s{font-size:10.5px;color:var(--muted);margin-top:3px;font-family:var(--mono)}
 .bar{height:3px;background:rgba(232,196,88,.1);margin-top:10px;overflow:hidden;border-radius:99px}
 .bar span{display:block;height:100%;border-radius:99px;
@@ -372,9 +488,17 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .ln{display:flex;gap:10px;padding:1px 0;word-break:break-word}
 .ln-t{color:var(--faint);flex-shrink:0;font-size:10px;padding-top:1px}
 .ln-m{white-space:pre-wrap;flex:1;min-width:0}
-.ln.error .ln-m{color:var(--down)} .ln.warn .ln-m{color:var(--au)}
-.ln.success .ln-m{color:var(--up)} .ln.info .ln-m{color:#b5af9f}
+.ln.error .ln-m,.ln.critical .ln-m{color:var(--down)}
+.ln.warn .ln-m{color:var(--au)}
+.ln.success .ln-m{color:var(--up)}
+.ln.info .ln-m{color:#b5af9f}
+/* Heartbeats and routine chatter recede so the meaningful lines stand out. */
+.ln.debug .ln-m{color:var(--dim);opacity:.75}
 .ln.evt .ln-m{color:var(--au-lit)}
+.ln.error{border-left:2px solid var(--down);padding-left:7px;margin-left:-9px}
+.ln.warn{border-left:2px solid var(--au);padding-left:7px;margin-left:-9px}
+.ln-n{background:rgba(255,255,255,.07);border-radius:4px;padding:0 5px;
+  font-size:10px;color:var(--muted);white-space:nowrap}
 .ln .tag{display:inline-block;padding:0 5px;background:var(--au-bg-2);
   color:var(--au);font-size:10px;font-weight:700;margin-right:7px;letter-spacing:1px}
 
@@ -446,6 +570,20 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
   font-family:var(--mono)}
 
 /* ================= chart ================= */
+/* Zero is neutral: a green "+₹0" reads as a win when nothing happened. */
+.chip.flat{background:rgba(255,255,255,.05);color:var(--muted);
+  border-color:var(--line)}
+
+/* An error count above zero should look like an alarm, not another statistic. */
+.sx-v.alarm{animation:alarmPulse 2s ease-in-out infinite}
+@keyframes alarmPulse{0%,100%{opacity:1}50%{opacity:.55}}
+
+/* Paper mode is safe, but forgetting which mode you are in is not. A thin
+   amber rule sits above everything while trading is simulated. */
+body.paper-mode::before{content:"";position:fixed;top:0;left:0;right:0;height:2px;
+  z-index:299;background:linear-gradient(90deg,transparent,var(--au),transparent);
+  opacity:.75;pointer-events:none}
+
 /* ---- real-money banner ----
    Always on screen while PAPER_MODE is false, above every other layer. The
    cost of not noticing is real orders. */
@@ -495,6 +633,8 @@ body.live-money{padding-top:22px}
 .fl-name{font-size:12.5px;font-weight:600;flex:1;min-width:0}
 .fl-state{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);
   font-family:var(--mono)}
+.linkpill{text-transform:uppercase}
+.tp-v{text-transform:uppercase}
 .fl-algo{font-size:10.5px;color:var(--muted);margin-top:7px;font-family:var(--mono);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fl-hint{font-size:10.5px;color:var(--dim);margin-top:9px;line-height:1.5}
@@ -502,11 +642,27 @@ body.live-money{padding-top:22px}
   padding-top:10px;border-top:1px solid var(--line)}
 .fl-k{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);
   font-family:var(--mono)}
-.fl-v{font-size:13.5px;margin-top:4px;font-family:var(--mono)}
+.fl-v{font-size:13.5px;margin-top:4px;font-family:var(--mono);text-transform:uppercase}
 .fl-err{margin-top:9px;font-size:10.5px;color:var(--down);font-family:var(--mono);
   line-height:1.5;word-break:break-word}
 .fl-silent{margin-top:11px;padding-top:10px;border-top:1px solid var(--line);
   font-size:11px;color:var(--au);font-family:var(--mono)}
+
+/* ---- why an algorithm is holding fire ---- */
+.idle{margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+.idle-b{display:inline-block;font-size:10px;letter-spacing:1.3px;font-family:var(--mono);
+  padding:2px 7px;border-radius:4px;border:1px solid transparent}
+.idle.warn .idle-b{color:var(--au);background:var(--au-bg);border-color:var(--line-2)}
+.idle.bad .idle-b{color:var(--down);background:var(--down-bg);
+  border-color:rgba(255,85,102,.35)}
+.idle.good .idle-b{color:var(--up);background:var(--up-bg);border-color:rgba(56,224,143,.3)}
+.idle.idle .idle-b{color:var(--muted);background:rgba(255,255,255,.04);
+  border-color:var(--line)}
+.idle-w{display:block;margin-top:6px;font-size:10.5px;color:var(--muted);line-height:1.5}
+
+/* expiry reads as context, not alarm, until it actually is one */
+.tp-i.expiry .tp-v{display:inline-flex;align-items:center;gap:6px}
+.tp-v.warn{color:var(--au)}
 
 /* ---- an algorithm that runs but reports nothing ---- */
 .mute{border:1px solid var(--line-3);border-radius:var(--r);padding:16px 18px;
@@ -577,7 +733,8 @@ body.stale .tp-spot,body.stale .hero-eq,body.stale .pb-pnl{opacity:.45}
 .ct-i{background:var(--surface-2);padding:10px 12px}
 .ct-k{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim);
   font-family:var(--mono)}
-.ct-v{font-size:18px;margin-top:5px;font-family:var(--mono);letter-spacing:-.3px}
+.ct-v{font-size:18px;margin-top:5px;font-family:var(--mono);letter-spacing:-.3px;
+  text-transform:uppercase}
 
 /* ---- position box (TradingView-style long overlay) ---- */
 .posbox{border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden;
@@ -864,11 +1021,17 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       </div>
       <div>
         <label class="lbl" for="g-pass">Passcode</label>
-        <input class="field" id="g-pass" type="password" placeholder="••••••••"
-               autocomplete="current-password">
+        <div class="pwwrap">
+          <input class="field" id="g-pass" type="password" placeholder="••••••••"
+                 autocomplete="current-password">
+          <button type="button" class="pweye" id="g-eye"
+                  aria-label="Show passcode" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
       </div>
       <button class="btn" id="g-go" style="margin-top:4px">Authenticate</button>
-      <div class="gate-msg" id="g-msg"></div>
+      <div class="gate-msg" id="g-msg" role="status" aria-live="polite"></div>
     </div>
 
     <details style="margin-top:18px;text-align:left">
@@ -882,6 +1045,43 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
     </details>
 
     <div class="gate-foot">NIFTY Options · IST · <span id="g-build"></span></div>
+  </div>
+</div>
+
+<!-- ======================= BOOT SEQUENCE ======================= -->
+<div id="boot" hidden aria-hidden="true">
+  <div class="boot-inner">
+    <svg class="boot-mark" viewBox="0 0 512 512" aria-hidden="true">
+      <defs>
+        <linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#fbeab4"/><stop offset="45%" stop-color="#e8c458"/>
+          <stop offset="100%" stop-color="#8b6914"/>
+        </linearGradient>
+      </defs>
+      <g class="boot-ring">
+        <circle cx="256" cy="256" r="228" fill="none" stroke="url(#bg1)" stroke-width="4"/>
+        <circle cx="256" cy="256" r="203" fill="none" stroke="url(#bg1)" stroke-width="1.4"
+                stroke-dasharray="7 13" opacity=".8"/>
+        <circle cx="256" cy="256" r="167" fill="none" stroke="url(#bg1)" stroke-width="1.6" opacity=".7"/>
+      </g>
+      <g class="boot-rose">
+        <g stroke="url(#bg1)" stroke-width="6" stroke-linecap="round" opacity=".9">
+          <line x1="139" y1="139" x2="212" y2="212"/><line x1="373" y1="139" x2="300" y2="212"/>
+          <line x1="139" y1="373" x2="212" y2="300"/><line x1="373" y1="373" x2="300" y2="300"/>
+        </g>
+        <path d="M256 36 L272 232 L256 256 L240 232 Z" fill="url(#bg1)"/>
+        <path d="M256 476 L272 280 L256 256 L240 280 Z" fill="url(#bg1)"/>
+        <path d="M36 256 L232 240 L256 256 L232 272 Z" fill="url(#bg1)"/>
+        <path d="M476 256 L280 240 L256 256 L280 272 Z" fill="url(#bg1)"/>
+      </g>
+      <circle cx="256" cy="256" r="30" fill="#050507" stroke="url(#bg1)" stroke-width="5"/>
+      <circle cx="256" cy="256" r="11" fill="url(#bg1)"/>
+    </svg>
+    <div class="boot-burst" aria-hidden="true"></div>
+    <div class="boot-name" id="boot-name"></div>
+    <div class="boot-tag" id="boot-tag"></div>
+    <div class="boot-rule"></div>
+    <div class="boot-skip" id="boot-skip">press any key to skip</div>
   </div>
 </div>
 
@@ -1061,6 +1261,9 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
   <!-- ============ FEED ============ -->
   <section class="view" id="v-feed">
     <h1 class="sr-only">Live feed</h1>
+    <input class="field" id="f-search" type="search" placeholder="Search the log…"
+           aria-label="Search log entries" autocomplete="off"
+           style="margin-bottom:11px">
     <div class="feedbar" id="f-filters"></div>
     <div id="feed"></div>
     <div style="display:flex;gap:9px;margin-top:11px">
@@ -1282,7 +1485,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.18-obsidian.5-audit";
+const BUILD = "2026.08.18-obsidian.6";
 
 /* The dashboard is a static file with nowhere of its own to keep state, so it
    has to be told which trading server to talk to. Rather than ask for that
@@ -1440,6 +1643,56 @@ async function bioUnlock() {
   } catch (e) { return false; }
 }
 
+/* ================= boot sequence =================
+   Runs after a successful sign-in, once per browser session. A resumed
+   session skips it: nobody wants three seconds of ceremony between them and
+   an open position, and it must never sit between an operator and a kill
+   switch. Any key or click cuts it short.
+==================================================== */
+const BOOT_FLAG = "mc_boot_played";
+
+function typeInto(el, text, perLetter, startAt) {
+  el.innerHTML = [...text].map((ch, i) =>
+    `<span style="animation-delay:${(startAt + i * perLetter)}ms">${
+      ch === " " ? "&nbsp;" : esc(ch)}</span>`).join("");
+}
+
+function bootSequence() {
+  const boot = $("#boot");
+  if (!boot) return Promise.resolve();
+
+  // Honour a reduced-motion preference and a session that has already seen it.
+  const reduced = typeof window !== "undefined" && window.matchMedia
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let played = false;
+  try { played = window.sessionStorage
+    && window.sessionStorage.getItem(BOOT_FLAG) === "1"; } catch (e) {}
+  if (played) return Promise.resolve();
+  try { window.sessionStorage && window.sessionStorage.setItem(BOOT_FLAG, "1"); } catch (e) {}
+
+  typeInto($("#boot-name"), "MERIDIAN CAPITAL", 80, 450);
+  typeInto($("#boot-tag"), "AUTONOMOUS EXECUTION", 60, 1150);
+
+  boot.hidden = false;
+  boot.setAttribute("aria-hidden", "true");
+
+  return new Promise(resolve => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("keydown", finish);
+      window.removeEventListener("pointerdown", finish);
+      clearTimeout(timer);
+      boot.classList.add("out");
+      setTimeout(() => { boot.hidden = true; boot.classList.remove("out"); resolve(); }, 520);
+    };
+    const timer = setTimeout(finish, reduced ? 700 : 2900);
+    window.addEventListener("keydown", finish);
+    window.addEventListener("pointerdown", finish);
+  });
+}
+
 /* ---------------- gate ---------------- */
 $("#g-build").textContent = BUILD;
 $("#g-user").value = S.user || "Sehej";
@@ -1454,7 +1707,45 @@ function mixedContentBlocked(u) {
   return location.protocol === "https:" && u.startsWith("http://");
 }
 
+/* The server rate-limits by IP and returns 429 with a retry window; this
+   mirrors it locally so the operator sees a countdown instead of the form
+   silently refusing. It is a courtesy, not the control — the real limit is
+   enforced server-side and cannot be bypassed by editing this. */
+let gateFails = 0, gateLockUntil = 0, gateTimer = null;
+
+function gateLocked() { return Date.now() < gateLockUntil; }
+
+function tickLock() {
+  const left = Math.ceil((gateLockUntil - Date.now()) / 1000);
+  const btn = $("#g-go");
+  if (left > 0) {
+    btn.disabled = true;
+    btn.textContent = `Locked — ${left}s`;
+    gateMsg(`Too many attempts. Try again in ${left} second${left === 1 ? "" : "s"}.`, true);
+  } else {
+    clearInterval(gateTimer); gateTimer = null;
+    btn.disabled = false; btn.textContent = "Authenticate";
+    gateMsg("");
+    validateGate();
+  }
+}
+
+function lockGate(seconds) {
+  gateLockUntil = Date.now() + seconds * 1000;
+  clearInterval(gateTimer);
+  gateTimer = setInterval(tickLock, 250);
+  tickLock();
+}
+
+function validateGate() {
+  if (gateLocked()) return false;
+  const ok = !!$("#g-user").value.trim() && !!$("#g-pass").value;
+  $("#g-go").disabled = !ok;
+  return ok;
+}
+
 async function doLogin() {
+  if (gateLocked()) return;
   const url = SERVER_URL;
   const user = $("#g-user").value.trim();
   const pass = $("#g-pass").value;
@@ -1464,10 +1755,17 @@ async function doLogin() {
             "Give the bot an HTTPS address — <span class='gold'>tailscale funnel --bg 8000</span>.", true);
     return;
   }
-  if (!user || !pass) { gateMsg("Operator and passcode are required.", true); return; }
+  if (!user || !pass) {
+    gateMsg(!user ? "Operator name is required." : "Passcode is required.", true);
+    $(!user ? "#g-user" : "#g-pass").classList.add("err");
+    return;
+  }
 
   const btn = $("#g-go");
-  btn.disabled = true; btn.textContent = "Authenticating…"; gateMsg("");
+  btn.disabled = true; btn.classList.add("busy");
+  btn.innerHTML = `<span class="spin"></span>Authenticating…`;
+  gateMsg("");
+  $("#g-pass").classList.remove("err"); $("#g-user").classList.remove("err");
   S.url = url;
   try {
     const r = await fetch(url + "/api/auth/login", {
@@ -1476,13 +1774,20 @@ async function doLogin() {
       body: JSON.stringify({ username: user, password: pass })
     });
     const body = await r.json().catch(() => ({}));
+    if (r.status === 429) {
+      const secs = parseInt(String(body.detail || "").match(/(\d+)\s*second/)?.[1] || "30", 10);
+      lockGate(secs);
+      return;
+    }
     if (!r.ok) throw new Error(body.detail || ("HTTP " + r.status));
 
+    gateFails = 0;
     S.token = body.token; S.user = body.user; S.role = body.role || "viewer";
     localStorage.setItem("mc_token", S.token);
     localStorage.setItem("mc_user", S.user);
     localStorage.setItem("mc_role", S.role);
     $("#g-pass").value = "";
+    await bootSequence();
     enterApp();
     if (await bioAvailable() && !localStorage.getItem(BIO_KEY)) {
       setTimeout(() => {
@@ -1490,14 +1795,44 @@ async function doLogin() {
       }, 700);
     }
   } catch (e) {
-    gateMsg(e.message === "Failed to fetch"
-      ? "Cannot reach the server. Check the address is up and serving HTTPS."
-      : esc(e.message), true);
-  } finally { btn.disabled = false; btn.textContent = "Authenticate"; }
+    const wrong = /incorrect|unauthor/i.test(e.message || "");
+    if (wrong) {
+      gateFails += 1;
+      $("#g-pass").classList.add("err");
+      // The labels say Operator and Passcode, so the error says so too.
+      gateMsg(`Incorrect operator name or passcode.${
+        gateFails >= 3 ? ` ${5 - gateFails} attempt${5 - gateFails === 1 ? "" : "s"} left.` : ""}`, true);
+      if (gateFails >= 5) { gateFails = 0; lockGate(30); }
+    } else {
+      gateMsg(e.message === "Failed to fetch"
+        ? "Cannot reach the server. It may be offline or still starting."
+        : esc(e.message), true);
+    }
+  } finally {
+    if (!gateLocked()) {
+      btn.disabled = false; btn.classList.remove("busy");
+      btn.textContent = "Authenticate";
+      validateGate();
+    }
+  }
 }
 
 $("#g-go").onclick = doLogin;
-$("#g-pass").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+["#g-user", "#g-pass"].forEach(sel => {
+  const el = $(sel);
+  el.addEventListener("input", () => { el.classList.remove("err"); validateGate(); });
+  el.addEventListener("keydown", e => { if (e.key === "Enter" && validateGate()) doLogin(); });
+});
+$("#g-eye").onclick = () => {
+  const f = $("#g-pass"), eye = $("#g-eye");
+  const show = f.type === "password";
+  f.type = show ? "text" : "password";
+  eye.classList.toggle("on", show);
+  eye.setAttribute("aria-pressed", String(show));
+  eye.setAttribute("aria-label", show ? "Hide passcode" : "Show passcode");
+  f.focus();
+};
+validateGate();
 
 $("#g-token-go").onclick = async () => {
   const token = $("#g-token").value.trim();
@@ -1743,7 +2078,8 @@ function renderSys() {
         ${stat("Heartbeat", d.running ? (d.heartbeat === "live" ? "healthy" : d.heartbeat) : "stopped",
                d.heartbeat === "live" ? "up" : d.heartbeat === "stale" ? "down" : "muted")}
         ${stat("Uptime", d.running ? dur(d.uptime_seconds) : "—")}
-        ${stat("Errors today", d.errors_today ?? 0, d.errors_today ? "down" : "muted")}
+        ${stat("Errors today", d.errors_today ?? 0,
+               d.errors_today ? "down alarm" : "muted")}
         ${stat("Warnings", d.warnings_today ?? 0, d.warnings_today ? "warn" : "muted")}
         ${stat("Events", d.events_today ?? "—", "muted")}
         ${stat("Market feed", d.has_market_data ? "receiving" : "none",
@@ -1751,7 +2087,7 @@ function renderSys() {
       </div>
       ${(d.faults || []).length ? `
         <details class="faults">
-          <summary>${plural(d.faults.length, "issue")} — tap to read</summary>
+          <summary>${plural(d.faults.length, "issue")} — open to read</summary>
           ${d.faults.map(f => `<div class="fault ${esc(f.level || "error")}">
             <span class="fault-t">${esc(String(f.ts || "").slice(11, 19))}</span>
             <span class="fault-m">${esc(f.message || f.kind)}${
@@ -1805,6 +2141,15 @@ function tapeTick() {
     ${cell("VWAP", m.vwap ? Number(m.vwap).toFixed(1) : "—")}
     ${cell("ADX", m.adx ? Number(m.adx).toFixed(1) : "—")}
     ${cell("Vol", m.garch ? Number(m.garch).toFixed(1) + "%" : "—")}
+    ${(() => {
+      const x = (S.diag && S.diag.expiry) || null;
+      if (!x) return cell("Expiry", "—");
+      if (!x.is_expiry) {
+        return cell("Expiry", `NONE · ${x.days_to_next}d`, "muted");
+      }
+      return `<div class="tp-i expiry"><span class="tp-k">Expiry</span>
+        <span class="tp-v num warn">${esc(x.label)}<span class="dot beat"></span></span></div>`;
+    })()}
     ${cell("P&L today", signed(S.snap.day_pnl ?? 0, 0), cls(S.snap.day_pnl ?? 0))}
     ${cell("IST", clock)}
     <div class="tp-i"><span class="tp-k">Link</span>
@@ -1830,6 +2175,37 @@ function deckSnapshot() {
   if (!f) return S.snap || {};
   const lane = f.slots.find(s => s.slot === deckSlot());
   return (lane && lane.snapshot) || {};
+}
+
+/* Why an algorithm is holding fire. "Zero trades" on its own is ambiguous —
+   it could be a healthy filter doing its job or a rail that has tripped, and
+   those need very different responses. The algorithm's own decision reason
+   carries the answer; this puts a colour and a plain sentence on it. */
+const IDLE = {
+  EXPIRY_DAY:    ["warn", "EXPIRY BLOCK", "Expiry day — entries paused by strategy config."],
+  EXPIRY_LOWVOL: ["warn", "EXPIRY — LOW VOL", "Expiry day needs higher volatility to justify premium."],
+  LOW_VOL:       ["warn", "LOW VOLATILITY", "Market too quiet to pay for option premium."],
+  DAILY_KILL:    ["bad",  "KILL SWITCH", "Daily loss limit reached — trading halted for the day."],
+  MAX_TRADES:    ["warn", "MAX TRADES", "Daily trade cap reached."],
+  PRE_WINDOW:    ["idle", "OUTSIDE SESSION", "Before the entry window opens."],
+  POST_WINDOW:   ["idle", "OUTSIDE SESSION", "Past the entry cutoff for today."],
+  WARMUP:        ["idle", "WARMING UP", "Collecting enough bars to compute indicators."],
+  CHOP:          ["warn", "RANGE-BOUND", "Chop filter blocked entry."],
+  COOLDOWN:      ["idle", "COOLDOWN", "Waiting out the post-trade cooldown."],
+  IN_POSITION:   ["good", "IN POSITION", ""],
+};
+
+function idleBadge(s) {
+  const d = (s.snapshot && s.snapshot.decision) || null;
+  if (!d || !d.reason || !s.running) return "";
+  const hit = IDLE[d.reason];
+  const tone = hit ? hit[0] : "idle";
+  const label = hit ? hit[1] : String(d.reason).replace(/_/g, " ");
+  const why = (hit && hit[2]) || d.detail || "";
+  if (d.reason === "IN_POSITION") return "";
+  return `<div class="idle ${tone}">
+    <span class="idle-b">${esc(label)}</span>
+    ${why ? `<span class="idle-w">${esc(why)}</span>` : ""}</div>`;
 }
 
 function renderFleet() {
@@ -1858,7 +2234,8 @@ function renderFleet() {
         <span class="fl-state">${esc(s.running ? "running" : s.state)}</span>
       </div>
       <div class="fl-algo">${esc(s.algorithm || "—")}</div>
-      ${silent ? `<div class="fl-silent">Running, but sending no data</div>` : `
+      ${idleBadge(s)}
+      ${silent ? `<div class="fl-silent">RUNNING — NO TELEMETRY</div>` : `
         <div class="fl-nums">
           <div><div class="fl-k">Day P&L</div>
             <div class="fl-v num ${cls(pnl ?? 0)}">${pnl == null ? "—" : signed(pnl, 0)}</div></div>
@@ -1881,7 +2258,7 @@ function renderFleet() {
             emptyCount ? ` · ${emptyCount} slot${emptyCount > 1 ? "s" : ""} free` : ""}</span></div>
       ${f.capacity_warning ? `<div class="cap-warn">${esc(f.capacity_warning)}</div>` : ""}
       ${shown.length > 1 ? `<div class="dim" style="font-size:11px;margin-bottom:10px">
-        Tap an algorithm to show its numbers above.</div>` : ""}
+        Select an algorithm to display its metrics above.</div>` : ""}
       <div class="flgrid" style="--fl-cols:${cols}">${shown.map(card).join("")}</div>
     </div>`;
 
@@ -1961,6 +2338,7 @@ function renderDash() {
   // Real money gets a permanent red band across the top of the app. A pill in
   // a corner is too easy to stop noticing after a few hours.
   document.body.classList.toggle("live-money", !paper);
+  document.body.classList.toggle("paper-mode", !!paper);
   const hm = $("#h-mode");
   hm.className = "pill " + (paper ? "paper" : "real");
   hm.textContent = paper ? "paper" : "live money";
@@ -2012,8 +2390,8 @@ def emit(kind, message="", level="info", **payload):
   const eq = s.equity, open = s.open_equity, day = s.day_pnl ?? 0;
   $("#d-eq").textContent = eq === undefined ? "—" : money(eq, 2);
   const dchip = $("#d-day");
-  dchip.textContent = signed(day, 0);
-  dchip.className = "chip num " + (day >= 0 ? "up" : "down");
+  dchip.textContent = day === 0 ? "FLAT" : signed(day, 0);
+  dchip.className = "chip num " + (day === 0 ? "flat" : day > 0 ? "up" : "down");
   $("#d-daypct").textContent = open ? pct(day / open * 100) + " today" : "today";
   $("#d-total").textContent = pct(s.total_return_pct ?? 0, 1);
   $("#d-total").className = "hf-v num " + cls(s.total_return_pct ?? 0);
@@ -2164,28 +2542,103 @@ $$("#f-filters .fchip").forEach(b => b.onclick = () => {
   $$("#f-filters .fchip").forEach(x => x.classList.toggle("on", x === b));
   renderFeed();
 });
-$("#f-clear").onclick = () => { S.lines = []; renderFeed(); };
+const fSearch = $("#f-search");
+if (fSearch) fSearch.addEventListener("input", () => {
+  S.logQuery = fSearch.value;
+  renderFeed();
+});
+
+$("#f-clear").onclick = () => {
+  if (!S.lines.length) return;
+  if (!confirm(`Clear ${plural(S.lines.length, "log entry", "log entries")}?\n\n`
+             + "This only clears what this browser is holding — the server keeps "
+             + "its own record, and Reports can still export the full event log.")) return;
+  S.lines = []; renderFeed(); renderLive();
+};
 $("#f-follow").onclick = () => {
   S.follow = !S.follow;
   $("#f-follow").textContent = "Follow: " + (S.follow ? "on" : "off");
 };
 
+/* Consecutive identical lines collapse to one row with a count. An uploaded
+   algorithm that prints on every tick — the built-in suppresses its status
+   line under a pipe, an uploaded one need not — would otherwise push every
+   meaningful entry off the screen within a minute. */
+function collapse(rows) {
+  const out = [];
+  for (const e of rows) {
+    const prev = out[out.length - 1];
+    if (prev && prev.kind === e.kind && prev.message === e.message
+        && (prev.level || "info") === (e.level || "info")) {
+      prev._n = (prev._n || 1) + 1;
+      prev._last = e.ts;
+      continue;
+    }
+    out.push({ ...e, _n: 1, _last: e.ts });
+  }
+  return out;
+}
+
 function renderFeed() {
   const el = $("#feed");
-  const rows = S.lines.filter(e => {
-    if (S.filter === "all") return true;
-    if (S.filter === "error") return GROUPS.error.includes(e.kind) || e.level === "error";
-    return GROUPS[S.filter] ? GROUPS[S.filter].includes(e.kind) : true;
+  const q = (S.logQuery || "").trim().toLowerCase();
+  let rows = S.lines.filter(e => {
+    if (S.filter === "error") {
+      if (!(GROUPS.error.includes(e.kind) || e.level === "error" || e.level === "critical")) return false;
+    } else if (S.filter !== "all" && GROUPS[S.filter] && !GROUPS[S.filter].includes(e.kind)) {
+      return false;
+    }
+    if (q) {
+      return (`${e.kind} ${e.message}`).toLowerCase().includes(q);
+    }
+    return true;
   });
-  if (!rows.length) { el.innerHTML = `<div class="empty">No traffic</div>`; return; }
-  el.innerHTML = rows.slice(-400).map(e => {
+
+  if (!rows.length) {
+    el.innerHTML = `<div class="empty">${q ? `Nothing matches “${esc(q)}”.` : "No traffic"}</div>`;
+    return;
+  }
+  rows = collapse(rows).slice(-400);
+
+  el.innerHTML = rows.map(e => {
     const t = (e.ts || "").slice(11, 19);
     const isEvt = e.kind !== "log";
-    return `<div class="ln ${isEvt ? "evt" : (e.level || "info")}"><span class="ln-t">${t}</span>
-      <span class="ln-m">${isEvt ? `<span class="tag">${esc(e.kind)}</span>` : ""}${esc(e.message)}</span></div>`;
+    // Colour follows severity, so red always means something needs attention.
+    const lvl = e.level || "info";
+    return `<div class="ln ${lvl}${isEvt ? " evt" : ""}"><span class="ln-t">${t}</span>
+      <span class="ln-m">${isEvt ? `<span class="tag">${esc(e.kind)}</span>` : ""}${esc(e.message)}${
+        e._n > 1 ? ` <span class="ln-n">×${e._n}${
+          e._last ? ` · last ${esc(String(e._last).slice(11, 19))}` : ""}</span>` : ""}</span></div>`;
   }).join("");
   if (S.follow) el.scrollTop = el.scrollHeight;
 }
+
+/* ================= keyboard =================
+   Single letters jump between sections. They are ignored while a field has
+   focus, so typing a passcode or an algorithm name never navigates away.
+==================================================== */
+const KEYNAV = { d: "dash", c: "chart", l: "feed", t: "trades",
+                 r: "reports", s: "strategy", a: "admin", x: "ctrl" };
+
+document.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const el = e.target;
+  const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA"
+                        || el.tagName === "SELECT" || el.isContentEditable);
+  if (typing) return;
+  if ($("#gate") && !$("#gate").classList.contains("hide")) return;
+
+  const view = KEYNAV[String(e.key).toLowerCase()];
+  if (view && VIEWS.some(v => v.id === view)) {
+    e.preventDefault();
+    show(view);
+    return;
+  }
+  if (e.key === "Escape") {
+    const open = $("#tv-wrap");
+    if (open && open.open) open.open = false;
+  }
+});
 
 /* ---------------- trades ---------------- */
 const tvWrap = $("#tv-wrap");
@@ -2226,7 +2679,7 @@ async function loadTrades() {
     const list = $("#t-list");
     if (!d.trades.length) {
       list.innerHTML = `<div class="card"><div class="empty">No trades in window<br>
-        Days the algorithm sat out record why — see Reports</div></div>`;
+        Days the algorithm did not trade are logged under Reports with the reason</div></div>`;
       return;
     }
     list.innerHTML = d.trades.slice().reverse().map(t => {
@@ -2752,7 +3205,7 @@ async function loadReports() {
         ${metric("Max drawdown", pct(s.max_drawdown_pct), "peak " + money(s.peak_equity, 0))}
         ${metric("Charges", money(s.charges, 0), "avg " + signed(s.avg_trade, 0))}
         ${metric("Best", signed(s.best_trade, 0), "worst " + signed(s.worst_trade, 0))}
-        ${metric("Sat out", plural(s.days_blocked_chop, "day"), s.days_killed + " halted")}
+        ${metric("Inactive days", plural(s.days_blocked_chop, "day"), s.days_killed + " halted")}
       </div>`;
     const days = sum.sessions.slice().reverse();
     $("#r-days").innerHTML = days.length ? days.map(d => `
@@ -3114,7 +3567,13 @@ async function loadAlgorithm() {
     });
     const clr = $("#a-clear");
     if (clr) clr.onclick = async () => {
-      if (!confirm(`Empty slot ${sel + 1}? It will stop running at its next scheduled start.`)) return;
+      const running = (S.algo && (S.algo.running_slots || []).includes(sel));
+      if (!confirm(`Remove the algorithm from ${laneName(sel)}?\n\n`
+        + (running
+            ? "This slot is running now. It keeps running until it is stopped or "
+              + "the session ends, then will not start again.\n\n"
+            : "")
+        + "The uploaded version stays in the version list and can be reassigned.")) return;
       try {
         await api("/api/algorithm/activate",
           { method: "POST", body: JSON.stringify({ version_id: null, slot: sel }) });
