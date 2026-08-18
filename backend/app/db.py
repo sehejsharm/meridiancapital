@@ -8,6 +8,7 @@ after the process that produced it is gone.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -464,6 +465,94 @@ def remove_push_token(token: str) -> None:
 # ---------------------------------------------------------------- stats
 
 
+def _risk_metrics(sess: list[dict], trades: list[dict], max_dd: float,
+                  start: str, end: str) -> dict:
+    """Risk-adjusted return, computed from daily returns.
+
+    Daily rather than per-trade: a ratio built from trade P&Ls flatters a
+    strategy that takes few, large positions, because the days it sat out never
+    enter the denominator. Sitting out is a decision with a cost, so flat days
+    count.
+
+    The risk-free rate is expressed annually and de-annualised here. NSE trades
+    roughly 250 sessions a year, which is the periods-per-year figure used to
+    scale both the mean and the deviation.
+    """
+    PERIODS = 250
+    RF_ANNUAL = 0.065                     # ~6.5%, a reasonable Indian T-bill
+    rf_daily = RF_ANNUAL / PERIODS
+
+    rets: list[float] = []
+    for s in sess:
+        opened = s.get("open_equity")
+        pnl = s.get("day_pnl")
+        if opened and pnl is not None and opened > 0:
+            rets.append(pnl / opened)
+
+    out: dict[str, Any] = {
+        "sharpe": None, "sortino": None, "calmar": None,
+        "expectancy": None, "avg_win": None, "avg_loss": None,
+        "win_loss_ratio": None, "daily_vol_pct": None,
+        "best_day": None, "worst_day": None, "trading_period_days": None,
+    }
+
+    wins = [t["net_pnl"] for t in trades if (t.get("net_pnl") or 0) > 0]
+    losses = [t["net_pnl"] for t in trades if (t.get("net_pnl") or 0) <= 0]
+    if trades:
+        aw = sum(wins) / len(wins) if wins else 0.0
+        al = abs(sum(losses) / len(losses)) if losses else 0.0
+        p = len(wins) / len(trades)
+        out["avg_win"] = round(aw, 2)
+        out["avg_loss"] = round(al, 2)
+        out["win_loss_ratio"] = round(aw / al, 2) if al > 0 else None
+        # What one more trade is worth on average, in rupees.
+        out["expectancy"] = round(p * aw - (1 - p) * al, 2)
+
+    if sess:
+        days = [s.get("day_pnl") or 0.0 for s in sess]
+        out["best_day"] = round(max(days), 2)
+        out["worst_day"] = round(min(days), 2)
+
+    # Two returns is the minimum for a standard deviation that means anything.
+    if len(rets) >= 2:
+        mean = sum(rets) / len(rets)
+        var = sum((r - mean) ** 2 for r in rets) / (len(rets) - 1)
+        sd = math.sqrt(var)
+        out["daily_vol_pct"] = round(sd * 100, 3)
+        if sd > 0:
+            out["sharpe"] = round((mean - rf_daily) / sd * math.sqrt(PERIODS), 2)
+
+        # Sortino punishes only downside deviation; upside volatility is not risk.
+        downside = [min(0.0, r - rf_daily) for r in rets]
+        dvar = sum(d ** 2 for d in downside) / (len(rets) - 1)
+        dsd = math.sqrt(dvar)
+        if dsd > 0:
+            out["sortino"] = round((mean - rf_daily) / dsd * math.sqrt(PERIODS), 2)
+
+    # Calmar is annualised return over the worst drawdown. Meaningless without
+    # a drawdown to divide by, and misleading over a window too short to
+    # annualise, so both are guarded.
+    try:
+        d0 = datetime.strptime(start, "%Y-%m-%d").date()
+        d1 = datetime.strptime(end, "%Y-%m-%d").date()
+        span = max(1, (d1 - d0).days + 1)
+        out["trading_period_days"] = span
+        opened = sess[0].get("open_equity") if sess else None
+        closed = sess[-1].get("close_equity") if sess else None
+        # Annualising a few weeks of drift produces numbers like "Calmar 46",
+        # which is arithmetically true and completely meaningless. A quarter is
+        # the shortest window worth extrapolating from; below that it stays
+        # blank rather than flattering the strategy.
+        if opened and closed and opened > 0 and max_dd < 0 and span >= 90:
+            total = closed / opened
+            annual = total ** (365.0 / span) - 1.0
+            out["calmar"] = round(annual / abs(max_dd), 2)
+    except (ValueError, TypeError, ZeroDivisionError, OverflowError):
+        pass
+
+    return out
+
+
 def aggregate(start: str, end: str, slot: Optional[int] = None) -> dict:
     """Headline numbers for any date range — powers the Reports screen.
 
@@ -503,12 +592,15 @@ def aggregate(start: str, end: str, slot: Optional[int] = None) -> dict:
         if running_peak > 0:
             max_dd = min(max_dd, (close - running_peak) / running_peak)
 
+    risk = _risk_metrics(sess, trades, max_dd, start, end)
+
     return {
         "start": start,
         "end": end,
         "sessions": len(sess),
         "trading_days": len({t["session_date"] for t in trades}),
         "trades": n,
+        **risk,
         "wins": len(wins),
         "losses": len(losses),
         "win_rate": (len(wins) / n * 100) if n else 0.0,

@@ -278,6 +278,75 @@ def test_exports() -> None:
     check(f"filename sensible ({name})", name.endswith(".csv") and "2026-08-01" in name)
 
 
+def test_live_mode_approval() -> None:
+    """A single operator must not be able to arm real money alone."""
+    print("\nTwo-person live mode")
+    from app import approvals
+    from app.config import settings as cfg
+
+    approvals.init()
+    db.kv_set(approvals.KV_PENDING, None)
+
+    check("nothing pending to begin with", approvals.pending() is None)
+
+    entry = approvals.request_live("Sehej", "going live for the September series")
+    check("a request is recorded", entry["requested_by"] == "Sehej")
+    check("it is pending", approvals.pending() is not None)
+
+    # The whole point: the requester cannot wave their own request through.
+    try:
+        approvals.approve("Sehej")
+        check("the requester cannot approve their own request", False,
+              "self-approval was allowed")
+    except ValueError as exc:
+        check("the requester cannot approve their own request",
+              "two different super admins" in str(exc), str(exc))
+    check("and the request survives the refusal", approvals.pending() is not None)
+
+    # A second request while one is open would let someone paper over the first.
+    try:
+        approvals.request_live("Raghav")
+        check("a second request is refused while one is open", False)
+    except ValueError as exc:
+        check("a second request is refused while one is open",
+              "already requested" in str(exc), str(exc))
+
+    done = approvals.approve("Raghav")
+    check("a different super admin can approve", done["approved_by"] == "Raghav")
+    check("approving clears the request", approvals.pending() is None)
+    check("approving twice is not possible", True)
+    try:
+        approvals.approve("Raghav")
+        check("an approved request cannot be reused", False)
+    except ValueError:
+        check("an approved request cannot be reused", True)
+
+    # An approval sitting around for a month must not still be live.
+    from datetime import timedelta as _td
+    stale = approvals.request_live("Sehej")
+    db.kv_set(approvals.KV_PENDING, {
+        **stale,
+        "expires_at": (datetime.now() - _td(minutes=1)).isoformat(timespec="seconds"),
+    })
+    check("an expired request is not pending", approvals.pending() is None)
+    try:
+        approvals.approve("Raghav")
+        check("an expired request cannot be approved", False)
+    except ValueError as exc:
+        check("an expired request cannot be approved", "lapsed" in str(exc), str(exc))
+
+    # Every step is on the record.
+    actions = [r["action"] for r in approvals.trail(50)]
+    check("the request is audited", "live_mode_requested" in actions, str(actions[:6]))
+    check("the approval is audited", "live_mode_approved" in actions, str(actions[:6]))
+
+    # Returning to paper needs no second signature — it removes risk.
+    approvals.record("Sehej", "paper_mode_restored", "back to simulation")
+    check("returning to paper is audited too",
+          "paper_mode_restored" in [r["action"] for r in approvals.trail(50)])
+    db.kv_set(approvals.KV_PENDING, None)
+
+
 def test_expiry() -> None:
     """NSE expiry: every Thursday, monthly on the last one, shifted by holidays."""
     print("\nExpiry calendar")
@@ -637,6 +706,59 @@ def test_api() -> None:
         r = client.post("/api/auth/login",
                         json={"username": "Sehej", "password": "test-passcode-9931"})
         check("can sign in again afterwards", r.status_code == 200)
+        sh = {"X-API-Token": r.json()["token"]}
+
+        # ---- audit trail ----
+        # The event feed is per session and rolls over. Changes to who can sign
+        # in and which code trades have to outlive that.
+        r = client.get("/api/audit")
+        check("the audit trail is not readable anonymously", r.status_code == 401)
+
+        r = client.post("/api/users", headers=sh,
+                        json={"username": "auditee", "password": "a-long-passcode",
+                              "role": "viewer"})
+        check("creating an operator works", r.status_code == 200, r.text[:200])
+        new_id = r.json()["id"]
+
+        r = client.get("/api/audit", headers=sh)
+        check("the audit trail reads back", r.status_code == 200)
+        entries = r.json()["entries"]
+        created = [e for e in entries if e["action"] == "user_created"]
+        check("creating an operator is audited", created, str(entries[:3]))
+        check("the audit names who did it", created[0]["actor"] == "Sehej",
+              created[0]["actor"])
+        check("the audit says what happened", "auditee" in created[0]["detail"],
+              created[0]["detail"])
+        check("the audit is newest first",
+              entries == sorted(entries, key=lambda e: e["id"], reverse=True))
+
+        r = client.patch(f"/api/users/{new_id}", headers=sh, json={"role": "operator"})
+        check("changing a role works", r.status_code == 200, r.text[:200])
+        updated = [e for e in client.get("/api/audit", headers=sh).json()["entries"]
+                   if e["action"] == "user_updated"]
+        check("a role change is audited", updated, "no user_updated entry")
+        check("the role change says what it changed to",
+              "role → operator" in updated[0]["detail"], updated[0]["detail"])
+
+        r = client.patch(f"/api/users/{new_id}", headers=sh,
+                         json={"password": "another-long-passcode"})
+        check("resetting a password works", r.status_code == 200)
+        pw = [e for e in client.get("/api/audit", headers=sh).json()["entries"]
+              if e["action"] == "user_updated" and "password" in e["detail"]]
+        check("a password reset is audited", pw, "no password entry")
+        check("the audit never stores the password itself",
+              "another-long-passcode" not in client.get("/api/audit", headers=sh).text)
+
+        r = client.delete(f"/api/users/{new_id}", headers=sh)
+        check("deleting an operator works", r.status_code == 200)
+        check("a deletion is audited",
+              any(e["action"] == "user_deleted"
+                  for e in client.get("/api/audit", headers=sh).json()["entries"]))
+
+        r = client.get("/api/audit?limit=1", headers=sh)
+        check("the trail can be limited", len(r.json()["entries"]) == 1)
+        r = client.get("/api/audit?limit=0", headers=sh)
+        check("a nonsense limit is refused", r.status_code == 422)
 
         # Repeated failures must lock out rather than allow unlimited guessing.
         codes = [
@@ -659,6 +781,7 @@ def main() -> int:
     test_storage()
     test_aggregate()
     test_exports()
+    test_live_mode_approval()
     test_expiry()
     test_log_severity()
     test_news()

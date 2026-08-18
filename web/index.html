@@ -195,6 +195,132 @@ body::after{content:"";position:fixed;inset:-30%;pointer-events:none;z-index:0;
 .gate-foot{font-size:10px;color:var(--faint);letter-spacing:1.4px;text-transform:uppercase;
   margin-top:24px;font-family:var(--mono)}
 
+/* ---- trading mode ---- */
+.mode{border:1px solid var(--line);border-radius:9px;padding:15px 16px;
+  background:linear-gradient(160deg,rgba(255,255,255,.025),transparent 55%),var(--surface-2)}
+.mode.live{border-color:rgba(255,85,102,.45);
+  background:linear-gradient(150deg,rgba(255,85,102,.1),transparent 58%),var(--surface-2)}
+.mode-h{font-size:14px;font-weight:600}
+.mode.live .mode-h{color:var(--down)}
+.mode-s{font-size:12.5px;color:var(--muted);line-height:1.65;margin-top:7px}
+.mode-pending{margin-top:14px;padding-top:13px;border-top:1px solid var(--line-2)}
+.mode-ph{font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--au);
+  font-family:var(--mono)}
+.seg button.off{opacity:.5}
+
+/* ---- daily P&L calendar ---- */
+.cal-days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:340px;
+  margin-bottom:6px}
+.cal-days span{font-size:10px;color:var(--dim);font-family:var(--mono);text-align:center}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:340px}
+.cal-c{aspect-ratio:1;border-radius:4px;border:1px solid var(--line);padding:0;
+  cursor:pointer;transition:transform .15s var(--ease),border-color .15s var(--ease)}
+.cal-c:hover{transform:scale(1.12);border-color:var(--au);z-index:2}
+.cal-c.out{background:transparent;border-color:transparent;cursor:default}
+.cal-c.out:hover{transform:none}
+
+/* ---- expandable trade cards ---- */
+details.trade > summary{list-style:none;cursor:pointer}
+details.trade > summary::-webkit-details-marker{display:none}
+details.trade[open]{border-color:var(--line-2)}
+.td-body{margin-top:13px;padding-top:12px;border-top:1px solid var(--line)}
+.td-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(122px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.td-i{background:var(--surface-2);padding:8px 10px;display:flex;flex-direction:column;gap:3px}
+.td-k{font-size:10px;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim);
+  font-family:var(--mono)}
+.td-v{font-size:12.5px;font-family:var(--mono)}
+.td-sub{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--au);
+  font-family:var(--mono);margin:13px 0 7px}
+
+/* ---- session replay ---- */
+#rep{position:fixed;inset:0;z-index:410;background:rgba(3,3,5,.86);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;padding:16px;
+  animation:palIn .18s var(--ease)}
+#rep[hidden]{display:none}
+.rep-box{width:100%;max-width:900px;max-height:92vh;display:flex;flex-direction:column;
+  background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r);
+  overflow:hidden;box-shadow:0 30px 90px -30px rgba(0,0,0,1)}
+.rep-head{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:15px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.rep-ctl{display:flex;align-items:center;gap:9px}
+.rep-ctl .field{width:auto;padding:8px 11px;font-size:12px}
+.rep-body{padding:16px 18px;overflow-y:auto}
+.rs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.rs-i{background:var(--surface-2);padding:10px 12px}
+.rs-k{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim);
+  font-family:var(--mono)}
+.rs-v{font-size:15px;margin-top:5px;font-family:var(--mono);text-transform:uppercase}
+.rep-track{display:flex;align-items:center;gap:11px;margin:15px 0;flex-wrap:wrap}
+.rep-play{width:38px;height:38px;border-radius:99px;background:var(--au);color:#140f00;
+  font-size:13px;display:grid;place-items:center;flex-shrink:0;
+  box-shadow:0 4px 18px -8px var(--glow)}
+.rep-play:hover{filter:brightness(1.08)}
+#rep-scrub{flex:1;min-width:140px;accent-color:var(--au);height:4px}
+.rep-time{font-family:var(--mono);font-size:12.5px;color:var(--muted);min-width:66px}
+.rep-log{margin-top:6px;background:#040405;border:1px solid var(--line);border-radius:8px;
+  padding:12px;max-height:34vh;overflow-y:auto;font-family:var(--mono);font-size:11px;
+  line-height:1.7}
+
+/* ---- algorithm diff ---- */
+#dif{position:fixed;inset:0;z-index:420;background:rgba(3,3,5,.88);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;padding:16px;
+  animation:palIn .18s var(--ease)}
+#dif[hidden]{display:none}
+.dif-box{width:100%;max-width:1000px;max-height:92vh;display:flex;flex-direction:column;
+  background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r);
+  overflow:hidden;box-shadow:0 30px 90px -30px rgba(0,0,0,1)}
+.dif-head{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:15px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.dif-t{font-family:var(--mono);font-size:12.5px;color:var(--text);word-break:break-all}
+.dif-sub{font-size:11px;color:var(--muted);margin-top:3px}
+.dif-stat{font-family:var(--mono);font-size:12px;white-space:nowrap}
+.dif-body{overflow:auto;background:#040405;padding:10px 0;flex:1;min-height:0}
+.dfl{display:flex;align-items:flex-start;gap:0;font-family:var(--mono);font-size:11.5px;
+  line-height:1.65;padding:0 14px;white-space:pre-wrap;word-break:break-word}
+.dfl-n{flex:0 0 46px;text-align:right;padding-right:12px;color:var(--faint);
+  user-select:none;-webkit-user-select:none}
+.dfl-s{flex:0 0 14px;user-select:none;-webkit-user-select:none;color:var(--dim)}
+.dfl-c{flex:1;min-width:0;color:var(--muted)}
+.dfl.add{background:rgba(45,212,145,.09)}
+.dfl.add .dfl-s,.dfl.add .dfl-c{color:var(--up)}
+.dfl.del{background:rgba(255,85,102,.09)}
+.dfl.del .dfl-s,.dfl.del .dfl-c{color:var(--down)}
+.dfl.fold{color:var(--faint);justify-content:center;padding:7px 14px;
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  margin:5px 0;font-size:10.5px;letter-spacing:1.4px;background:var(--surface-2)}
+
+/* ---- command palette ---- */
+#pal{position:fixed;inset:0;z-index:400;background:rgba(3,3,5,.72);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  display:flex;align-items:flex-start;justify-content:center;
+  padding:12vh 16px 16px;animation:palIn .16s var(--ease)}
+#pal[hidden]{display:none}
+@keyframes palIn{from{opacity:0}to{opacity:1}}
+.pal-box{width:100%;max-width:600px;background:var(--surface);
+  border:1px solid var(--line-3);border-radius:var(--r);overflow:hidden;
+  box-shadow:0 30px 80px -30px rgba(0,0,0,1),0 0 40px -20px var(--glow);
+  animation:palRise .2s var(--ease)}
+@keyframes palRise{from{transform:translateY(-8px)}to{transform:none}}
+.pal-q{width:100%;background:transparent;border:none;border-bottom:1px solid var(--line);
+  padding:16px 18px;color:var(--text);font-size:15px;font-family:var(--mono);outline:none}
+.pal-q::placeholder{color:var(--faint);font-size:12.5px}
+.pal-list{max-height:52vh;overflow-y:auto;padding:6px}
+.pal-g{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);
+  font-family:var(--mono);padding:10px 12px 5px}
+.pal-i{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:9px 12px;border-radius:7px;cursor:pointer}
+.pal-i.on{background:var(--au-bg-2);box-shadow:0 0 0 1px var(--line-3) inset}
+.pal-i.on .pal-l{color:var(--au)}
+.pal-l{font-size:13px}
+.pal-h{font-size:10.5px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
+.pal-i.danger.on{background:var(--down-bg);box-shadow:0 0 0 1px rgba(255,85,102,.4) inset}
+.pal-i.danger.on .pal-l{color:var(--down)}
+.pal-none{padding:22px 14px;text-align:center;color:var(--muted);font-size:12.5px}
+
 /* ================= boot sequence =================
    Plays once per browser session, after a successful sign-in only. A resumed
    session goes straight to the deck — nobody wants three seconds of ceremony
@@ -827,6 +953,8 @@ body.stale .tp-spot,body.stale .hero-eq,body.stale .pb-pnl{opacity:.45}
 .param .info{flex:1;min-width:0}
 .param .nm{font-size:12.5px;display:flex;align-items:center;gap:7px}
 .param .hp{font-size:10.5px;color:var(--dim);line-height:1.5;margin-top:4px}
+.param .rng{font-size:10px;color:var(--dim);margin-top:4px;font-family:var(--mono);
+  letter-spacing:.6px}
 .param .df{font-size:11px;color:var(--au);margin-top:4px;font-family:var(--mono);letter-spacing:.5px}
 .edited{width:5px;height:5px;background:var(--au);flex-shrink:0;transform:rotate(45deg)}
 .crit{font-size:10px;font-weight:700;letter-spacing:1.1px;color:var(--au);
@@ -1048,6 +1176,64 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
   </div>
 </div>
 
+<!-- ======================= SESSION REPLAY ======================= -->
+<div id="rep" hidden>
+  <div class="rep-box" role="dialog" aria-modal="true" aria-label="Session replay">
+    <div class="rep-head">
+      <h2 class="card-t">Session replay</h2>
+      <div class="rep-ctl">
+        <select class="field" id="rep-date" aria-label="Session to replay"></select>
+        <button class="btn ghost" id="rep-close"
+                style="width:auto;padding:8px 14px">Close</button>
+      </div>
+    </div>
+    <div class="rep-body">
+      <div class="rep-stage" id="rep-stage"></div>
+      <div class="rep-track">
+        <button class="rep-play" id="rep-play" aria-label="Play or pause">▶</button>
+        <input type="range" id="rep-scrub" min="0" max="0" value="0" step="1"
+               aria-label="Position in the session">
+        <span class="rep-time num" id="rep-time">--:--:--</span>
+        <div class="seg" id="rep-speed" style="margin-bottom:0">
+          <button data-x="1">1×</button>
+          <button class="on" data-x="8">8×</button>
+          <button data-x="60">60×</button>
+          <button data-x="600">600×</button>
+        </div>
+      </div>
+      <div class="rep-log" id="rep-log"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= ALGORITHM DIFF ======================= -->
+<div id="dif" hidden>
+  <div class="dif-box" role="dialog" aria-modal="true" aria-labelledby="dif-title">
+    <div class="dif-head">
+      <div style="min-width:0">
+        <div class="dif-t" id="dif-title"></div>
+        <div class="dif-sub">Green is what the other version adds, red is what it drops.</div>
+      </div>
+      <div class="rep-ctl">
+        <span class="dif-stat" id="dif-stat"></span>
+        <button class="btn ghost" id="dif-close"
+                style="width:auto;padding:8px 14px">Close</button>
+      </div>
+    </div>
+    <div class="dif-body" id="dif-body" tabindex="0" aria-label="Line by line differences"></div>
+  </div>
+</div>
+
+<!-- ======================= COMMAND PALETTE ======================= -->
+<div id="pal" hidden>
+  <div class="pal-box" role="dialog" aria-modal="true" aria-label="Command palette">
+    <input id="pal-q" class="pal-q" type="text" autocomplete="off" spellcheck="false"
+           placeholder="Type a command…  ↑↓ to move, ↵ to run, esc to close"
+           aria-label="Command search">
+    <div id="pal-list" class="pal-list" role="listbox"></div>
+  </div>
+</div>
+
 <!-- ======================= BOOT SEQUENCE ======================= -->
 <div id="boot" hidden aria-hidden="true">
   <div class="boot-inner">
@@ -1212,7 +1398,15 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       <div class="card span-all">
         <div class="card-h">
           <h2 class="card-t" id="ch-title">Underlying · 1 min</h2>
-          <span class="num mono" id="ch-spot" style="font-size:12.5px"></span>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span class="num mono" id="ch-spot" style="font-size:12.5px"></span>
+            <div class="seg tvseg" id="ch-tf">
+              <button class="on" data-tf="1">1m</button>
+              <button data-tf="5">5m</button>
+              <button data-tf="15">15m</button>
+              <button data-tf="60">1H</button>
+            </div>
+          </div>
         </div>
         <div class="chartwrap" id="ch-candles"></div>
         <div class="legend">
@@ -1269,6 +1463,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
     <div style="display:flex;gap:9px;margin-top:11px">
       <button class="btn ghost" id="f-clear">Clear</button>
       <button class="btn ghost" id="f-follow">Follow: on</button>
+      <button class="btn ghost" id="f-save">Download</button>
     </div>
   </section>
 
@@ -1284,6 +1479,11 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
     </div>
     <div class="deck">
       <div class="card span-all" id="t-summary"></div>
+      <div class="card span-all">
+        <div class="card-h"><h2 class="card-t">Daily P&amp;L</h2>
+          <span class="dim mono" style="font-size:10px">green profit · red loss · grey no trades</span></div>
+        <div id="t-cal" class="cal"></div>
+      </div>
       <div class="span-all" id="t-list"></div>
     </div>
   </section>
@@ -1333,6 +1533,24 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
         </div>
       </div>
       <div class="card span-all" id="r-summary"></div>
+      <div class="card span-all">
+        <div class="card-h"><h2 class="card-t">Equity curve</h2>
+          <span class="dim mono" id="r-curve-note" style="font-size:10px"></span></div>
+        <div class="chartwrap" id="r-curve"></div>
+      </div>
+      <div class="card span-all">
+        <div class="card-h"><h2 class="card-t">Risk-adjusted return</h2>
+          <span class="dim mono" style="font-size:10px">daily returns · 250 sessions/yr · rf 6.5%</span></div>
+        <div class="mgrid" id="r-risk"></div>
+      </div>
+      <div class="card span-all">
+        <div class="card-h"><h2 class="card-t">Review a session</h2></div>
+        <div class="muted" style="font-size:12.5px;line-height:1.6">
+          Step through a past trading day event by event — every entry, exit,
+          ladder move and the reason the algorithm gave for sitting out.
+        </div>
+        <button class="btn ghost" id="r-replay" style="margin-top:12px">Open session replay</button>
+      </div>
       <div class="card span-all">
         <div class="card-h"><h2 class="card-t">Sessions</h2></div>
         <div id="r-days"></div>
@@ -1426,6 +1644,24 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
           <div id="a-versions" style="margin-top:10px"></div>
         </div>
       </div>
+
+      <!-- Nothing in the app deletes from this. If someone changed who can
+           trade, or pointed a slot at different code, it is written down. -->
+      <div class="card span-all">
+        <div class="card-h"><h2 class="card-t">Audit trail</h2>
+          <span class="dim mono" style="font-size:9.5px" id="au-count"></span></div>
+        <div class="muted" style="font-size:12px;line-height:1.6">
+          Every change to who can sign in, which algorithm runs where, and any
+          request to trade real money — with the name attached. Append only.
+        </div>
+        <div class="seg" id="au-filter" style="margin-top:12px;margin-bottom:0">
+          <button class="on" data-au="">Everything</button>
+          <button data-au="live">Live money</button>
+          <button data-au="user">People</button>
+          <button data-au="algorithm">Algorithm</button>
+        </div>
+        <div id="au-list" style="margin-top:12px"></div>
+      </div>
     </div>
   </section>
 
@@ -1433,6 +1669,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
   <section class="view" id="v-ctrl">
     <h1 class="sr-only">Control</h1>
     <div class="deck">
+      <div class="card span-all" id="c-mode"></div>
       <div class="card">
         <div class="card-h"><h2 class="card-t">Session control</h2></div>
         <div id="c-slots" style="margin-bottom:12px"></div>
@@ -1485,7 +1722,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.18-obsidian.6";
+const BUILD = "2026.08.18-obsidian.7";
 
 /* The dashboard is a static file with nowhere of its own to keep state, so it
    has to be told which trading server to talk to. Rather than ask for that
@@ -1522,6 +1759,7 @@ const S = {
   tradePeriod: "day", reportPeriod: "month",
   anchor: new Date().toISOString().slice(0, 10),
   includeEvents: false,
+  audit: [], auditFilter: "",
   ws: null, wsRetry: 0, marks: []
 };
 
@@ -1916,11 +2154,11 @@ function go(id) {
   $$(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + id));
   if (id === "trades") loadTrades();
   if (id === "reports") loadReports();
-  if (id === "ctrl") loadControl();
+  if (id === "ctrl") { loadControl(); loadMode(); }
   if (id === "feed") renderFeed();
   if (id === "chart") { loadChart(); renderTVSources(); }
   if (id === "strategy") loadStrategy();
-  if (id === "admin") { loadUsers(); loadAlgorithm(); }
+  if (id === "admin") { loadUsers(); loadAlgorithm(); loadAudit(); }
   window.scrollTo(0, 0);
 }
 
@@ -2542,6 +2780,20 @@ $$("#f-filters .fchip").forEach(b => b.onclick = () => {
   $$("#f-filters .fchip").forEach(x => x.classList.toggle("on", x === b));
   renderFeed();
 });
+const fSave = $("#f-save");
+if (fSave) fSave.onclick = () => {
+  if (!S.lines.length) { toast("Nothing to download yet"); return; }
+  const text = S.lines.map(e =>
+    `${e.ts}\t${(e.level || "info").toUpperCase()}\t${e.kind}\t${e.message}`).join("\n");
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `meridian_log_${new Date().toISOString().slice(0, 10)}.txt`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  toast(`Saved ${plural(S.lines.length, "line")}`);
+};
+
 const fSearch = $("#f-search");
 if (fSearch) fSearch.addEventListener("input", () => {
   S.logQuery = fSearch.value;
@@ -2613,6 +2865,448 @@ function renderFeed() {
   if (S.follow) el.scrollTop = el.scrollHeight;
 }
 
+/* ================= equity curve =================
+   Cumulative closing equity with the drawdown from each running peak shaded
+   underneath, so a run that made money by surviving a deep hole does not look
+   the same as one that ground steadily upward.
+==================================================== */
+function drawCurve(sessions) {
+  const pts = (sessions || [])
+    .filter(s => s.close_equity != null)
+    .map(s => ({ d: s.session_date, v: Number(s.close_equity) }));
+  if (pts.length < 2) {
+    return `<div class="chart-empty"><div class="ce-mark">◈</div>
+      <div class="ce-h">Not enough sessions to draw a curve</div>
+      <div class="ce-s">Two or more trading days in the window will plot here.</div></div>`;
+  }
+
+  const W = 900, H = 260, PAD = { t: 14, r: 62, b: 24, l: 8 };
+  const vals = pts.map(p => p.v);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = (hi - lo) || Math.abs(hi) || 1;
+  lo -= span * 0.08; hi += span * 0.08;
+  const pw = W - PAD.l - PAD.r, ph = H - PAD.t - PAD.b;
+  const x = i => PAD.l + (pts.length <= 1 ? pw / 2 : (i / (pts.length - 1)) * pw);
+  const y = v => PAD.t + ph - ((v - lo) / (hi - lo)) * ph;
+
+  let peak = -Infinity;
+  const peaks = pts.map(p => { peak = Math.max(peak, p.v); return peak; });
+
+  let g = `<defs>
+    <linearGradient id="cf" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8c458" stop-opacity=".28"/>
+      <stop offset="100%" stop-color="#e8c458" stop-opacity="0"/></linearGradient>
+  </defs>`;
+
+  [0, .25, .5, .75, 1].forEach(f => {
+    const v = lo + (hi - lo) * f, yy = y(v);
+    g += `<line x1="${PAD.l}" x2="${W - PAD.r}" y1="${yy}" y2="${yy}"
+      stroke="rgba(232,196,88,.08)" stroke-width="1"/>
+      <text x="${W - PAD.r + 6}" y="${yy + 3.5}" fill="#8a8377" font-size="10"
+        font-family="ui-monospace,monospace">${Math.round(v).toLocaleString("en-IN")}</text>`;
+  });
+
+  // Shade the gap between the running peak and equity: that is the drawdown.
+  const peakPath = peaks.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join("");
+  const backPath = pts.map((p, i) => `L${x(pts.length - 1 - i).toFixed(1)} ${y(pts[pts.length - 1 - i].v).toFixed(1)}`).join("");
+  g += `<path d="${peakPath} ${backPath} Z" fill="#ff5566" opacity=".1"/>`;
+
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join("");
+  g += `<path d="${line} L${x(pts.length - 1).toFixed(1)} ${H - PAD.b} L${x(0).toFixed(1)} ${H - PAD.b} Z"
+      fill="url(#cf)"/>
+    <path d="${peakPath}" stroke="#ff5566" stroke-width="1" fill="none"
+      stroke-dasharray="3 4" opacity=".5"/>
+    <path d="${line}" stroke="#e8c458" stroke-width="1.8" fill="none"/>
+    <circle cx="${x(pts.length - 1)}" cy="${y(pts[pts.length - 1].v)}" r="3.5" fill="#e8c458"/>`;
+
+  g += `<text x="${PAD.l + 2}" y="${H - 6}" fill="#8a8377" font-size="10"
+      font-family="ui-monospace,monospace">${esc(pts[0].d)}</text>
+    <text x="${W - PAD.r}" y="${H - 6}" fill="#8a8377" font-size="10" text-anchor="end"
+      font-family="ui-monospace,monospace">${esc(pts[pts.length - 1].d)}</text>`;
+
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"
+    role="img" aria-label="Equity curve with drawdown shaded">${g}</svg>`;
+}
+
+/* ================= daily P&L calendar =================
+   A month at a glance. Colour intensity scales with the size of the day
+   relative to the best and worst in the window, so one outsized day does not
+   flatten everything else into the same shade.
+========================================================= */
+function drawCalendar(sessions) {
+  const rows = (sessions || []).filter(s => s.session_date);
+  if (!rows.length) {
+    return `<div class="empty">No sessions in this period.</div>`;
+  }
+  const byDate = new Map(rows.map(s => [s.session_date, s]));
+  const dates = rows.map(s => s.session_date).sort();
+  const first = new Date(dates[0] + "T00:00:00");
+  const last = new Date(dates[dates.length - 1] + "T00:00:00");
+
+  const pnls = rows.map(s => Number(s.day_pnl) || 0);
+  const up = Math.max(1, ...pnls.filter(v => v > 0));
+  const down = Math.min(-1, ...pnls.filter(v => v < 0));
+
+  // Start on the Monday of the first week so weekday columns line up.
+  const start = new Date(first);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+
+  const cells = [];
+  for (let d = new Date(start); d <= last; d.setDate(d.getDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10);
+    const s = byDate.get(iso);
+    if (!s) {
+      cells.push(`<div class="cal-c out" title="${iso}"></div>`);
+      continue;
+    }
+    const v = Number(s.day_pnl) || 0;
+    const mag = v > 0 ? Math.min(1, v / up) : v < 0 ? Math.min(1, v / down) : 0;
+    const tone = v > 0 ? "up" : v < 0 ? "down" : "flat";
+    const alpha = (0.18 + mag * 0.72).toFixed(2);
+    const bg = v > 0 ? `rgba(56,224,143,${alpha})`
+             : v < 0 ? `rgba(255,85,102,${alpha})`
+             : "rgba(255,255,255,.05)";
+    cells.push(`<button class="cal-c ${tone}" style="background:${bg}"
+      data-cal="${iso}" type="button"
+      title="${iso} · ${v >= 0 ? "+" : "−"}₹${Math.abs(Math.round(v)).toLocaleString("en-IN")} · ${s.trades || 0} trades"
+      aria-label="${iso}, ${v >= 0 ? "profit" : "loss"} ${Math.abs(Math.round(v))} rupees"></button>`);
+  }
+
+  return `<div class="cal-days">
+      ${["M", "T", "W", "T", "F", "S", "S"].map(d => `<span>${d}</span>`).join("")}
+    </div>
+    <div class="cal-grid">${cells.join("")}</div>`;
+}
+
+/* ================= algorithm diff =================
+   A plain longest-common-subsequence diff, computed in the browser. Swapping
+   the code that trades your money without seeing what changed is the kind of
+   thing that only looks fine until it is not.
+
+   LCS is O(n·m), so a guard caps it: two 2,000-line files are four million
+   cells, which is fine, but nothing here needs to try ten times that.
+==================================================== */
+function diffLines(a, b) {
+  const A = a.split("\n"), B = b.split("\n");
+  const MAX = 4000;
+  if (A.length > MAX || B.length > MAX) {
+    return [{ t: "note", s: `Files are too large to diff line by line `
+      + `(${A.length} vs ${B.length} lines).` }];
+  }
+
+  // Trim the common head and tail first — most edits touch a small middle.
+  let head = 0;
+  while (head < A.length && head < B.length && A[head] === B[head]) head++;
+  let tail = 0;
+  while (tail < A.length - head && tail < B.length - head
+         && A[A.length - 1 - tail] === B[B.length - 1 - tail]) tail++;
+
+  const midA = A.slice(head, A.length - tail);
+  const midB = B.slice(head, B.length - tail);
+
+  const n = midA.length, m = midB.length;
+  const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = midA[i] === midB[j]
+        ? dp[i + 1][j + 1] + 1
+        : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const out = [];
+  for (let k = Math.max(0, head - 3); k < head; k++) out.push({ t: "same", s: A[k], n: k + 1 });
+
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (midA[i] === midB[j]) { out.push({ t: "same", s: midA[i], n: head + i + 1 }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: "del", s: midA[i], n: head + i + 1 }); i++; }
+    else { out.push({ t: "add", s: midB[j], n: head + j + 1 }); j++; }
+  }
+  while (i < n) { out.push({ t: "del", s: midA[i], n: head + i + 1 }); i++; }
+  while (j < m) { out.push({ t: "add", s: midB[j], n: head + j + 1 }); j++; }
+  for (let k = 0; k < Math.min(3, tail); k++) {
+    out.push({ t: "same", s: A[A.length - tail + k], n: A.length - tail + k + 1 });
+  }
+  return out;
+}
+
+function showDiff(currentSrc, otherSrc, currentId, otherId) {
+  const rows = diffLines(currentSrc, otherSrc);
+  const added = rows.filter(r => r.t === "add").length;
+  const removed = rows.filter(r => r.t === "del").length;
+
+  // Long unchanged stretches are folded so the changes are actually findable.
+  const shown = [];
+  let run = 0;
+  for (const r of rows) {
+    if (r.t === "same") {
+      run++;
+      if (run > 6) { if (run === 7) shown.push({ t: "fold" }); continue; }
+    } else { run = 0; }
+    shown.push(r);
+  }
+
+  $("#dif-title").textContent = `${currentId}  →  ${otherId}`;
+  $("#dif-stat").innerHTML = added || removed
+    ? `<span class="up">+${added}</span> <span class="down">−${removed}</span>`
+    : `<span class="dim">no change</span>`;
+  $("#dif-body").innerHTML = shown.map(r => {
+    if (r.t === "fold") return `<div class="dfl fold">⋯ UNCHANGED ⋯</div>`;
+    if (r.t === "note") return `<div class="dfl fold">${esc(r.s)}</div>`;
+    const sign = r.t === "add" ? "+" : r.t === "del" ? "−" : " ";
+    return `<div class="dfl ${r.t}"><span class="dfl-n">${r.n || ""}</span>`
+      + `<span class="dfl-s">${sign}</span><span class="dfl-c">${esc(r.s)}</span></div>`;
+  }).join("") || `<div class="empty">These two versions are identical.</div>`;
+  $("#dif").hidden = false;
+  const cl = $("#dif-close"); if (cl) cl.focus();
+}
+
+function difClose() { const d = $("#dif"); if (d) d.hidden = true; }
+const difBtn = $("#dif-close");
+if (difBtn) difBtn.onclick = difClose;
+const difBack = $("#dif");
+if (difBack) difBack.onclick = e => { if (e.target === difBack) difClose(); };
+
+/* ================= session replay =================
+   Walks a stored session in order, at a chosen multiple of real time. Status
+   and chart pushes are never persisted — they redraw several times a minute —
+   so this is the decision record: entries, exits, ladder moves, and the reasons
+   the algorithm gave for sitting out. That is what a post-mortem needs.
+====================================================== */
+const REP = { data: null, i: 0, timer: null, speed: 8, playing: false };
+
+async function openReplay(dateStr) {
+  const box = $("#rep"); if (!box) return;
+  box.hidden = false;
+  try {
+    const list = await api("/api/replay/dates");
+    const sel = $("#rep-date");
+    sel.innerHTML = (list.dates || []).map(d =>
+      `<option value="${esc(d.date)}">${esc(d.date)} · ${plural(d.events, "event")}</option>`
+    ).join("") || `<option value="">No stored sessions</option>`;
+    if (dateStr) sel.value = dateStr;
+    await loadReplay(sel.value);
+  } catch (e) { toast(e.message); }
+}
+
+async function loadReplay(d) {
+  if (!d) return;
+  repPause();
+  try {
+    REP.data = await api(`/api/replay?session_date=${encodeURIComponent(d)}`);
+    REP.i = 0;
+    const n = (REP.data.events || []).length;
+    const scrub = $("#rep-scrub");
+    scrub.max = String(Math.max(0, n - 1));
+    scrub.value = "0";
+    repRender();
+  } catch (e) { toast(e.message); }
+}
+
+function repRender() {
+  const d = REP.data; if (!d) return;
+  const evs = d.events || [];
+  const upto = evs.slice(0, REP.i + 1);
+  const now = evs[REP.i];
+
+  $("#rep-time").textContent = now ? String(now.ts).slice(11, 19) : "--:--:--";
+
+  // Equity as at the replayed moment, not the end of the day — the whole point
+  // is to see what the operator would have seen at that instant.
+  const marks = (d.marks || []).filter(m => !now || m.ts <= now.ts);
+  const last = marks[marks.length - 1];
+  const trades = (d.trades || []).filter(t => !now || (t.exit_time || "") <= String(now.ts).slice(11));
+
+  const cell = (k, v, c) => `<div class="rs-i"><div class="rs-k">${esc(k)}</div>
+    <div class="rs-v num ${c || ""}">${esc(v)}</div></div>`;
+  $("#rep-stage").innerHTML = `
+    <div class="rs-grid">
+      ${cell("At", now ? String(now.ts).slice(11, 19) : "—")}
+      ${cell("Equity", last ? money(last.equity, 0) : "—")}
+      ${cell("Day P&L", last ? signed(last.day_pnl, 0) : "—",
+             last ? cls(last.day_pnl) : "")}
+      ${cell("Trades closed", trades.length)}
+      ${cell("Event", now ? String(now.kind).toUpperCase() : "—")}
+      ${cell("Progress", evs.length ? `${REP.i + 1} / ${evs.length}` : "—")}
+    </div>`;
+
+  const tail = upto.slice(-60).reverse();
+  $("#rep-log").innerHTML = tail.length ? tail.map(e => `
+    <div class="ln ${esc(e.level || "info")}">
+      <span class="ln-t">${esc(String(e.ts).slice(11, 19))}</span>
+      <span class="ln-m"><span class="tag">${esc(e.kind)}</span>${esc(e.message)}</span>
+    </div>`).join("") : `<div class="empty">Nothing recorded for this session.</div>`;
+}
+
+function repStep() {
+  const evs = (REP.data && REP.data.events) || [];
+  if (REP.i >= evs.length - 1) { repPause(); return; }
+  REP.i += 1;
+  $("#rep-scrub").value = String(REP.i);
+  repRender();
+
+  // Wait the real gap between events, divided by the speed multiplier, so the
+  // rhythm of the session is preserved — a quiet hour still feels quiet.
+  const a = new Date(evs[REP.i - 1].ts).getTime();
+  const b = new Date(evs[REP.i].ts).getTime();
+  const gap = isFinite(a) && isFinite(b) ? Math.max(0, b - a) : 1000;
+  const wait = Math.min(2000, Math.max(16, gap / REP.speed));
+  REP.timer = setTimeout(repStep, wait);
+}
+
+function repPlay() {
+  if (REP.playing) return;
+  const evs = (REP.data && REP.data.events) || [];
+  if (!evs.length) return;
+  if (REP.i >= evs.length - 1) { REP.i = 0; $("#rep-scrub").value = "0"; }
+  REP.playing = true;
+  $("#rep-play").textContent = "❚❚";
+  repStep();
+}
+
+function repPause() {
+  REP.playing = false;
+  clearTimeout(REP.timer);
+  const b = $("#rep-play"); if (b) b.textContent = "▶";
+}
+
+const rReplay = $("#r-replay");
+if (rReplay) rReplay.onclick = () => openReplay();
+
+function repClose() { repPause(); const r = $("#rep"); if (r) r.hidden = true; }
+const repCloseBtn = $("#rep-close");
+if (repCloseBtn) repCloseBtn.onclick = repClose;
+const repBack = $("#rep");
+if (repBack) repBack.onclick = e => { if (e.target === repBack) repClose(); };
+const repDate = $("#rep-date");
+if (repDate) repDate.onchange = () => loadReplay(repDate.value);
+const repPlayBtn = $("#rep-play");
+if (repPlayBtn) repPlayBtn.onclick = () => (REP.playing ? repPause() : repPlay());
+const repScrub = $("#rep-scrub");
+if (repScrub) repScrub.addEventListener("input", () => {
+  repPause();
+  REP.i = Number(repScrub.value) || 0;
+  repRender();
+});
+$$("#rep-speed button").forEach(b => b.onclick = () => {
+  REP.speed = Number(b.dataset.x) || 8;
+  $$("#rep-speed button").forEach(x => x.classList.toggle("on", x === b));
+});
+
+/* ================= command palette =================
+   Everything reachable from the keyboard. The list is built fresh each time it
+   opens so it reflects which algorithms exist and which are running right now,
+   rather than a snapshot from page load.
+====================================================== */
+function paletteCommands() {
+  const cmds = [];
+  VIEWS.forEach(v => {
+    if (v.superOnly && S.role !== "super_admin") return;
+    cmds.push({ group: "Go to", label: v.label, hint: "view", run: () => show(v.id) });
+  });
+
+  const lanes = ((S.fleet && S.fleet.slots) || []).filter(l => !l.empty);
+  lanes.forEach(l => {
+    cmds.push({
+      group: "Algorithm", label: `Show ${l.name} on the deck`,
+      hint: l.running ? "running" : l.state,
+      run: () => { S.deckSlot = l.slot; show("dash"); renderFleet(); renderDash(); },
+    });
+    if (l.running) {
+      cmds.push({
+        group: "Algorithm", label: `Stop ${l.name}`, hint: "flattens any position",
+        danger: true,
+        run: () => { S.ctrlSlot = l.slot; show("ctrl"); setTimeout(() => $("#c-stop").click(), 60); },
+      });
+    } else {
+      cmds.push({
+        group: "Algorithm", label: `Start ${l.name}`, hint: "begins trading",
+        run: () => { S.ctrlSlot = l.slot; show("ctrl"); setTimeout(() => $("#c-start").click(), 60); },
+      });
+    }
+  });
+
+  [["Today", "day"], ["This week", "week"], ["This month", "month"],
+   ["This quarter", "quarter"], ["This year", "year"]].forEach(([label, period]) => {
+    cmds.push({
+      group: "Report", label: `${label} — PDF`, hint: "downloads",
+      run: () => {
+        S.reportPeriod = period; show("reports");
+        setTimeout(() => { setDownloads(); $("#dl-pdf").click(); }, 80);
+      },
+    });
+  });
+
+  cmds.push({ group: "Session", label: "Replay a past session", hint: "review",
+              run: () => { show("reports"); setTimeout(() => openReplay(), 60); } });
+  cmds.push({ group: "Session", label: "Sign out", hint: "this device",
+              danger: true, run: () => signOut("") });
+  return cmds;
+}
+
+let palIndex = 0, palMatches = [];
+
+function palRender() {
+  const q = ($("#pal-q").value || "").trim().toLowerCase();
+  const all = paletteCommands();
+  palMatches = q
+    ? all.filter(c => (`${c.group} ${c.label} ${c.hint || ""}`).toLowerCase().includes(q))
+    : all;
+  palIndex = Math.max(0, Math.min(palIndex, palMatches.length - 1));
+
+  const box = $("#pal-list");
+  if (!palMatches.length) {
+    box.innerHTML = `<div class="pal-none">Nothing matches “${esc(q)}”.</div>`;
+    return;
+  }
+  let lastGroup = null;
+  box.innerHTML = palMatches.map((c, i) => {
+    const head = c.group !== lastGroup ? `<div class="pal-g">${esc(c.group)}</div>` : "";
+    lastGroup = c.group;
+    return head + `<div class="pal-i ${i === palIndex ? "on" : ""} ${c.danger ? "danger" : ""}"
+        data-i="${i}" role="option" aria-selected="${i === palIndex}">
+      <span class="pal-l">${esc(c.label)}</span>
+      ${c.hint ? `<span class="pal-h">${esc(c.hint)}</span>` : ""}</div>`;
+  }).join("");
+
+  const sel = box.querySelector(".pal-i.on");
+  if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest" });
+  $$("#pal-list .pal-i").forEach(el => el.onclick = () => palRun(Number(el.dataset.i)));
+}
+
+function palOpen() {
+  const pal = $("#pal"); if (!pal) return;
+  pal.hidden = false;
+  palIndex = 0;
+  $("#pal-q").value = "";
+  palRender();
+  setTimeout(() => $("#pal-q").focus(), 20);
+}
+
+function palClose() { const p = $("#pal"); if (p) p.hidden = true; }
+
+function palRun(i) {
+  const cmd = palMatches[i];
+  palClose();
+  if (cmd) { try { cmd.run(); } catch (e) { toast(e.message); } }
+}
+
+const palQ = $("#pal-q");
+if (palQ) {
+  palQ.addEventListener("input", () => { palIndex = 0; palRender(); });
+  palQ.addEventListener("keydown", e => {
+    if (e.key === "ArrowDown") { e.preventDefault(); palIndex++; palRender(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); palIndex--; palRender(); }
+    else if (e.key === "Enter") { e.preventDefault(); palRun(palIndex); }
+    else if (e.key === "Escape") { e.preventDefault(); palClose(); }
+  });
+}
+const palBack = $("#pal");
+if (palBack) palBack.addEventListener("pointerdown", e => {
+  if (e.target === palBack) palClose();
+});
+
 /* ================= keyboard =================
    Single letters jump between sections. They are ignored while a field has
    focus, so typing a passcode or an algorithm name never navigates away.
@@ -2621,7 +3315,15 @@ const KEYNAV = { d: "dash", c: "chart", l: "feed", t: "trades",
                  r: "reports", s: "strategy", a: "admin", x: "ctrl" };
 
 document.addEventListener("keydown", e => {
+  // Ctrl/Cmd+K opens the palette from anywhere, including from inside a field.
+  if ((e.metaKey || e.ctrlKey) && String(e.key).toLowerCase() === "k") {
+    e.preventDefault();
+    if ($("#gate") && !$("#gate").classList.contains("hide")) return;
+    $("#pal").hidden ? palOpen() : palClose();
+    return;
+  }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!$("#pal").hidden) return;          // the palette owns the keyboard
   const el = e.target;
   const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA"
                         || el.tagName === "SELECT" || el.isContentEditable);
@@ -2635,6 +3337,9 @@ document.addEventListener("keydown", e => {
     return;
   }
   if (e.key === "Escape") {
+    if (!$("#pal").hidden) { palClose(); return; }
+    if (!$("#dif").hidden) { difClose(); return; }
+    if (!$("#rep").hidden) { repClose(); return; }
     const open = $("#tv-wrap");
     if (open && open.open) open.open = false;
   }
@@ -2644,6 +3349,12 @@ document.addEventListener("keydown", e => {
 const tvWrap = $("#tv-wrap");
 if (tvWrap) tvWrap.addEventListener("toggle", () => {
   if (tvWrap.open) { renderTVSources(); mountTV(); }
+});
+
+$$("#ch-tf button").forEach(b => b.onclick = () => {
+  S.chartTf = Number(b.dataset.tf) || 1;
+  $$("#ch-tf button").forEach(x => x.classList.toggle("on", x === b));
+  loadChart();
 });
 
 $$("#tv-tf button").forEach(b => b.onclick = () => {
@@ -2676,32 +3387,72 @@ async function loadTrades() {
           money(s.gross_profit, 0) + " / " + money(s.gross_loss, 0))}
         ${metric("Charges", money(s.charges, 0), "avg hold " + s.avg_hold_min + "m")}
       </div>`;
+
+    $("#t-cal").innerHTML = drawCalendar(sum.sessions);
+    // Clicking a day narrows the list to that session.
+    $$("[data-cal]").forEach(el => el.onclick = () => {
+      S.anchor = el.dataset.cal;
+      S.tradePeriod = "day";
+      $$("#t-seg button").forEach(b => b.classList.toggle("on", b.dataset.p === "day"));
+      loadTrades();
+    });
+
     const list = $("#t-list");
     if (!d.trades.length) {
-      list.innerHTML = `<div class="card"><div class="empty">No trades in window<br>
-        Days the algorithm did not trade are logged under Reports with the reason</div></div>`;
+      list.innerHTML = `<div class="card"><div class="empty">
+        NO TRADES IN THIS PERIOD<br>
+        Days the algorithm did not trade are logged under Reports with the reason.</div></div>`;
       return;
     }
     list.innerHTML = d.trades.slice().reverse().map(t => {
       const move = t.avg_entry ? (t.exit_fill - t.avg_entry) / t.avg_entry * 100 : 0;
-      return `<div class="trade">
-        <div style="display:flex;justify-content:space-between;gap:10px">
-          <div style="min-width:0">
-            <div class="trade-sym">${esc(t.symbol)}</div>
-            <div class="trade-time">${esc((t.entry_time || "").slice(11))} → ${esc(t.exit_time || "")} · ${t.hold_min}m · ${esc(t.session_date)}</div>
+      const kv = (k, v) => `<div class="td-i"><span class="td-k">${esc(k)}</span>
+        <span class="td-v num">${esc(v)}</span></div>`;
+      return `<details class="trade">
+        <summary>
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+            <div style="min-width:0">
+              <div class="trade-sym">${esc(t.symbol)}</div>
+              <div class="trade-time">${esc((t.entry_time || "").slice(11))} → ${esc(t.exit_time || "")} · ${t.hold_min}m · ${esc(t.session_date)}</div>
+            </div>
+            <div><div class="trade-pnl num ${cls(t.net_pnl)}">${signed(t.net_pnl, 0)}</div>
+              <div class="trade-move num ${cls(move)}">${pct(move, 1)}</div></div>
           </div>
-          <div><div class="trade-pnl num ${cls(t.net_pnl)}">${signed(t.net_pnl, 0)}</div>
-            <div class="trade-move num ${cls(move)}">${pct(move, 1)}</div></div>
+          <div class="trade-tags">
+            <span class="ttag">${esc(t.reason)}</span>
+            <span class="ttag">${esc(t.stage)}</span>
+            <span class="ttag">${money(t.avg_entry, 2)} → ${money(t.exit_fill, 2)}</span>
+            <span class="ttag">${t.qty} qty</span>
+          </div>
+        </summary>
+        <div class="td-body">
+          <div class="td-grid">
+            ${kv("Entry", money(t.avg_entry, 2))}
+            ${kv("Exit", money(t.exit_fill, 2))}
+            ${kv("Quantity", t.qty)}
+            ${kv("Gross P&L", signed(t.gross_pnl, 0))}
+            ${kv("Net P&L", signed(t.net_pnl, 0))}
+            ${kv("Held", (t.hold_min ?? 0) + " min")}
+            ${kv("NIFTY at entry", t.spot_at_entry ? Number(t.spot_at_entry).toFixed(1) : "—")}
+            ${kv("Strike", t.strike ?? "—")}
+            ${kv("Margin", money(t.real_margin, 0))}
+            ${kv("Equity after", money(t.equity_after, 0))}
+            ${kv("Latency", t.latency_ms ? Math.round(t.latency_ms) + " ms" : "—")}
+            ${kv("Slot", (t.slot ?? 0) === 0 ? "Primary" : "Slot " + ((t.slot ?? 0) + 1))}
+          </div>
+          <div class="td-sub">Charges breakdown</div>
+          <div class="td-grid">
+            ${kv("Brokerage", money(t.brokerage, 2))}
+            ${kv("STT", money(t.stt, 2))}
+            ${kv("Exchange", money(t.exch_txn, 2))}
+            ${kv("SEBI", money(t.sebi, 2))}
+            ${kv("Stamp", money(t.stamp, 2))}
+            ${kv("GST", money(t.gst, 2))}
+            ${kv("Total", money(t.charges, 2))}
+          </div>
+          ${t.entry_reason ? `<div class="trade-why">${esc(t.entry_reason)}</div>` : ""}
         </div>
-        <div class="trade-tags">
-          <span class="ttag">${esc(t.reason)}</span>
-          <span class="ttag">${esc(t.stage)}</span>
-          <span class="ttag">${money(t.avg_entry, 2)} → ${money(t.exit_fill, 2)}</span>
-          <span class="ttag">${t.qty} qty</span>
-          <span class="ttag">chg ${money(t.charges, 0)}</span>
-        </div>
-        ${t.entry_reason ? `<div class="trade-why">${esc(t.entry_reason)}</div>` : ""}
-      </div>`;
+      </details>`;
     }).join("");
   } catch (e) { toast(e.message); }
 }
@@ -3046,8 +3797,13 @@ const tbb = (k, v, s2, c) => `<div class="tbb"><div class="k">${esc(k)}</div>
 
 async function loadChart() {
   try {
-    const d = S.chart ? { available: true, ...S.chart } : await api("/api/chart");
-    S.chart = d;
+    // A pushed chart is always 1-minute; any other timeframe has to be asked
+    // for, because the rollup happens server-side.
+    const tf = S.chartTf || 1;
+    const d = (tf === 1 && S.chart)
+      ? { available: true, tf: 1, interval_label: "1 min", ...S.chart }
+      : await api(`/api/chart?tf=${tf}`);
+    if (tf === 1) S.chart = d;
     const m = (S.snap && S.snap.market) || {};
     $("#ch-title").textContent =
       `${d.index || "Underlying"} · ${d.interval_label || "1 min"} · bot feed`;
@@ -3207,6 +3963,24 @@ async function loadReports() {
         ${metric("Best", signed(s.best_trade, 0), "worst " + signed(s.worst_trade, 0))}
         ${metric("Inactive days", plural(s.days_blocked_chop, "day"), s.days_killed + " halted")}
       </div>`;
+    // Equity curve and the risk block, from the same window as the summary.
+    $("#r-curve").innerHTML = drawCurve(sum.sessions);
+    $("#r-curve-note").textContent = sum.sessions.length
+      ? `${plural(sum.sessions.length, "session")} · drawdown shaded`.toUpperCase() : "";
+
+    const rm = (k, v, sub, cls2) => metric(k, v == null ? "—" : v, sub, undefined, cls2);
+    $("#r-risk").innerHTML = `
+      ${rm("Sharpe", s.sharpe, "excess return per unit of volatility")}
+      ${rm("Sortino", s.sortino, "downside volatility only")}
+      ${rm("Calmar", s.calmar, s.trading_period_days >= 90
+            ? "annualised return over max drawdown" : "needs a quarter of data")}
+      ${rm("Expectancy", s.expectancy == null ? null : signed(s.expectancy, 0),
+           "average rupees per trade")}
+      ${rm("Win / loss size", s.win_loss_ratio,
+           s.avg_win != null ? `avg win ${money(s.avg_win, 0)} · avg loss ${money(s.avg_loss, 0)}` : "")}
+      ${rm("Daily volatility", s.daily_vol_pct == null ? null : s.daily_vol_pct + "%",
+           s.best_day != null ? `best ${signed(s.best_day, 0)} · worst ${signed(s.worst_day, 0)}` : "")}`;
+
     const days = sum.sessions.slice().reverse();
     $("#r-days").innerHTML = days.length ? days.map(d => `
       <div class="day">
@@ -3289,6 +4063,8 @@ function renderStrategy() {
         <div class="nm">${esc(p.label)}${edited ? '<span class="edited"></span>' : ""}
           ${p.critical ? '<span class="crit">INSTRUMENT</span>' : ""}</div>
         ${p.help ? `<div class="hp">${esc(p.help)}</div>` : ""}
+        ${(p.min != null || p.max != null) ? `<div class="rng num">RANGE ${
+          p.min != null ? fmtv(p.min) : "—"} → ${p.max != null ? fmtv(p.max) : "—"}</div>` : ""}
         ${p.modified && !edited ? `<div class="df">v11: ${fmtv(p.default)}</div>` : ""}
       </div>${control}</div>`;
     }
@@ -3298,7 +4074,7 @@ function renderStrategy() {
   html += `<div class="card"><div class="card-h"><h2 class="card-t">Profiles</h2></div>
     <div class="muted" style="font-size:12px">Save a parameter set and switch back later.</div>
     <div style="display:flex;gap:9px;margin-top:11px">
-      <input class="field" id="st-pname" aria-label="Your display name" placeholder="Profile name" style="flex:1">
+      <input class="field" id="st-pname" aria-label="Profile name" placeholder="Profile name" style="flex:1">
       <button class="btn ghost" id="st-psave" style="width:auto;padding:12px 20px">Save</button></div>
     ${(d.profiles || []).map(p => `<div class="day">
       <div><div class="day-d">${esc(p.name)}</div>
@@ -3318,7 +4094,7 @@ function renderStrategy() {
   if (nEdits) {
     html += `<div class="savebar span-all">
       <button class="btn ghost" id="st-discard">Discard</button>
-      <button class="btn" id="st-save">Commit ${nEdits} change${nEdits > 1 ? "s" : ""}</button></div>`;
+      <button class="btn" id="st-save">Commit ${plural(nEdits, "change")}</button></div>`;
   }
 
   $("#st-body").innerHTML = html;
@@ -3395,6 +4171,70 @@ function wireStrategy() {
     } catch (e) { toast(e.message); }
   });
 }
+
+/* ---------------- admin: audit trail ----------------
+   The event feed is per session and rolls over; this does not. It answers
+   "who changed this, and when" months later, which is the question that
+   actually gets asked after something goes wrong.
+==================================================== */
+const AUDIT_LABELS = {
+  live_mode_requested: ["Live money requested", "warn"],
+  live_mode_approved:  ["Live money approved", "down"],
+  live_mode_cancelled: ["Live money request cancelled", "dim"],
+  paper_mode_restored: ["Back to paper", "up"],
+  user_created:        ["Operator added", "warn"],
+  user_updated:        ["Operator changed", "warn"],
+  user_deleted:        ["Operator removed", "down"],
+  algorithm_uploaded:  ["Algorithm uploaded", "dim"],
+  algorithm_assigned:  ["Algorithm assigned", "warn"],
+  algorithm_deleted:   ["Algorithm deleted", "down"],
+  session_started:     ["Session started", "up"],
+  session_stopped:     ["Session stopped", "dim"],
+};
+
+function auditGroup(action) {
+  if (action.startsWith("live_mode") || action.startsWith("paper_mode")) return "live";
+  if (action.startsWith("user_")) return "user";
+  if (action.startsWith("algorithm_")) return "algorithm";
+  return "other";
+}
+
+function renderAudit() {
+  const rows = (S.audit || []).filter(e =>
+    !S.auditFilter || auditGroup(e.action) === S.auditFilter);
+  const el = $("#au-list");
+  if (!el) return;
+  $("#au-count").textContent = plural(rows.length, "ENTRY", "ENTRIES").toUpperCase();
+  el.innerHTML = rows.length ? rows.map(e => {
+    const [label, tone] = AUDIT_LABELS[e.action] || [e.action.replace(/_/g, " "), "dim"];
+    return `<div class="day">
+      <div style="min-width:0">
+        <div class="day-d"><span class="${tone}">${esc(label)}</span></div>
+        <div class="day-m">${esc(e.detail || "")}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="day-d mono" style="font-size:11px">${esc(e.actor)}</div>
+        <div class="day-m mono">${esc((e.ts || "").replace("T", " "))}</div>
+      </div></div>`;
+  }).join("")
+    : `<div class="empty">${S.auditFilter
+        ? "Nothing of this kind has been recorded yet."
+        : "Nothing recorded yet. Changes to people, algorithms and live mode land here."}</div>`;
+}
+
+async function loadAudit() {
+  try {
+    const d = await api("/api/audit");
+    S.audit = d.entries || [];
+  } catch (e) { S.audit = []; }
+  renderAudit();
+}
+
+$$("#au-filter button").forEach(b => b.onclick = () => {
+  S.auditFilter = b.dataset.au || "";
+  $$("#au-filter button").forEach(x => x.classList.toggle("on", x === b));
+  renderAudit();
+});
 
 /* ---------------- admin: users ---------------- */
 async function loadUsers() {
@@ -3540,6 +4380,8 @@ async function loadAlgorithm() {
             ${(v.warnings || []).length ? ` · <span class="warn">${v.warnings.length} warning(s)</span>` : ""}</div>
         </div>
         <div style="display:flex;gap:6px">
+          ${inThisSlot ? "" : `<button class="btn ghost" data-adiff="${esc(v.id)}"
+             style="width:auto;padding:6px 12px;font-size:10px">Diff</button>`}
           ${inThisSlot ? "" : `<button class="btn ghost" data-aact="${esc(v.id)}"
              style="width:auto;padding:6px 12px;font-size:10px">Use here</button>`}
           ${v.builtin || (v.slots || []).length ? "" : `<button class="btn danger" data-adel="${esc(v.id)}"
@@ -3560,6 +4402,25 @@ async function loadAlgorithm() {
         toast("Assigned — applies on next start"); loadAlgorithm(); loadFleet();
       } catch (e) { toast(e.message); }
     });
+    const vName = id => {
+      const v = (d.versions || []).find(x => x.id === id);
+      return v ? v.name : id;
+    };
+    $$("[data-adiff]").forEach(el => el.onclick = async () => {
+      const other = el.dataset.adiff;
+      const current = here.algorithm;
+      if (!current) { toast("This slot has nothing to compare against"); return; }
+      el.disabled = true;
+      try {
+        const [a, b] = await Promise.all([
+          api(`/api/algorithm/${encodeURIComponent(current)}/source`),
+          api(`/api/algorithm/${encodeURIComponent(other)}/source`),
+        ]);
+        showDiff(a.source, b.source, vName(current), vName(other));
+      } catch (e) { toast(e.message); }
+      finally { el.disabled = false; }
+    });
+
     $$("[data-adel]").forEach(el => el.onclick = async () => {
       if (!confirm("Delete this version permanently?")) return;
       try { await api(`/api/algorithm/${encodeURIComponent(el.dataset.adel)}`, { method: "DELETE" });
@@ -3637,21 +4498,131 @@ $("#a-upload").onclick = async () => {
 /* ---------------- control ---------------- */
 const row = (k, v) => `<div class="row"><span class="row-k">${esc(k)}</span><span class="row-v">${esc(v)}</span></div>`;
 
+/* ================= trading mode =================
+   Paper is reversible; real money is not. Arming it needs a second super
+   admin, so this is a request-and-approve flow rather than a switch, and going
+   back to paper needs no signature at all because it removes risk.
+==================================================== */
+async function loadMode() {
+  try { S.mode = await api("/api/live-mode"); renderMode(); }
+  catch (e) { /* viewers cannot see this; the card simply stays empty */ }
+}
+
+function renderMode() {
+  const m = S.mode, box = $("#c-mode");
+  if (!m || !box) return;
+  const isSuper = S.role === "super_admin";
+
+  if (!m.paper) {
+    box.innerHTML = `
+      <div class="card-h"><h2 class="card-t">Trading mode</h2></div>
+      <div class="mode live">
+        <div class="mode-h">REAL MONEY — orders are live</div>
+        <div class="mode-s">Every entry and exit is placed with the broker against
+          real capital. Returning to simulation takes effect when an algorithm
+          next starts; a position open right now finishes as it is.</div>
+        ${isSuper ? `<button class="btn ghost" id="c-paper"
+          style="margin-top:13px">Return to paper trading</button>` : ""}
+      </div>`;
+    const b = $("#c-paper");
+    if (b) b.onclick = async () => {
+      if (!confirm("Return to paper trading?\\n\\nNo further real orders will be "
+                 + "placed once algorithms restart. Any position open right now "
+                 + "still closes for real.")) return;
+      try { await api("/api/live-mode/paper", { method: "POST" });
+        toast("Back to paper"); loadMode(); refreshStatus(); } catch (e) { toast(e.message); }
+    };
+    return;
+  }
+
+  const p = m.pending;
+  box.innerHTML = `
+    <div class="card-h"><h2 class="card-t">Trading mode</h2>
+      <span class="pill paper">paper</span></div>
+    <div class="mode">
+      <div class="mode-h">Simulation — no real orders</div>
+      <div class="mode-s">Fills are simulated at the live price with slippage.
+        Nothing reaches the broker.</div>
+
+      ${!isSuper ? `<div class="mode-s" style="margin-top:12px">
+          Only a super admin can arm real money.</div>`
+      : !m.possible ? `<div class="cap-warn" style="margin-top:13px">
+          Arming real money needs <b>two</b> super admins — one to request it and a
+          different one to approve. There ${m.super_admins === 1 ? "is" : "are"}
+          currently ${plural(m.super_admins, "super admin")}. Create another in Admin first.</div>`
+      : p ? `<div class="mode-pending">
+          <div class="mode-ph">Awaiting a second approval</div>
+          <div class="mode-s">Requested by <b>${esc(p.requested_by)}</b> at
+            ${esc(String(p.requested_at).slice(11, 16))}${
+              p.reason ? ` — “${esc(p.reason)}”` : ""}.
+            It lapses on its own if nobody approves it.</div>
+          <div style="display:flex;gap:9px;margin-top:12px;flex-wrap:wrap">
+            <button class="btn" id="c-approve" style="width:auto;flex:1;min-width:150px">
+              Approve — arm real money</button>
+            <button class="btn ghost" id="c-cancelreq" style="width:auto;flex:1;min-width:130px">
+              Cancel request</button>
+          </div>
+          <div class="mode-s" style="margin-top:9px">
+            ${esc(p.requested_by)} cannot approve their own request.</div>
+        </div>`
+      : `<button class="btn ghost" id="c-request" style="margin-top:13px">
+           Request a switch to real money</button>`}
+    </div>`;
+
+  const req = $("#c-request");
+  if (req) req.onclick = async () => {
+    const reason = prompt("Requesting a switch to REAL MONEY.\\n\\n"
+      + "A different super admin has to approve before anything changes.\\n\\n"
+      + "Why are you going live? (recorded in the audit trail)");
+    if (reason === null) return;
+    try {
+      await api("/api/live-mode/request",
+        { method: "POST", body: JSON.stringify({ reason }) });
+      toast("Requested — a second super admin must approve"); loadMode();
+    } catch (e) { toast(e.message); }
+  };
+
+  const ok = $("#c-approve");
+  if (ok) ok.onclick = async () => {
+    if (!confirm("Arm REAL MONEY?\\n\\nFrom the next start, every order this "
+               + "algorithm places is real. This is recorded against your name.")) return;
+    try {
+      await api("/api/live-mode/approve", { method: "POST" });
+      toast("Real money armed"); loadMode(); refreshStatus();
+    } catch (e) { toast(e.message); }
+  };
+
+  const no = $("#c-cancelreq");
+  if (no) no.onclick = async () => {
+    try { await api("/api/live-mode/cancel", { method: "POST" });
+      toast("Request cancelled"); loadMode(); } catch (e) { toast(e.message); }
+  };
+}
+
 /* Start/stop act on whichever slot the Control tab has selected; the picker
    only appears once more than one slot is actually usable. */
 function ctrlSlot() { return S.ctrlSlot ?? 0; }
 
 function renderCtrlSlots() {
   const box = $("#c-slots"); if (!box || !S.fleet) return;
-  const usable = S.fleet.slots.filter(s => !s.empty);
-  if (usable.length < 2) { box.innerHTML = ""; return; }
+  const all = S.fleet.slots;
+  if (all.length < 2) { box.innerHTML = ""; return; }
   box.innerHTML = `<label class="lbl">Algorithm</label>
-    <div class="seg" style="margin-bottom:0">${usable.map(s => `
-      <button data-cs="${s.slot}" class="${s.slot === ctrlSlot() ? "on" : ""}">
-        ${esc(s.name)}${s.running ? " ●" : ""}</button>`).join("")}</div>`;
+    <div class="seg" style="margin-bottom:0">${all.map(s => `
+      <button data-cs="${s.slot}" class="${s.slot === ctrlSlot() ? "on" : ""} ${s.empty ? "off" : ""}"
+        ${s.empty ? 'title="Empty — upload an algorithm in Admin"' : ""}>
+        ${esc(s.name)}${s.running ? " ●" : ""}</button>`).join("")}</div>
+    <div class="dim" id="c-slot-note" style="font-size:11px;margin-top:7px"></div>`;
   $$("[data-cs]").forEach(b => b.onclick = () => {
     S.ctrlSlot = Number(b.dataset.cs); renderCtrlSlots();
   });
+  const here = all.find(x => x.slot === ctrlSlot()) || {};
+  const note = $("#c-slot-note");
+  if (note) {
+    note.textContent = here.empty
+      ? "This slot is empty — upload an algorithm in Admin before starting it."
+      : `${here.algorithm || ""}${here.running ? " · running now" : ""}`;
+  }
 }
 
 /* ================= confirming a capital-affecting action =================

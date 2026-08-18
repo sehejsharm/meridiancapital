@@ -460,6 +460,209 @@ console.log('\nNews');
         sandbox.document.querySelector('#d-news').innerHTML.includes('News is unavailable'));
 }
 
+console.log('\nEquity curve');
+{
+  const sessions = [
+    { session_date: '2026-08-03', close_equity: 20000, day_pnl: 0 },
+    { session_date: '2026-08-04', close_equity: 21662, day_pnl: 1662 },
+    { session_date: '2026-08-05', close_equity: 25124, day_pnl: 3462 },
+    { session_date: '2026-08-06', close_equity: 23000, day_pnl: -2124 },
+    { session_date: '2026-08-07', close_equity: 24000, day_pnl: 1000 },
+  ];
+  const svg = sandbox.drawCurve(sessions);
+  check('renders an svg', svg.startsWith('<svg'));
+  check('no NaN coordinates', !svg.includes('NaN'), svg.slice(0, 200));
+  check('the window is labelled at both ends',
+        svg.includes('2026-08-03') && svg.includes('2026-08-07'));
+  check('the drawdown is shaded against the running peak',
+        svg.includes('#ff5566'), 'expected a drawdown band');
+  check('it is described for a screen reader', svg.includes('aria-label'));
+
+  check('one session is not a curve',
+        sandbox.drawCurve([sessions[0]]).includes('chart-empty'));
+  check('no sessions degrades cleanly',
+        sandbox.drawCurve([]).includes('chart-empty'));
+  // A perfectly flat book must not divide by a zero range.
+  const flat = sandbox.drawCurve([
+    { session_date: '2026-08-03', close_equity: 20000 },
+    { session_date: '2026-08-04', close_equity: 20000 },
+  ]);
+  check('a flat curve does not divide by zero', !flat.includes('NaN') && flat.includes('<svg'));
+  // Rows with no close must be skipped, not plotted as zero.
+  const gappy = sandbox.drawCurve([
+    { session_date: '2026-08-03', close_equity: 20000 },
+    { session_date: '2026-08-04', close_equity: null },
+    { session_date: '2026-08-05', close_equity: 21000 },
+  ]);
+  check('sessions with no close are skipped', !gappy.includes('NaN'));
+}
+
+console.log('\nDaily P&L calendar');
+{
+  const cal = sandbox.drawCalendar([
+    { session_date: '2026-08-03', day_pnl: 1200, trades: 2 },
+    { session_date: '2026-08-04', day_pnl: -800, trades: 1 },
+    { session_date: '2026-08-05', day_pnl: 0, trades: 0 },
+  ]);
+  check('renders a grid', cal.includes('cal-grid'));
+  check('a profitable day is green', cal.includes('rgba(56,224,143'), cal.slice(0, 300));
+  check('a losing day is red', cal.includes('rgba(255,85,102'));
+  check('a flat day is neither', cal.includes('cal-c flat'));
+  check('days are clickable and dated',
+        cal.includes('data-cal="2026-08-03"'));
+  check('each cell is labelled for a screen reader', cal.includes('aria-label'));
+  check('no sessions says so', sandbox.drawCalendar([]).includes('No sessions'));
+
+  // Intensity is relative, so one huge day must not flatten the rest to nothing.
+  const skew = sandbox.drawCalendar([
+    { session_date: '2026-08-03', day_pnl: 100000, trades: 1 },
+    { session_date: '2026-08-04', day_pnl: 500, trades: 1 },
+  ]);
+  check('a small winning day is still visibly green',
+        /rgba\(56,224,143,0\.[12]\d\)/.test(skew), skew.match(/rgba\(56,224,143,[\d.]+\)/g)?.join(' '));
+}
+
+console.log('\nAlgorithm diff');
+{
+  const lines = (n, tag = 'x') =>
+    Array.from({ length: n }, (_, i) => `${tag}${i}`).join('\n');
+
+  const same = sandbox.diffLines('a\nb\nc', 'a\nb\nc');
+  check('identical files report no changes',
+        same.every((r) => r.t === 'same'), JSON.stringify(same));
+
+  const added = sandbox.diffLines('a\nb', 'a\nNEW\nb');
+  check('an inserted line is an addition',
+        added.filter((r) => r.t === 'add').length === 1 &&
+        added.filter((r) => r.t === 'del').length === 0,
+        JSON.stringify(added));
+  check('the inserted text is carried through',
+        added.some((r) => r.t === 'add' && r.s === 'NEW'));
+
+  const removed = sandbox.diffLines('a\nGONE\nb', 'a\nb');
+  check('a dropped line is a deletion',
+        removed.filter((r) => r.t === 'del').length === 1 &&
+        removed.filter((r) => r.t === 'add').length === 0,
+        JSON.stringify(removed));
+
+  const edited = sandbox.diffLines('a\nold\nb', 'a\nnew\nb');
+  check('an edited line shows as one out and one in',
+        edited.filter((r) => r.t === 'del').length === 1 &&
+        edited.filter((r) => r.t === 'add').length === 1);
+
+  check('line numbers are 1-based',
+        sandbox.diffLines('a\nb', 'a\nZ\nb').find((r) => r.t === 'add').n === 2,
+        JSON.stringify(sandbox.diffLines('a\nb', 'a\nZ\nb')));
+
+  // The head/tail trim is the reason this stays fast on real files; a change
+  // buried in the middle of a long file must still be found.
+  const bulk = lines(600);
+  const mutated = bulk.split('\n');
+  mutated[300] = 'CHANGED';
+  const deep = sandbox.diffLines(bulk, mutated.join('\n'));
+  check('a change deep inside a long file is found',
+        deep.some((r) => r.t === 'add' && r.s === 'CHANGED') &&
+        deep.some((r) => r.t === 'del' && r.s === 'x300'));
+  check('the trim keeps the output small rather than echoing the file',
+        deep.length < 40, `${deep.length} rows for a one-line change`);
+  check('a few lines of context surround the change',
+        deep.filter((r) => r.t === 'same').length >= 2);
+
+  // O(n·m) has to be bounded or a pasted 20k-line file locks the tab.
+  const huge = sandbox.diffLines(lines(4100), lines(4100, 'y'));
+  check('an oversized file refuses rather than hanging',
+        huge.length === 1 && huge[0].t === 'note', JSON.stringify(huge).slice(0, 120));
+  check('the refusal says how big the files were',
+        huge[0].s.includes('4100'));
+
+  check('an empty file against content is all additions',
+        sandbox.diffLines('', 'a\nb').filter((r) => r.t === 'add').length >= 1);
+
+  // The download grid in Reports already owns `.dl`; the diff rows must not
+  // borrow it or they inherit that layout.
+  check('diff rows do not reuse the download-grid class',
+        !/class="dl (add|del|fold)/.test(html) && html.includes('dfl-c'),
+        'diff line class collides with .dl');
+  for (const id of ['dif', 'dif-title', 'dif-stat', 'dif-body', 'dif-close']) {
+    check(`the diff modal has #${id}`, html.includes(`id="${id}"`));
+  }
+  for (const sel of ['.dfl{', '.dfl-n{', '.dfl-s{', '.dfl-c{', '.dfl.add{',
+                     '.dfl.del{', '.dfl.fold{', '#dif{']) {
+    check(`styles define ${sel.replace('{', '')}`, html.includes(sel));
+  }
+  check('the diff modal is hidden until asked for',
+        /<div id="dif" hidden>/.test(html));
+  check('escape closes the diff', html.includes('difClose()'));
+}
+
+console.log('\nAudit trail');
+{
+  check('live-money actions group together',
+        sandbox.auditGroup('live_mode_requested') === 'live' &&
+        sandbox.auditGroup('paper_mode_restored') === 'live');
+  check('people actions group together',
+        sandbox.auditGroup('user_created') === 'user' &&
+        sandbox.auditGroup('user_deleted') === 'user');
+  check('algorithm actions group together',
+        sandbox.auditGroup('algorithm_assigned') === 'algorithm');
+  check('an unknown action still lands somewhere',
+        sandbox.auditGroup('something_new') === 'other');
+
+  // Every action the backend can write needs a plain-English label; a raw
+  // `algorithm_assigned` in the admin screen is a leaked implementation detail.
+  const backend = readFileSync(join(HERE, '..', '..', 'backend', 'app', 'main.py'), 'utf8')
+    + readFileSync(join(HERE, '..', '..', 'backend', 'app', 'approvals.py'), 'utf8');
+  const actions = [...backend.matchAll(/record\(\s*[^,]+,\s*"([a-z_]+)"/g)]
+    .map((m) => m[1]);
+  check('the backend writes at least a handful of action kinds',
+        new Set(actions).size >= 8, [...new Set(actions)].join(', '));
+  const unlabelled = [...new Set(actions)].filter(
+    (a) => !evaluate(`Object.prototype.hasOwnProperty.call(AUDIT_LABELS, ${JSON.stringify(a)})`));
+  check('every audited action has a readable label in the app',
+        unlabelled.length === 0, `unlabelled: ${unlabelled.join(', ')}`);
+
+  evaluate(`S.audit = [
+    { id: 3, ts: "2026-08-18T10:02:00", actor: "Sehej",
+      action: "live_mode_requested", detail: "September series" },
+    { id: 2, ts: "2026-08-18T09:40:00", actor: "Raghav",
+      action: "user_created", detail: "analyst as viewer" },
+    { id: 1, ts: "2026-08-18T09:00:00", actor: "Sehej",
+      action: "algorithm_assigned", detail: "v12 → Slot 2" }
+  ]; S.auditFilter = ""; renderAudit();`);
+  let out = evaluate('document.querySelector("#au-list").innerHTML');
+  check('the trail renders every entry unfiltered',
+        out.includes('September series') && out.includes('analyst as viewer') &&
+        out.includes('v12'), out.slice(0, 200));
+  check('actions read in English, not as identifiers',
+        out.includes('Live money requested') && !out.includes('live_mode_requested'));
+  check('the trail names who did it', out.includes('Sehej') && out.includes('Raghav'));
+  check('the count is pluralised',
+        evaluate('document.querySelector("#au-count").textContent') === '3 ENTRIES',
+        evaluate('document.querySelector("#au-count").textContent'));
+
+  evaluate('S.auditFilter = "user"; renderAudit();');
+  out = evaluate('document.querySelector("#au-list").innerHTML');
+  check('filtering to people drops the rest',
+        out.includes('analyst as viewer') && !out.includes('September series'));
+  check('a filtered count is singular',
+        evaluate('document.querySelector("#au-count").textContent') === '1 ENTRY',
+        evaluate('document.querySelector("#au-count").textContent'));
+
+  evaluate('S.audit = []; S.auditFilter = ""; renderAudit();');
+  check('an empty trail explains itself rather than showing nothing',
+        evaluate('document.querySelector("#au-list").innerHTML').includes('Nothing recorded'));
+
+  evaluate(`S.audit = [{ id: 1, ts: "2026-08-18T09:00:00",
+    actor: "<img src=x onerror=alert(1)>", action: "user_created",
+    detail: "<script>bad()</scr" + "ipt>" }]; renderAudit();`);
+  check('audit text is escaped, not injected',
+        !evaluate('document.querySelector("#au-list").innerHTML').includes('<img src=x'));
+
+  check('the admin screen has somewhere to show it',
+        html.includes('id="au-list"') && html.includes('id="au-filter"'));
+  check('opening Admin loads the trail', html.includes('loadAudit()'));
+}
+
 console.log('\nLog collapsing');
 {
   // An uploaded algorithm printing on every tick was pushing every meaningful

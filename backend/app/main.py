@@ -29,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from . import algorithms
+from . import algorithms, approvals
 from . import auth as auth_mod
 from . import db, exports, news, strategy_config, users
 from .auth import (authorise_websocket, require_operator, require_super_admin,
@@ -62,6 +62,7 @@ WEB_DIR = _find_web_dir()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init(settings.db_path)
+    approvals.init()
     for lane in fleet:
         lane.bind_loop(asyncio.get_running_loop())
     log.info("Data directory: %s", settings.data_dir)
@@ -290,6 +291,9 @@ async def create_user(body: CreateUserRequest, token: str = Depends(require_supe
     supervisor._emit_local(
         "users", f"{actor} created user {created['username']!r} as {created['role']}",
         level="warn")
+    approvals.record(actor, "user_created",
+                     f"{created['username']} as {created['role']}",
+                     username=created["username"], role=created["role"])
     return created
 
 
@@ -314,6 +318,20 @@ async def update_user(user_id: int, body: UpdateUserRequest,
 
     supervisor._emit_local("users", f"{actor} updated user {target['username']!r}",
                            level="warn")
+    # Spelt out rather than dumped as a diff — "made X a super admin" is the
+    # line someone reads a year later, and the password itself is never stored.
+    changed = []
+    if body.role is not None:
+        changed.append(f"role → {body.role}")
+    if body.disabled is not None:
+        changed.append("suspended" if body.disabled else "re-enabled")
+    if body.password is not None:
+        changed.append("password reset")
+    approvals.record(actor, "user_updated",
+                     f"{target['username']}: {', '.join(changed) or 'no change'}",
+                     username=target["username"], role=body.role,
+                     disabled=body.disabled,
+                     password_changed=body.password is not None)
     return users.get_by_id(user_id) and users._row_to_public(users.get_by_id(user_id))
 
 
@@ -333,6 +351,8 @@ async def delete_user(user_id: int, token: str = Depends(require_super_admin)):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     supervisor._emit_local("users", f"{actor} deleted user {target['username']!r}",
                            level="warn")
+    approvals.record(actor, "user_deleted", target["username"],
+                     username=target["username"], role=target["role"])
     return {"ok": True}
 
 
@@ -378,11 +398,18 @@ async def algorithm_upload(body: AlgorithmUploadRequest,
     supervisor._emit_local(
         "algorithm", f"{actor} uploaded algorithm {entry['name']!r} ({entry['id']})",
         level="warn", version=entry["id"])
+    approvals.record(actor, "algorithm_uploaded",
+                     f"{entry['name']} ({entry['lines']} lines)",
+                     version_id=entry["id"], name=entry["name"],
+                     lines=entry["lines"], warnings=report.get("warnings"))
 
     activated = False
     if body.activate:
         algorithms.activate(entry["id"], slot=body.slot)
         activated = True
+        approvals.record(actor, "algorithm_assigned",
+                         f"{entry['name']} → {get_slot(body.slot).name}",
+                         version_id=entry["id"], slot=body.slot)
         supervisor._emit_local(
             "algorithm",
             f"{entry['name']!r} is now active"
@@ -391,6 +418,15 @@ async def algorithm_upload(body: AlgorithmUploadRequest,
 
     return {"stored": True, "activated": activated, "version": entry, "report": report,
             **algorithms.list_versions(MAX_SLOTS)}
+
+
+@app.get("/api/algorithm/{version_id}/source")
+async def algorithm_source(version_id: str, _: str = Depends(require_super_admin)):
+    """The stored source of one version, so the app can diff it before switching."""
+    src = algorithms.get_source(version_id)
+    if src is None:
+        raise HTTPException(status_code=404, detail="No stored source for that version.")
+    return {"id": version_id, "source": src, "lines": src.count("\n") + 1}
 
 
 @app.post("/api/algorithm/activate")
@@ -408,15 +444,22 @@ async def algorithm_activate(body: ActivateRequest,
         f"{actor} assigned {body.version_id or 'nothing'} to {lane.name}"
         + (" — applies when it next starts" if lane.running else ""),
         level="warn")
+    approvals.record(actor, "algorithm_assigned",
+                     f"{body.version_id or 'nothing'} → {lane.name}",
+                     version_id=body.version_id, slot=body.slot,
+                     was_running=lane.running)
     return {**result, "active_description": algorithms.active_description(body.slot)}
 
 
 @app.delete("/api/algorithm/{version_id}")
-async def algorithm_delete(version_id: str, _: str = Depends(require_super_admin)):
+async def algorithm_delete(version_id: str, token: str = Depends(require_super_admin)):
     try:
-        return algorithms.delete_version(version_id)
+        result = algorithms.delete_version(version_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    approvals.record(_actor(token), "algorithm_deleted", version_id,
+                     version_id=version_id)
+    return result
 
 
 @app.get("/api/algorithm/{version_id}/source")
@@ -583,6 +626,93 @@ async def market_news(_: str = Depends(require_token)):
     }
 
 
+# ============================================================ live mode
+
+
+class LiveRequestBody(BaseModel):
+    reason: str = Field(default="", max_length=200)
+
+
+def _actor(token: str) -> str:
+    payload = auth_mod.verify_session(token)
+    return payload["sub"] if payload else "api-token"
+
+
+def _super_admin_count() -> int:
+    return sum(1 for u in users.list_all()
+               if u["role"] == "super_admin" and not u["disabled"])
+
+
+@app.get("/api/live-mode")
+async def live_mode_state(_: str = Depends(require_token)):
+    return {
+        "paper": settings.paper_mode,
+        **approvals.state(_super_admin_count()),
+    }
+
+
+@app.post("/api/live-mode/request")
+async def live_mode_request(body: LiveRequestBody,
+                            token: str = Depends(require_super_admin)):
+    if not settings.paper_mode:
+        raise HTTPException(status_code=409, detail="Already trading real money.")
+    if _super_admin_count() < 2:
+        raise HTTPException(
+            status_code=409,
+            detail="Switching to real money needs two super admins. Create a "
+                   "second one in Admin first — a single operator cannot approve "
+                   "their own request.")
+    try:
+        entry = approvals.request_live(_actor(token), body.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    supervisor._emit_local(
+        "live_mode", f"{entry['requested_by']} requested a switch to REAL MONEY — "
+                     f"awaiting a second super admin", level="warn")
+    return {"ok": True, **approvals.state(_super_admin_count())}
+
+
+@app.post("/api/live-mode/approve")
+async def live_mode_approve(token: str = Depends(require_super_admin)):
+    try:
+        done = approvals.approve(_actor(token))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    settings.paper_mode = False
+    supervisor._emit_local(
+        "live_mode",
+        f"REAL MONEY armed — requested by {done['requested_by']}, "
+        f"approved by {done['approved_by']}. Applies when an algorithm next starts.",
+        level="error")
+    log.warning("LIVE MODE armed by %s (requested by %s)",
+                done["approved_by"], done["requested_by"])
+    return {"ok": True, "paper": settings.paper_mode, **done}
+
+
+@app.post("/api/live-mode/cancel")
+async def live_mode_cancel(token: str = Depends(require_super_admin)):
+    approvals.cancel(_actor(token))
+    return {"ok": True, **approvals.state(_super_admin_count())}
+
+
+@app.post("/api/live-mode/paper")
+async def live_mode_back_to_paper(token: str = Depends(require_super_admin)):
+    """Returning to simulation needs no second signature — it removes risk."""
+    settings.paper_mode = True
+    approvals.cancel(_actor(token))
+    approvals.record(_actor(token), "paper_mode_restored", "back to simulation")
+    supervisor._emit_local("live_mode", "Back to PAPER — no real orders will be placed.",
+                           level="warn")
+    return {"ok": True, "paper": True}
+
+
+@app.get("/api/audit")
+async def audit_trail(limit: int = Query(default=200, ge=1, le=1000),
+                      _: str = Depends(require_super_admin)):
+    return {"entries": await asyncio.to_thread(approvals.trail, limit)}
+
+
 @app.get("/api/fleet")
 async def fleet_state(_: str = Depends(require_token)):
     """Every slot at a glance — what the deck lays itself out from."""
@@ -596,20 +726,25 @@ async def fleet_state(_: str = Depends(require_token)):
 
 
 @app.post("/api/bot/start")
-async def bot_start(body: StartRequest, _: str = Depends(require_operator)):
+async def bot_start(body: StartRequest, token: str = Depends(require_operator)):
     lane = get_slot(body.slot)
     result = await asyncio.to_thread(lane.start, "manual", body.force)
     if not result.get("ok"):
         return JSONResponse(status_code=409, content=result)
+    approvals.record(_actor(token), "session_started", lane.name,
+                     slot=body.slot, forced=bool(body.force))
     return result
 
 
 @app.post("/api/bot/stop")
-async def bot_stop(body: StopRequest, _: str = Depends(require_operator)):
+async def bot_stop(body: StopRequest, token: str = Depends(require_operator)):
     lane = get_slot(body.slot)
     result = await asyncio.to_thread(lane.stop, body.reason)
     if not result.get("ok"):
         return JSONResponse(status_code=409, content=result)
+    approvals.record(_actor(token), "session_stopped",
+                     f"{lane.name} — {body.reason or 'no reason given'}",
+                     slot=body.slot, reason=body.reason)
     return result
 
 
@@ -801,22 +936,140 @@ async def profile_delete(name: str, _: str = Depends(require_operator)):
 # ============================================================ chart
 
 
+def _resample(candles: list, minutes: int) -> list:
+    """Roll 1-minute bars up into `minutes`-minute bars.
+
+    Buckets are aligned to the epoch rather than to the first bar received, so
+    a 5-minute candle always covers 09:15–09:20 regardless of when the bot
+    happened to start — otherwise the same session drawn twice would produce
+    two different sets of candles.
+    """
+    if minutes <= 1 or not candles:
+        return candles
+    step = minutes * 60_000
+    out: list = []
+    for c in candles:
+        ts, o, h, l, cl = c[0], c[1], c[2], c[3], c[4]
+        vol = c[5] if len(c) > 5 else 0
+        bucket = (ts // step) * step
+        if out and out[-1][0] == bucket:
+            b = out[-1]
+            b[2] = max(b[2], h)          # high
+            b[3] = min(b[3], l)          # low
+            b[4] = cl                    # close is the latest in the bucket
+            b[5] = (b[5] or 0) + (vol or 0)
+        else:
+            out.append([bucket, o, h, l, cl, vol or 0])
+    return out
+
+
+def _resample_overlay(values: list, candles: list, minutes: int) -> list:
+    """Take the last value in each bucket, so an overlay lines up with the bars."""
+    if minutes <= 1 or not values or not candles:
+        return values
+    step = minutes * 60_000
+    out: list = []
+    last_bucket = None
+    for i, c in enumerate(candles):
+        if i >= len(values):
+            break
+        bucket = (c[0] // step) * step
+        if bucket == last_bucket:
+            out[-1] = values[i]
+        else:
+            out.append(values[i])
+            last_bucket = bucket
+    return out
+
+
+CHART_TIMEFRAMES = (1, 5, 15, 60)
+
+
 @app.get("/api/chart")
-async def chart(_: str = Depends(require_token)):
+async def chart(
+    tf: int = Query(default=1, description="bar size in minutes: 1, 5, 15 or 60"),
+    _: str = Depends(require_token),
+):
     """Latest candles, indicator overlays, and the open contract's premium.
 
     Produced by the bot from the candles it already fetches, so it is only
-    populated while the bot is running.
+    populated while the bot is running. Higher timeframes are rolled up here
+    rather than asked of the broker again — the 1-minute series already holds
+    everything a 5- or 15-minute bar is made of.
     """
+    if tf not in CHART_TIMEFRAMES:
+        tf = 1
     if not supervisor.chart:
         return {
             "available": False,
+            "tf": tf,
             "reason": "The bot is not running — candles come from its market feed."
             if not supervisor.running
             else "Waiting for the first candle push.",
             "candles": [], "option": None,
         }
-    return {"available": True, **supervisor.chart}
+
+    data = dict(supervisor.chart)
+    raw = data.get("candles") or []
+    if tf > 1 and raw:
+        for key in ("vwap", "ema9", "ema21"):
+            if data.get(key):
+                data[key] = _resample_overlay(data[key], raw, tf)
+        data["candles"] = _resample(raw, tf)
+    data["tf"] = tf
+    data["interval_label"] = "1 hour" if tf == 60 else f"{tf} min"
+    return {"available": True, **data}
+
+
+@app.get("/api/replay")
+async def replay(
+    session_date: Optional[str] = None,
+    slot: Optional[int] = Query(default=None, ge=0, le=4),
+    limit: int = Query(default=4000, ge=1, le=20000),
+    _: str = Depends(require_token),
+):
+    """Every stored event for a session, in order, for after-the-close review.
+
+    Status and chart pushes are never persisted — they are a redraw several
+    times a minute — so a replay is the decision record, not a tick-by-tick
+    reconstruction: entries, exits, ladder moves, and the reasons the algorithm
+    gave for sitting out.
+    """
+    d = session_date or db.today_str()
+    sql = ("""SELECT id, ts, slot, kind, level, message, payload
+                FROM events
+               WHERE session_date = ?""")
+    params: list = [d]
+    if slot is not None:
+        sql += " AND slot = ?"
+        params.append(slot)
+    rows = db.query(sql + " ORDER BY ts, id LIMIT ?", params + [limit])
+    for r in rows:
+        r["payload"] = json.loads(r["payload"]) if r["payload"] else None
+
+    marks = db.equity_marks(d, slot=slot)
+    trades = db.trades_between(d, d, slot=slot)
+    return {
+        "date": d,
+        "slot": slot,
+        "count": len(rows),
+        "events": rows,
+        "marks": marks,
+        "trades": trades,
+        "first_ts": rows[0]["ts"] if rows else None,
+        "last_ts": rows[-1]["ts"] if rows else None,
+    }
+
+
+@app.get("/api/replay/dates")
+async def replay_dates(_: str = Depends(require_token)):
+    """Sessions with something to replay, newest first."""
+    rows = db.query(
+        """SELECT session_date AS date, COUNT(*) AS events
+             FROM events GROUP BY session_date
+             ORDER BY session_date DESC LIMIT 60"""
+    )
+    return {"dates": rows}
 
 
 # ============================================================ history
