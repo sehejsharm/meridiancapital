@@ -668,6 +668,11 @@ def fleet_status() -> dict:
                 # because that is whose status the websocket happened to carry.
                 "snapshot": s.snapshot or {},
                 "last_event_ts": (s.last_event or {}).get("ts"),
+                # An algorithm that never emits @@EVT@@ runs perfectly well and
+                # reports nothing, which on a dashboard is indistinguishable
+                # from a flat, idle book. Saying so is the difference between
+                # "no trades" and "no idea".
+                "reporting": bool(s.snapshot),
             }
             for s in fleet
         ],

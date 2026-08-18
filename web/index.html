@@ -467,6 +467,20 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .fl-v{font-size:13.5px;margin-top:4px;font-family:var(--mono)}
 .fl-err{margin-top:9px;font-size:10.5px;color:var(--down);font-family:var(--mono);
   line-height:1.5;word-break:break-word}
+.fl-silent{margin-top:11px;padding-top:10px;border-top:1px solid var(--line);
+  font-size:11px;color:var(--au);font-family:var(--mono)}
+
+/* ---- an algorithm that runs but reports nothing ---- */
+.mute{border:1px solid var(--line-3);border-radius:var(--r);padding:16px 18px;
+  background:linear-gradient(150deg,var(--au-bg),transparent 60%),var(--surface)}
+.mute-h{font-size:14px;font-weight:600;color:var(--au)}
+.mute-s{font-size:12.5px;color:var(--muted);line-height:1.7;margin-top:8px}
+.mute-fix{margin-top:12px;border-top:1px solid var(--line);padding-top:11px}
+.mute-fix summary{font-size:11px;letter-spacing:1.3px;text-transform:uppercase;
+  color:var(--au);cursor:pointer;font-family:var(--mono)}
+.mute-code{background:#050507;border:1px solid var(--line);border-radius:8px;
+  padding:13px;margin:10px 0;font-family:var(--mono);font-size:11px;line-height:1.65;
+  color:var(--text);overflow-x:auto;white-space:pre}
 .cap-warn{background:var(--au-bg);border:1px solid var(--line-2);border-radius:7px;
   padding:10px 12px;font-size:11.5px;color:var(--au);line-height:1.55;margin-bottom:11px;
   font-family:var(--mono)}
@@ -863,7 +877,9 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
     <div class="deck">
       <div class="span-all" id="d-sys"></div>
 
-      <div class="hero">
+      <div class="mute span-all" id="d-mute" hidden></div>
+
+      <div class="hero" id="d-body">
         <div class="hf-k">Equity</div>
         <div class="hero-eq num" id="d-eq">—</div>
         <div class="hero-sub">
@@ -881,20 +897,20 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 
       <div class="span-all" id="d-fleet"></div>
 
-      <div id="d-posbox" class="span-all"></div>
+      <div id="d-posbox" class="span-all slotpanel"></div>
 
-      <div class="card">
+      <div class="card slotpanel">
         <div class="card-h"><span class="card-t">Market</span>
           <span class="muted num mono" id="d-spot" style="font-size:11px"></span></div>
         <div class="mgrid" id="d-market"></div>
       </div>
 
-      <div class="card">
+      <div class="card slotpanel">
         <div class="card-h"><span class="card-t">Risk rails</span></div>
         <div class="mgrid" id="d-risk"></div>
       </div>
 
-      <div class="card">
+      <div class="card slotpanel">
         <div class="card-h"><span class="card-t">Link telemetry</span></div>
         <div id="d-lat"></div>
       </div>
@@ -1183,7 +1199,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.18-obsidian.3";
+const BUILD = "2026.08.18-obsidian.4";
 
 /* The dashboard is a static file with nowhere of its own to keep state, so it
    has to be told which trading server to talk to. Rather than ask for that
@@ -1713,6 +1729,7 @@ function renderFleet() {
   const card = s => {
     const tone = s.last_error ? "bad" : s.running ? "good" : "idle";
     const pnl = s.day_pnl;
+    const silent = s.running && s.reporting === false;
     return `<button class="fl ${tone} ${s.slot === deckSlot() ? "sel" : ""}"
         data-deck="${s.slot}" type="button">
       <div class="fl-top">
@@ -1721,14 +1738,15 @@ function renderFleet() {
         <span class="fl-state">${esc(s.running ? "running" : s.state)}</span>
       </div>
       <div class="fl-algo">${esc(s.algorithm || "—")}</div>
-      <div class="fl-nums">
-        <div><div class="fl-k">Day P&L</div>
-          <div class="fl-v num ${cls(pnl ?? 0)}">${pnl == null ? "—" : signed(pnl, 0)}</div></div>
-        <div><div class="fl-k">Trades</div>
-          <div class="fl-v num">${s.trades ?? "—"}</div></div>
-        <div><div class="fl-k">Position</div>
-          <div class="fl-v num">${s.position ? "open" : "flat"}</div></div>
-      </div>
+      ${silent ? `<div class="fl-silent">Running, but sending no data</div>` : `
+        <div class="fl-nums">
+          <div><div class="fl-k">Day P&L</div>
+            <div class="fl-v num ${cls(pnl ?? 0)}">${pnl == null ? "—" : signed(pnl, 0)}</div></div>
+          <div><div class="fl-k">Trades</div>
+            <div class="fl-v num">${s.trades ?? "—"}</div></div>
+          <div><div class="fl-k">Position</div>
+            <div class="fl-v num">${s.position ? "open" : "flat"}</div></div>
+        </div>`}
       ${s.last_error ? `<div class="fl-err">${esc(s.last_error)}</div>` : ""}
     </button>`;
   };
@@ -1814,6 +1832,49 @@ function renderDash() {
   hm.className = "pill " + (paper ? "paper" : "real");
   hm.textContent = paper ? "paper" : "live money";
   $("#r-mode").textContent = paper ? "PAPER" : "LIVE";
+
+  // A slot that is running but has never emitted a status event has no numbers
+  // at all. Rendering the usual zeros there is a lie — it reads as a flat book
+  // rather than an algorithm nobody is hearing from — so the deck says which
+  // it is and the panels below are suppressed.
+  const mute = !!(lane && lane.running && lane.reporting === false);
+  const notice = $("#d-mute");
+  if (notice) {
+    notice.hidden = !mute;
+    if (mute) notice.innerHTML = `
+      <div class="mute-h">${esc(lane.name)} is running but not reporting</div>
+      <div class="mute-s">The process is alive and its printed output is in the
+        Live feed, but it never emits the dashboard's events — so there are no
+        numbers to show here, and Trades and Reports stay empty for it too.
+        This was the <span class="gold">"Emits dashboard events"</span> warning
+        when it was uploaded.</div>
+      <details class="mute-fix">
+        <summary>How to fix it</summary>
+        <div class="mute-s" style="margin-top:9px">Paste this near the top of the
+          algorithm, then call <span class="gold">emit(...)</span> wherever it
+          enters, exits or updates. Nothing else about the code has to change —
+          the Live feed already shows whatever it prints.</div>
+        <pre class="mute-code">import json, sys, datetime
+
+def emit(kind, message="", level="info", **payload):
+    sys.stdout.write("@@EVT@@" + json.dumps({
+        "kind": kind, "level": level, "message": message,
+        "ts": datetime.datetime.now().isoformat(timespec="milliseconds"),
+        "payload": payload,
+    }) + "\\n")
+    sys.stdout.flush()
+
+# then, where the algorithm acts:
+# emit("entry", "BOUGHT 24500CE @ 142.50", ledger={...})
+# emit("exit",  "SOLD 24500CE @ 178.20",  ledger={...})
+# emit("status", equity=21440.0, day_pnl=1440.0, position=None)</pre>
+        <div class="mute-s">Admin → <span class="gold">Load starter</span> has a
+          complete working example with every event the dashboard reads.</div>
+      </details>`;
+  }
+  const deckBody = $("#d-body");
+  if (deckBody) deckBody.style.display = mute ? "none" : "";
+  $$(".slotpanel").forEach(el => { el.style.display = mute ? "none" : ""; });
 
   const eq = s.equity, open = s.open_equity, day = s.day_pnl ?? 0;
   $("#d-eq").textContent = eq === undefined ? "—" : money(eq, 2);

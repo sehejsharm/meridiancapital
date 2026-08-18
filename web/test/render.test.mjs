@@ -396,8 +396,41 @@ console.log('\nFleet');
   check('a selection on a vanished slot falls back to a live one',
         evaluate('deckSlot()') === 0, String(evaluate('deckSlot()')));
 
+  // An algorithm that emits no @@EVT@@ runs fine and reports nothing. Showing
+  // the usual zeros for it reads as a flat book rather than silence.
+  evaluate(`S.fleet.slots = [
+    { slot: 0, name: 'Primary', state: 'running', running: true, empty: false,
+      reporting: true, algorithm: 'v11', day_pnl: 0, trades: 0,
+      snapshot: { equity: 19615 } },
+    { slot: 1, name: 'Slot 2', state: 'running', running: true, empty: false,
+      reporting: false, algorithm: 'High Octane', snapshot: {} },
+  ]; S.fleet.capacity_warning = null`);
+  evaluate('S.deckSlot = 1');
+  sandbox.renderFleet();
+  const silent = sandbox.document.querySelector('#d-fleet').innerHTML;
+  check('a silent algorithm says so on its card',
+        silent.includes('sending no data'), silent.slice(0, 200));
+  check('and does not print a fake zero P&L for it',
+        !/Slot 2[\s\S]*?Day P&L/.test(silent));
+
+  sandbox.renderDash();
+  const mutePanel = sandbox.document.querySelector('#d-mute');
+  check('the deck explains the silence rather than showing zeros',
+        mutePanel.hidden === false && mutePanel.innerHTML.includes('not reporting'),
+        String(mutePanel.hidden));
+  check('it names the actual cause', mutePanel.innerHTML.includes('@@EVT@@'));
+  check('the equity panel is hidden while a slot is silent',
+        sandbox.document.querySelector('#d-body').style.display === 'none');
+
+  // Switching back to a reporting slot restores the deck.
+  evaluate('S.deckSlot = 0');
+  sandbox.renderDash();
+  check('a reporting slot is unaffected',
+        sandbox.document.querySelector('#d-mute').hidden === true
+        && sandbox.document.querySelector('#d-body').style.display === '');
+
   // A single algorithm needs no picker and no instruction to tap anything.
-  evaluate('S.fleet.slots = S.fleet.slots.slice(0,1); S.fleet.capacity_warning = null');
+  evaluate('S.fleet.slots = S.fleet.slots.slice(0,1)');
   sandbox.renderFleet();
   const solo = sandbox.document.querySelector('#d-fleet').innerHTML;
   check('one algorithm draws no tap hint', !solo.includes('Tap an algorithm'));
