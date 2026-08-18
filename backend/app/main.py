@@ -1226,12 +1226,32 @@ async def export_preview(
 ):
     """What the download will contain, so the app can show it before saving."""
     s, e, label = _range(period, anchor, start, end)
+
+    # Counted rather than fetched: the point is to tell someone that turning
+    # the log on means 40,000 lines before they wait for it, not to load them.
+    def _count(sql: str) -> int:
+        params: list = [s, e]
+        if slot is not None:
+            sql += " AND slot = ?"
+            params.append(slot)
+        row = db.query_one(sql, params)
+        return int(row["n"]) if row else 0
+
+    log_lines = await asyncio.to_thread(
+        _count, "SELECT COUNT(*) AS n FROM events "
+                "WHERE session_date >= ? AND session_date <= ?")
+    minute_marks = await asyncio.to_thread(
+        _count, "SELECT COUNT(*) AS n FROM equity_marks "
+                "WHERE session_date >= ? AND session_date <= ?")
+
     return {
         "range": {"start": s, "end": e, "label": label},
         "slot": slot,
         "summary": db.aggregate(s, e, slot=slot),
         "sessions": len(db.sessions_between(s, e, slot=slot)),
         "trades": len(db.trades_between(s, e, slot=slot)),
+        "log_lines": log_lines,
+        "minute_marks": minute_marks,
         "formats": ["csv", "pdf", "xlsx", "json"],
     }
 

@@ -595,6 +595,58 @@ console.log('\nAlgorithm diff');
   check('escape closes the diff', html.includes('difClose()'));
 }
 
+console.log('\nReport log toggle');
+{
+  const note = () => evaluate('document.querySelector("#r-log-note").innerHTML');
+
+  evaluate('S.includeEvents = false; S.reportPreview = null; renderLogNote();');
+  check('with the log off it says what you do get',
+        /trades only/i.test(note()) && /price/i.test(note()), note());
+  check('with the log off it does not promise log lines',
+        !/log entr/i.test(note()), note());
+
+  evaluate(`S.includeEvents = true;
+    S.reportPreview = { log_lines: 18432, minute_marks: 375 }; renderLogNote();`);
+  check('with the log on it says how much is coming',
+        note().includes('18,432') && note().includes('375'), note());
+  check('a big log warns that the PDF is the one that caps',
+        /PDF prints the first 4,000/.test(note()), note());
+
+  evaluate(`S.reportPreview = { log_lines: 120, minute_marks: 30 }; renderLogNote();`);
+  check('a small log makes no such caveat',
+        !/PDF prints the first/.test(note()), note());
+  check('a small log still states the counts', note().includes('120'), note());
+
+  evaluate(`S.reportPreview = { log_lines: 1, minute_marks: 1 }; renderLogNote();`);
+  check('one of each reads as singular',
+        note().includes('1</b> log entry') && note().includes('1</b> minute mark'),
+        note());
+
+  evaluate(`S.reportPreview = { log_lines: 0, minute_marks: 0 }; renderLogNote();`);
+  check('an empty window says so rather than promising nothing usefully',
+        /Nothing was logged/.test(note()), note());
+
+  check('the toggle is named for what it now includes',
+        html.includes('Include the minute-by-minute log'));
+  check('the preview endpoint is asked for the counts',
+        html.includes('/api/export/preview'));
+
+  const mainPy = readFileSync(join(HERE, '..', '..', 'backend', 'app', 'main.py'), 'utf8');
+  check('the counts are counted, not fetched',
+        /SELECT COUNT\(\*\) AS n FROM events/.test(mainPy) &&
+        /SELECT COUNT\(\*\) AS n FROM equity_marks/.test(mainPy));
+
+  const exportsPy = readFileSync(
+    join(HERE, '..', '..', 'backend', 'app', 'exports.py'), 'utf8');
+  // Matched as SQL, not as prose — the comment above the query explains the
+  // bug and names the clause, so a bare substring search finds itself.
+  check('the log query no longer drops printed output',
+        !/AND\s+kind\s*!=\s*'log'/.test(exportsPy),
+        "AND kind != 'log' is back — printed lines will vanish from reports again");
+  check('risk metrics reach the exports',
+        /RISK_ROWS/.test(exportsPy) && /Sharpe ratio/.test(exportsPy));
+}
+
 console.log('\nAlgorithm brief');
 {
   const md = sandbox.renderMarkdown;

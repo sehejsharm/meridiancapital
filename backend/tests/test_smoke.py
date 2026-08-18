@@ -7,6 +7,7 @@ because it needs a live Angel One session.
 """
 from __future__ import annotations
 
+import io
 import os
 import sys
 import tempfile
@@ -243,13 +244,76 @@ def test_exports() -> None:
     check("CSV has a summary block", "SUMMARY" in csv_text)
     check("CSV has trades", "NIFTY07AUG2624500CE" in csv_text)
     check("CSV has daily sessions", "DAILY SESSIONS" in csv_text)
-    check("CSV has the event log", "EVENT LOG" in csv_text)
+    check("CSV has the activity log", "ACTIVITY LOG" in csv_text)
+    check("CSV has the minute log", "MINUTE LOG" in csv_text)
+
+    # ---- what "include the log" actually means ----
+    #
+    # The query behind this excluded kind='log', which dropped the algorithm's
+    # own printed output — the per-minute narration that is the whole reason
+    # anyone asks for the log. A printed line and a structured event both have
+    # to be in there.
+    db.insert_event("2026-08-04T09:30:00", "2026-08-04", "log",
+                    "SCAN 09:30 spot=24512.4 adx=22.4 -> no entry", "info", None)
+    db.insert_event("2026-08-04T09:31:00", "2026-08-04", "decision",
+                    "Standing aside: ADX below threshold", "info", {"adx": 14.2})
+    with_log = exports.build_payload(s, e, label, include_events=True)
+    kinds = {ev["kind"] for ev in with_log["events"]}
+    check("printed output reaches the report", "log" in kinds, str(sorted(kinds)))
+    check("structured events do too", "decision" in kinds and "entry" in kinds,
+          str(sorted(kinds)))
+    text = exports.to_csv(with_log)
+    check("the printed line itself is in the CSV",
+          "SCAN 09:30 spot=24512.4" in text)
+    check("the log is ordered by time",
+          [e["ts"] for e in with_log["events"]] ==
+          sorted(e["ts"] for e in with_log["events"]))
+    check("minute marks come through", len(with_log["minutes"]) == 2,
+          str(len(with_log.get("minutes", []))))
+
+    # ---- and what it means to leave it out ----
+    lean = exports.build_payload(s, e, label, include_events=False)
+    check("without the log there are no events", "events" not in lean)
+    check("without the log there are no minute marks", "minutes" not in lean)
+    lean_csv = exports.to_csv(lean)
+    check("the trade record still stands alone",
+          "NIFTY07AUG2624500CE" in lean_csv and "TRADES" in lean_csv)
+    check("the printed narration is absent", "SCAN 09:30" not in lean_csv)
+    check("leaving the log out is dramatically smaller",
+          len(lean_csv) < len(text), f"{len(lean_csv)} vs {len(text)}")
+    for header in ("Entry Time", "Exit Time", "Symbol", "Qty", "Entry Price",
+                   "Exit Price", "Net P&L", "Exit Reason"):
+        check(f"the lean report still names {header!r}", header in lean_csv)
+
+    # ---- risk metrics reach the documents, not just the screen ----
+    for label_text in ("Sharpe ratio", "Sortino ratio", "Expectancy per trade",
+                       "Win/loss ratio", "Daily volatility %"):
+        check(f"CSV reports {label_text}", label_text in csv_text)
+    check("CSV explains what the Sharpe is built from",
+          "rf 6.5%" in csv_text)
 
     js = exports.to_json(payload)
     check("JSON parses", js.strip().startswith("{") and '"trades"' in js)
+    check("JSON carries the risk metrics",
+          all(k in js for k in ('"sharpe"', '"sortino"', '"expectancy"')))
 
     xlsx = exports.to_xlsx(payload)
     check(f"XLSX produced ({len(xlsx):,} bytes)", len(xlsx) > 4000 and xlsx[:2] == b"PK")
+
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(xlsx))
+    check("the workbook has a minute log sheet", "Minute Log" in wb.sheetnames,
+          str(wb.sheetnames))
+    check("the workbook has an activity log sheet", "Activity Log" in wb.sheetnames,
+          str(wb.sheetnames))
+    summary_col = [c.value for c in wb["Summary"]["A"]]
+    check("the workbook summary carries the risk metrics",
+          "Sharpe ratio" in summary_col and "Expectancy per trade" in summary_col,
+          str([v for v in summary_col if v])[:200])
+    lean_wb = load_workbook(io.BytesIO(exports.to_xlsx(lean)))
+    check("without the log those sheets are absent",
+          "Activity Log" not in lean_wb.sheetnames
+          and "Minute Log" not in lean_wb.sheetnames, str(lean_wb.sheetnames))
 
     pdf = exports.to_pdf(payload)
     check(f"PDF produced ({len(pdf):,} bytes)", len(pdf) > 2000 and pdf[:4] == b"%PDF")
@@ -273,6 +337,26 @@ def test_exports() -> None:
                          entry_reason="CE — EMA9 > EMA21 & spot < VWAP <tag>"))
     risky = exports.to_pdf(exports.build_payload("2027-06-01", "2027-06-01", "day"))
     check("PDF survives markup characters in a trade reason", risky[:4] == b"%PDF")
+
+    # A chatty algorithm prints tens of thousands of lines a day. The CSV and
+    # the workbook take all of it; the PDF caps, because a PDF nobody can open
+    # is worse than one that says where the rest is.
+    noisy = {**payload, "events": [
+        {"ts": f"2026-08-04T10:{m // 60:02d}:{m % 60:02d}.000", "session_date": "2026-08-04",
+         "slot": 0, "kind": "log", "level": "info",
+         "message": f"tick {m} spot=24512.4 premium=142.5 <&>"}
+        for m in range(4600)
+    ]}
+    noisy_csv = exports.to_csv(noisy)
+    check("the CSV carries every line, however many",
+          noisy_csv.count("\ntick ") == 0 and noisy_csv.count("tick 4599") == 1
+          and noisy_csv.count("tick 0 ") == 1)
+    noisy_pdf = exports.to_pdf(noisy)
+    check("the PDF still renders a huge log", noisy_pdf[:4] == b"%PDF")
+    check("the PDF says how many entries there really were",
+          b"4,600" in noisy_pdf or len(noisy_pdf) > 20000, str(len(noisy_pdf)))
+    check("a capped log stays a reasonable size",
+          len(noisy_pdf) < 4_000_000, f"{len(noisy_pdf):,} bytes")
 
     name = exports.filename("month", s, e, "csv")
     check(f"filename sensible ({name})", name.endswith(".csv") and "2026-08-01" in name)

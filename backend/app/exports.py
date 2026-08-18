@@ -94,7 +94,17 @@ def filename(period: str, start: str, end: str, ext: str) -> str:
 
 def build_payload(start: str, end: str, label: str, include_events: bool = False,
                   slot: Optional[int] = None) -> dict:
-    """`slot=None` reports the whole book; a slot reports one algorithm."""
+    """`slot=None` reports the whole book; a slot reports one algorithm.
+
+    Without the log this is the trade record: what was bought and sold, when,
+    at what price, for what, and the risk-adjusted view of the result. That is
+    the document you send to someone.
+
+    With it, everything the algorithm said is attached as well — every printed
+    line and every structured event, in order, plus a mark for every minute it
+    was running. That is the document you read when you want to know why it
+    did something, and it is much larger.
+    """
     trades = db.trades_between(start, end, slot=slot)
     sessions = db.sessions_between(start, end, slot=slot)
     summary = db.aggregate(start, end, slot=slot)
@@ -107,15 +117,19 @@ def build_payload(start: str, end: str, label: str, include_events: bool = False
         "trades": trades,
     }
     if include_events:
+        # `kind != 'log'` used to be in this query, which quietly dropped the
+        # algorithm's own printed output — the per-minute narration that is the
+        # main reason anyone asks for the log at all. Everything is included
+        # now, in the order it happened.
         sql = ("""SELECT ts, session_date, slot, kind, level, message, payload
                     FROM events
-                   WHERE session_date >= ? AND session_date <= ?
-                     AND kind != 'log'""")
+                   WHERE session_date >= ? AND session_date <= ?""")
         params: list = [start, end]
         if slot is not None:
             sql += " AND slot = ?"
             params.append(slot)
-        payload["events"] = db.query(sql + " ORDER BY id", params)
+        payload["events"] = db.query(sql + " ORDER BY session_date, ts, id", params)
+        payload["minutes"] = db.equity_marks_between(start, end, slot=slot)
     return payload
 
 
@@ -137,6 +151,34 @@ TRADE_HEADERS = [
     ("real_margin", "Margin"), ("risk_rs", "Risk (Rs)"),
     ("day_pnl", "Day P&L"), ("equity_after", "Equity After"),
     ("latency_ms", "Avg Latency (ms)"),
+]
+
+# Risk-adjusted return. Computed in db.aggregate() and, until now, shown only
+# on screen — which meant the report you actually send to someone had the P&L
+# and none of the context for judging whether it was worth the risk taken.
+RISK_ROWS = [
+    ("sharpe", "Sharpe ratio", "annualised, from daily returns, rf 6.5%"),
+    ("sortino", "Sortino ratio", "downside deviation only"),
+    ("calmar", "Calmar ratio", "return over max drawdown, 90+ days"),
+    ("expectancy", "Expectancy per trade", "what one more trade is worth"),
+    ("avg_win", "Average win", ""),
+    ("avg_loss", "Average loss", ""),
+    ("win_loss_ratio", "Win/loss ratio", "average win over average loss"),
+    ("daily_vol_pct", "Daily volatility %", "standard deviation of daily returns"),
+    ("best_day", "Best day", ""),
+    ("worst_day", "Worst day", ""),
+    ("trading_period_days", "Period length (days)", ""),
+]
+
+MINUTE_HEADERS = [
+    ("ts", "Timestamp"), ("session_date", "Date"), ("slot", "Slot"),
+    ("equity", "Equity"), ("day_pnl", "Day P&L"),
+    ("open_position", "In a position"), ("unrealised", "Unrealised"),
+]
+
+EVENT_HEADERS = [
+    ("ts", "Timestamp"), ("session_date", "Date"), ("slot", "Slot"),
+    ("kind", "Kind"), ("level", "Level"), ("message", "Message"),
 ]
 
 SESSION_HEADERS = [
@@ -183,6 +225,11 @@ def to_csv(payload: dict) -> str:
         w.writerow([label, _fmt(s.get(key))])
     w.writerow([])
 
+    w.writerow(["RISK AND RETURN"])
+    for key, label, note in RISK_ROWS:
+        w.writerow([label, _fmt(s.get(key)), note])
+    w.writerow([])
+
     w.writerow(["DAILY SESSIONS"])
     w.writerow([label for _, label in SESSION_HEADERS])
     for row in payload["sessions"]:
@@ -194,13 +241,19 @@ def to_csv(payload: dict) -> str:
     for row in payload["trades"]:
         w.writerow([_fmt(row.get(k)) for k, _ in TRADE_HEADERS])
 
+    if payload.get("minutes"):
+        w.writerow([])
+        w.writerow(["MINUTE LOG", f"{len(payload['minutes'])} marks"])
+        w.writerow([label for _, label in MINUTE_HEADERS])
+        for m in payload["minutes"]:
+            w.writerow([_fmt(m.get(k)) for k, _ in MINUTE_HEADERS])
+
     if payload.get("events"):
         w.writerow([])
-        w.writerow(["EVENT LOG"])
-        w.writerow(["Timestamp", "Date", "Kind", "Level", "Message"])
+        w.writerow(["ACTIVITY LOG", f"{len(payload['events'])} entries"])
+        w.writerow([label for _, label in EVENT_HEADERS])
         for e in payload["events"]:
-            w.writerow([e.get("ts"), e.get("session_date"), e.get("kind"),
-                        e.get("level"), e.get("message")])
+            w.writerow([_fmt(e.get(k)) for k, _ in EVENT_HEADERS])
 
     return buf.getvalue()
 
@@ -260,7 +313,14 @@ def to_xlsx(payload: dict) -> bytes:
     for i, (label, value) in enumerate(rows, start=7):
         ws.cell(row=i, column=1, value=label)
         ws.cell(row=i, column=2, value=value)
-    _autosize(ws, [30, 20, 10, 20])
+
+    risk_at = 7 + len(rows) + 1
+    ws.cell(row=risk_at, column=1, value="RISK AND RETURN").font = Font(bold=True)
+    for i, (key, label, note) in enumerate(RISK_ROWS, start=risk_at + 1):
+        ws.cell(row=i, column=1, value=label)
+        ws.cell(row=i, column=2, value=s.get(key))
+        ws.cell(row=i, column=3, value=note)
+    _autosize(ws, [30, 20, 44, 20])
 
     def _sheet(name: str, headers: list[tuple[str, str]], data: list[dict]) -> None:
         sh = wb.create_sheet(name)
@@ -277,25 +337,28 @@ def to_xlsx(payload: dict) -> bytes:
                            "peak_equity", "risk_rs", "lot_cost", "real_margin"):
                     cell.number_format = money
         sh.freeze_panes = "A2"
-        _autosize(sh, [max(12, min(28, len(label) + 4)) for _, label in headers])
+        # A message column sized to the word "Message" is unreadable, and a
+        # timestamp column sized to "Timestamp" clips to ####.
+        wide = {"message": 100, "ts": 24, "entry_reason": 46, "reason": 22}
+        _autosize(sh, [wide.get(key, max(12, min(28, len(label) + 4)))
+                       for key, label in headers])
 
     _sheet("Trades", TRADE_HEADERS, payload["trades"])
     _sheet("Daily Sessions", SESSION_HEADERS, payload["sessions"])
 
+    if payload.get("minutes"):
+        _sheet("Minute Log", MINUTE_HEADERS, payload["minutes"])
+
     if payload.get("events"):
-        ev = wb.create_sheet("Event Log")
-        for col, label in enumerate(["Timestamp", "Date", "Kind", "Level", "Message"], start=1):
-            c = ev.cell(row=1, column=col, value=label)
-            c.fill = head_fill
-            c.font = head_font
-        for r, e in enumerate(payload["events"], start=2):
-            ev.cell(row=r, column=1, value=e.get("ts"))
-            ev.cell(row=r, column=2, value=e.get("session_date"))
-            ev.cell(row=r, column=3, value=e.get("kind"))
-            ev.cell(row=r, column=4, value=e.get("level"))
-            ev.cell(row=r, column=5, value=e.get("message"))
-        ev.freeze_panes = "A2"
-        _autosize(ev, [24, 12, 16, 10, 90])
+        # Excel refuses a sheet past 1,048,576 rows, and a month of a chatty
+        # algorithm can approach that. Spilling into numbered sheets keeps the
+        # whole log rather than truncating it without saying so.
+        LIMIT = 1_000_000
+        chunks = [payload["events"][i:i + LIMIT]
+                  for i in range(0, len(payload["events"]), LIMIT)] or [[]]
+        for n, chunk in enumerate(chunks, start=1):
+            name = "Activity Log" if len(chunks) == 1 else f"Activity Log {n}"
+            _sheet(name, EVENT_HEADERS, chunk)
 
     out = io.BytesIO()
     wb.save(out)
@@ -456,11 +519,99 @@ def to_pdf(payload: dict) -> bytes:
         ("win_rate", "Win %"), ("drawdown_pct", "DD %"), ("trend", "Trend"),
     ]
 
+    # Risk-adjusted return, laid out as pairs so it fits beside the tables
+    # rather than running down a whole page.
+    def risk_block() -> None:
+        present = [(lbl, summary.get(key), note) for key, lbl, note in RISK_ROWS
+                   if summary.get(key) is not None]
+        if not present:
+            return
+        story.append(Paragraph("Risk and return", h2))
+        cells = []
+        for lbl, val, note in present:
+            shown = f"{val:,.2f}" if isinstance(val, (int, float)) else str(val)
+            cells.append(Paragraph(
+                f"<font size=6.5 color='#6a6558'>{_xml(lbl).upper()}</font><br/>"
+                f"<font size=11><b>{shown}</b></font>"
+                + (f"<br/><font size=6 color='#8a857a'>{_xml(note)}</font>" if note else ""),
+                small))
+        per_row = 4
+        grid = [cells[i:i + per_row] for i in range(0, len(cells), per_row)]
+        grid[-1] += [Paragraph("", small)] * (per_row - len(grid[-1]))
+        t = Table(grid, colWidths=[doc.width / per_row] * per_row)
+        t.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.6, RULE),
+            ("INNERGRID", (0, 0), (-1, -1), 0.4, RULE),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ]))
+        story.append(t)
+
+    risk_block()
     table(f"Daily sessions ({len(sessions)})", pdf_session_cols, sessions,
           highlight="day_pnl")
     if trades:
         story.append(PageBreak())
     table(f"Trades ({len(trades)})", pdf_trade_cols, trades, highlight="net_pnl")
+
+    # ---- the activity log ----
+    #
+    # A chatty algorithm produces tens of thousands of lines a day, and a
+    # month of them is not a document anybody can open. The PDF carries as
+    # much as stays usable and says plainly where the rest is, rather than
+    # truncating silently or refusing to render at all.
+    minutes = payload.get("minutes") or []
+    if minutes:
+        story.append(PageBreak())
+        table(f"Minute log ({len(minutes):,} marks)",
+              [("ts", "Time"), ("session_date", "Date"), ("slot", "Slot"),
+               ("equity", "Equity"), ("day_pnl", "Day P&L"),
+               ("open_position", "In a position"), ("unrealised", "Unrealised")],
+              minutes, highlight="day_pnl")
+
+    events = payload.get("events") or []
+    if events:
+        PDF_LOG_LIMIT = 4000
+        shown = events[:PDF_LOG_LIMIT]
+        story.append(PageBreak())
+        story.append(Paragraph(f"Activity log ({len(events):,} entries)", h2))
+        if len(events) > PDF_LOG_LIMIT:
+            story.append(Paragraph(
+                f"<i>The first {PDF_LOG_LIMIT:,} are printed here. The CSV and "
+                f"Excel exports of this same range carry all {len(events):,}.</i>",
+                small))
+            story.append(Spacer(1, 4))
+
+        log_style = ParagraphStyle("log", parent=small, fontName="Courier",
+                                   fontSize=6.2, leading=7.6)
+        head = [Paragraph(f"<b>{h}</b>", small)
+                for h in ("Time", "Slot", "Kind", "Level", "Message")]
+        widths = [doc.width * w for w in (0.13, 0.05, 0.10, 0.07, 0.65)]
+
+        # Built in blocks: one Table of 40,000 cells is slow to lay out and
+        # holds the whole thing in memory, which the trading box cannot spare.
+        BLOCK = 500
+        for i in range(0, len(shown), BLOCK):
+            data = [head] if i == 0 else [head]
+            for e in shown[i:i + BLOCK]:
+                data.append([
+                    Paragraph(_xml(str(e.get("ts") or "")[11:23]), log_style),
+                    Paragraph(_xml(_fmt(e.get("slot"))), log_style),
+                    Paragraph(_xml(e.get("kind") or ""), log_style),
+                    Paragraph(_xml(e.get("level") or ""), log_style),
+                    Paragraph(_xml(e.get("message") or ""), log_style),
+                ])
+            t = Table(data, repeatRows=1, colWidths=widths)
+            t.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2eee4")),
+                ("GRID", (0, 0), (-1, -1), 0.25, RULE),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 1.2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.2),
+            ]))
+            story.append(t)
 
     def chrome(canvas, doc_):
         canvas.saveState()

@@ -402,6 +402,18 @@ def equity_marks(session_date: str, slot: Optional[int] = None) -> list[dict]:
     return query(sql + " ORDER BY id", params)
 
 
+def equity_marks_between(start: str, end: str,
+                         slot: Optional[int] = None) -> list[dict]:
+    """Every minute mark across a range — the minute-by-minute report."""
+    sql = ("SELECT ts, session_date, slot, equity, day_pnl, open_position, unrealised "
+           "FROM equity_marks WHERE session_date >= ? AND session_date <= ?")
+    params: list[Any] = [start, end]
+    if slot is not None:
+        sql += " AND slot = ?"
+        params.append(slot)
+    return query(sql + " ORDER BY session_date, ts, id", params)
+
+
 def equity_curve(start: str, end: str) -> list[dict]:
     """Daily closing equity across a range, for the long-horizon chart."""
     return query(

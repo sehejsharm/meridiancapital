@@ -1625,10 +1625,13 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
         <div class="rsum" id="r-what">—</div>
 
         <label class="sw">
-          <span style="font-size:12.5px">Include the full event log</span>
+          <span style="font-size:12.5px">Include the minute-by-minute log</span>
           <span class="toggle" id="r-events" role="switch" tabindex="0"
-                aria-checked="false" aria-label="Include the full event log"></span>
+                aria-checked="false"
+                aria-label="Include the minute-by-minute log"></span>
         </label>
+        <div class="dim" id="r-log-note"
+             style="font-size:11px;line-height:1.6;margin:-4px 0 4px"></div>
 
         <div class="dl">
           <a id="dl-pdf" class="primary"><div class="ext">PDF</div><div class="lbl">Formatted report</div></a>
@@ -1854,7 +1857,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.18-obsidian.8";
+const BUILD = "2026.08.18-obsidian.9";
 
 /* The dashboard is a static file with nowhere of its own to keep state, so it
    has to be told which trading server to talk to. Rather than ask for that
@@ -1890,7 +1893,7 @@ const S = {
   lines: [], filter: "all", follow: true,
   tradePeriod: "day", reportPeriod: "month",
   anchor: new Date().toISOString().slice(0, 10),
-  includeEvents: false,
+  includeEvents: false, reportPreview: null,
   audit: [], auditFilter: "",
   ws: null, wsRetry: 0, marks: []
 };
@@ -4191,7 +4194,31 @@ bindSwitch($("#r-events"), () => {
   $("#r-events").classList.toggle("on", S.includeEvents);
   $("#r-events").setAttribute("aria-checked", String(S.includeEvents));
   setDownloads();
+  renderLogNote();
 });
+
+/* Says what the toggle is actually going to do before the download starts.
+   "Include the log" over a quarter can mean a hundred thousand lines, and
+   finding that out by waiting for the file is the wrong way round. */
+function renderLogNote() {
+  const el = $("#r-log-note");
+  if (!el) return;
+  const p = S.reportPreview;
+  if (!S.includeEvents) {
+    el.innerHTML = "Trades only — what was bought and sold, when, at what price, "
+      + "for what, and the risk-adjusted view of the result.";
+    return;
+  }
+  if (!p) { el.innerHTML = "Everything the algorithm printed and every minute mark."; return; }
+  const lines = p.log_lines || 0, marks = p.minute_marks || 0;
+  el.innerHTML = lines || marks
+    ? `Adds <b>${lines.toLocaleString("en-IN")}</b> log ${lines === 1 ? "entry" : "entries"} `
+      + `and <b>${marks.toLocaleString("en-IN")}</b> minute ${marks === 1 ? "mark" : "marks"}. `
+      + (lines > 4000
+          ? `The CSV and Excel files carry all of them; the PDF prints the first 4,000.`
+          : `Every printed line and every event, in order.`)
+    : "Nothing was logged in this window.";
+}
 
 function setDownloads() {
   $("#dl-pdf").href = dlUrl(S.reportPeriod, "pdf");
@@ -4234,6 +4261,13 @@ async function loadReports() {
       `<b>${esc(r.label)}</b> · ${r.start} → ${r.end}<br>
        ${plural(s.trades, "trade")} across ${plural(s.sessions, "session")}
        · ${esc(who)}`;
+
+    // The counts behind the log toggle. Its own request because it counts
+    // rows rather than reading them, and the summary should not wait on it.
+    api(`/api/export/preview?period=${S.reportPeriod}&anchor=${S.anchor}${q}`)
+      .then(p => { S.reportPreview = p; renderLogNote(); })
+      .catch(() => { S.reportPreview = null; renderLogNote(); });
+    renderLogNote();
     $("#r-summary").innerHTML = `
       <div class="card-h"><h2 class="card-t">${esc(r.label)}</h2></div>
       <div class="mgrid">
