@@ -246,7 +246,27 @@ async def whoami(token: str = Depends(require_token)):
         "can_operate": users.has_at_least(role, "operator"),
         "expires_at": payload.get("exp") if payload else None,
         "kind": "session" if payload else "api-token",
+        # A temporary password handed over by a super admin has to be replaced
+        # before the account is used for anything. The dashboard blocks on this.
+        "must_change_password": bool(
+            payload and (users.get(payload["sub"]) or {}).get("must_change")),
     }
+
+
+@app.post("/api/auth/logout")
+async def logout(token: str = Depends(require_token)):
+    """Retire this one session.
+
+    Signing out used to only forget the token in the browser, which left it
+    valid on the server for the rest of its month-long life — anything that had
+    copied it kept working. This retires the token itself; other devices the
+    same operator is signed in on are untouched.
+    """
+    who = _actor(token)                       # read before the token goes dead
+    revoked = await asyncio.to_thread(auth_mod.revoke_session, token)
+    approvals.record(who, "signed_out",
+                     "session retired" if revoked else "api token, nothing to retire")
+    return {"ok": True, "revoked": revoked, "user": who}
 
 
 @app.post("/api/auth/change-password")
@@ -374,6 +394,17 @@ async def algorithm_list(_: str = Depends(require_token)):
 async def algorithm_template(_: str = Depends(require_token)):
     """A working skeleton that already speaks the dashboard's event protocol."""
     return {"filename": "my_algorithm.py", "source": algorithms.template()}
+
+
+@app.get("/api/algorithm/brief")
+async def algorithm_brief(_: str = Depends(require_token)):
+    """The authoring brief, to hand to whoever — or whatever — writes the code.
+
+    The single most common failure here is an algorithm that runs perfectly and
+    reports nothing, because printing and emitting look the same from inside
+    the file. This is the document that prevents it.
+    """
+    return {"filename": "meridian-algorithm-brief.md", "markdown": algorithms.brief()}
 
 
 @app.post("/api/algorithm/validate")

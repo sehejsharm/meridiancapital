@@ -109,8 +109,10 @@ def _unb64(text: str) -> bytes:
 def issue_session(username: str, role: str = "viewer",
                   ttl: int = SESSION_TTL_SECONDS) -> dict:
     now = int(time.time())
+    # `jti` names this one session so signing out can retire it without
+    # invalidating every other device the operator is signed in on.
     payload = {"sub": username, "rol": role, "iat": now,
-               "exp": now + ttl, "epc": _epoch()}
+               "exp": now + ttl, "epc": _epoch(), "jti": secrets.token_urlsafe(9)}
     body = _b64(json.dumps(payload, separators=(",", ":")).encode())
     sig = _b64(hmac.new(_signing_key(), body.encode(), hashlib.sha256).digest())
     return {
@@ -119,6 +121,37 @@ def issue_session(username: str, role: str = "viewer",
         "user": username,
         "role": role,
     }
+
+
+def _is_revoked(jti: str) -> bool:
+    if not jti:
+        return False
+    try:
+        return db.query_one(
+            "SELECT 1 AS hit FROM revoked_sessions WHERE jti = ?", (jti,)) is not None
+    except Exception:
+        # A missing table must not lock everyone out of their own server.
+        return False
+
+
+def revoke_session(token: str) -> bool:
+    """Retire one session immediately. Returns False if there was nothing to do."""
+    payload = verify_session(token)
+    if not payload or not payload.get("jti"):
+        return False
+    try:
+        db.execute(
+            "INSERT OR IGNORE INTO revoked_sessions (jti, expires_at, revoked_at) "
+            "VALUES (?,?,?)",
+            (payload["jti"], int(payload.get("exp", 0)),
+             time.strftime("%Y-%m-%dT%H:%M:%S")),
+        )
+        # A revoked token is dead weight once it would have expired anyway.
+        db.execute("DELETE FROM revoked_sessions WHERE expires_at < ?",
+                   (int(time.time()),))
+    except Exception:
+        return False
+    return True
 
 
 def verify_session(token: str) -> Optional[dict]:
@@ -136,6 +169,8 @@ def verify_session(token: str) -> Optional[dict]:
     if payload.get("exp", 0) < int(time.time()):
         return None
     if payload.get("epc", 0) != _epoch():
+        return None
+    if _is_revoked(payload.get("jti", "")):
         return None
     return payload
 

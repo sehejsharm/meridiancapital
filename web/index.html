@@ -264,6 +264,59 @@ details.trade[open]{border-color:var(--line-2)}
   padding:12px;max-height:34vh;overflow-y:auto;font-family:var(--mono);font-size:11px;
   line-height:1.7}
 
+/* ---- authoring brief ---- */
+.brief{margin-top:14px;padding:13px 14px;border:1px solid var(--line-3);border-radius:10px;
+  background:var(--au-bg-2)}
+.brief-h{font-size:12.5px;color:var(--au);margin-bottom:5px}
+.brief-s{font-size:11.5px;line-height:1.65;color:var(--muted)}
+.brief-b{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
+.brief-b .btn{width:auto;flex:1;min-width:120px;padding:8px 12px;font-size:10.5px}
+#doc{position:fixed;inset:0;z-index:415;background:rgba(3,3,5,.88);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;padding:16px;
+  animation:palIn .18s var(--ease)}
+#doc[hidden]{display:none}
+.doc-box{width:100%;max-width:820px;max-height:92vh;display:flex;flex-direction:column;
+  background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r);
+  overflow:hidden;box-shadow:0 30px 90px -30px rgba(0,0,0,1)}
+.doc-body{overflow-y:auto;padding:18px 22px;font-size:12.5px;line-height:1.75;
+  color:var(--muted)}
+.doc-body h1{font-size:17px;color:var(--text);margin:0 0 4px}
+.doc-body h2{font-size:13.5px;color:var(--au);margin:22px 0 7px;
+  padding-top:14px;border-top:1px solid var(--line)}
+.doc-body h3{font-size:12.5px;color:var(--text);margin:16px 0 5px}
+.doc-body p{margin:0 0 10px}
+.doc-body ul{margin:0 0 10px;padding-left:19px}
+.doc-body li{margin-bottom:4px}
+.doc-body code{font-family:var(--mono);font-size:11px;color:var(--au);
+  background:var(--au-bg-2);padding:1px 4px;border-radius:3px}
+.doc-body pre{background:#040405;border:1px solid var(--line);border-radius:8px;
+  padding:12px 13px;overflow-x:auto;margin:0 0 12px}
+.doc-body pre code{background:none;padding:0;color:var(--muted);font-size:10.5px;
+  line-height:1.6}
+.doc-body table{width:100%;border-collapse:collapse;margin:0 0 12px;font-size:11.5px}
+.doc-body th,.doc-body td{border:1px solid var(--line);padding:6px 9px;text-align:left;
+  vertical-align:top}
+.doc-body th{background:var(--surface-2);color:var(--text);font-weight:normal}
+.doc-body hr{border:none;border-top:1px solid var(--line);margin:18px 0}
+.doc-body strong{color:var(--text)}
+
+/* ---- change passcode ---- */
+#pw{position:fixed;inset:0;z-index:430;background:rgba(3,3,5,.9);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;padding:16px;
+  animation:palIn .18s var(--ease)}
+#pw[hidden]{display:none}
+.pw-box{width:100%;max-width:420px;background:var(--surface);
+  border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden;
+  box-shadow:0 30px 90px -30px rgba(0,0,0,1)}
+.pw-msg{font-size:11.5px;line-height:1.5;margin-top:11px;min-height:16px;color:var(--down)}
+.pw-msg.ok{color:var(--up)}
+.gate-locked{font-size:11px;line-height:1.6;color:var(--muted);text-align:center;
+  margin-bottom:13px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;
+  background:var(--surface-2)}
+.gate-locked[hidden]{display:none}
+
 /* ---- algorithm diff ---- */
 #dif{position:fixed;inset:0;z-index:420;background:rgba(3,3,5,.88);
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
@@ -1130,6 +1183,9 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
     <div class="rule"></div>
 
     <div id="bio-panel" style="display:none">
+      <div class="gate-locked" id="g-locked" hidden>
+        Locked — <span id="g-locked-who"></span> is still signed in on this device.
+      </div>
       <button class="btn bio" id="g-bio">
         <svg viewBox="0 0 24 24"><path d="M12 11v3M8.5 9.5a3.5 3.5 0 017 0v2a7 7 0 01-.6 2.8M6 12v-1a6 6 0 0110-4.5M5.5 16.5A9 9 0 015 13v-1a7 7 0 013-5.8M18.5 13a13 13 0 01-.7 4.3M9 19.5A9 9 0 018 16v-4a4 4 0 018 0v1"/></svg>
         <span id="g-bio-label">Unlock</span>
@@ -1202,6 +1258,55 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
         </div>
       </div>
       <div class="rep-log" id="rep-log"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= DOCUMENT READER ======================= -->
+<div id="doc" hidden>
+  <div class="doc-box" role="dialog" aria-modal="true" aria-labelledby="doc-title">
+    <div class="dif-head">
+      <div style="min-width:0">
+        <div class="card-t" id="doc-title"></div>
+        <div class="dif-sub" id="doc-sub"></div>
+      </div>
+      <div class="rep-ctl">
+        <button class="btn ghost" id="doc-copy" style="width:auto;padding:8px 14px">Copy</button>
+        <button class="btn ghost" id="doc-close" style="width:auto;padding:8px 14px">Close</button>
+      </div>
+    </div>
+    <div class="doc-body" id="doc-body" tabindex="0"></div>
+  </div>
+</div>
+
+<!-- ======================= CHANGE PASSCODE ======================= -->
+<div id="pw" hidden>
+  <div class="pw-box" role="dialog" aria-modal="true" aria-labelledby="pw-title">
+    <div class="dif-head">
+      <div style="min-width:0">
+        <div class="card-t" id="pw-title">Change your passcode</div>
+        <div class="dif-sub" id="pw-sub"></div>
+      </div>
+    </div>
+    <div style="padding:16px 18px">
+      <label class="lbl" for="pw-cur">Current passcode</label>
+      <input class="field" id="pw-cur" type="password" autocomplete="current-password"
+             aria-label="Current passcode">
+      <label class="lbl" for="pw-new" style="margin-top:11px">New passcode</label>
+      <input class="field" id="pw-new" type="password" autocomplete="new-password"
+             aria-label="New passcode" placeholder="at least 8 characters">
+      <label class="lbl" for="pw-new2" style="margin-top:11px">New passcode again</label>
+      <input class="field" id="pw-new2" type="password" autocomplete="new-password"
+             aria-label="Repeat the new passcode">
+      <div class="pw-msg" id="pw-msg" role="alert"></div>
+      <div style="display:flex;gap:9px;margin-top:14px">
+        <button class="btn ghost" id="pw-cancel">Cancel</button>
+        <button class="btn" id="pw-save">Change passcode</button>
+      </div>
+      <div class="dim" style="font-size:10.5px;line-height:1.6;margin-top:11px">
+        Every other device stays signed in. Use “Sign out everywhere” in Control
+        if you think the old passcode is known to someone else.
+      </div>
     </div>
   </div>
 </div>
@@ -1612,6 +1717,22 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
         <div class="gold mono" style="font-size:11px;line-height:1.6;margin-top:10px"
              id="a-applies"></div>
 
+        <!-- Writing one of these by hand means getting the event contract
+             exactly right, and getting it wrong is silent: the algorithm runs
+             and the whole dashboard stays empty. The brief is the fix. -->
+        <div class="brief">
+          <div class="brief-h">Writing a new algorithm?</div>
+          <div class="brief-s">Copy the brief, paste it into a Claude chat, and
+            describe the strategy you want. It carries the complete event
+            contract — every field the deck, Trades and Reports read — so what
+            comes back reports properly instead of running silently.</div>
+          <div class="brief-b">
+            <button class="btn ghost" id="a-brief">Copy the brief</button>
+            <button class="btn ghost" id="a-brief-dl">Download it</button>
+            <button class="btn ghost" id="a-brief-read">Read it here</button>
+          </div>
+        </div>
+
         <!-- Five lanes trade the same instrument independently. Which one an
              upload lands in is the first decision, not an afterthought. -->
         <div style="margin-top:14px">
@@ -1706,7 +1827,18 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       <div class="card">
         <div class="card-h"><h2 class="card-t">Security</h2></div>
         <div id="c-sec"></div>
+        <div class="row"><span class="row-k">Lock when idle</span>
+          <select class="field" id="c-idle" aria-label="Lock the dashboard after this long without activity"
+                  style="width:130px;padding:7px 10px;text-align:right;font-size:12px">
+            <option value="0">Never</option>
+            <option value="5">5 minutes</option>
+            <option value="15">15 minutes</option>
+            <option value="30">30 minutes</option>
+            <option value="60">1 hour</option>
+          </select></div>
         <button class="btn ghost" id="c-bio-enroll" style="margin-top:11px">Enable biometric unlock</button>
+        <button class="btn ghost" id="c-lock" style="margin-top:9px">Lock now</button>
+        <button class="btn ghost" id="c-passwd" style="margin-top:9px">Change my passcode</button>
         <button class="btn ghost" id="c-logout-all" style="margin-top:9px">Sign out everywhere</button>
         <button class="btn danger" id="c-logout" style="margin-top:9px">Sign out</button>
       </div>
@@ -1722,7 +1854,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.18-obsidian.7";
+const BUILD = "2026.08.18-obsidian.8";
 
 /* The dashboard is a static file with nowhere of its own to keep state, so it
    has to be told which trading server to talk to. Rather than ask for that
@@ -2020,14 +2152,20 @@ async function doLogin() {
     if (!r.ok) throw new Error(body.detail || ("HTTP " + r.status));
 
     gateFails = 0;
+    const wasLocked = isLocked();
     S.token = body.token; S.user = body.user; S.role = body.role || "viewer";
     localStorage.setItem("mc_token", S.token);
     localStorage.setItem("mc_user", S.user);
     localStorage.setItem("mc_role", S.role);
+    localStorage.removeItem(LOCK_KEY);
     $("#g-pass").value = "";
-    await bootSequence();
+    // Unlocking with the passcode is not a fresh sign-in; skip the ceremony.
+    if (!wasLocked) await bootSequence();
     enterApp();
-    if (await bioAvailable() && !localStorage.getItem(BIO_KEY)) {
+    // A password a super admin typed for you is a delivery mechanism, not a
+    // password. It has to be replaced before the account does anything.
+    if (body.must_change) forcePasswordChange();
+    else if (await bioAvailable() && !localStorage.getItem(BIO_KEY)) {
       setTimeout(() => {
         if (confirm("Enable fingerprint / face unlock on this device?")) bioEnroll();
       }, 700);
@@ -2096,28 +2234,169 @@ $("#g-bio").onclick = async () => {
   if (await bioUnlock()) {
     S.token = localStorage.getItem("mc_token") || "";
     S.user = localStorage.getItem("mc_user") || "";
-    try { enterApp(await api("/api/auth/me")); }
-    catch (e) { gateMsg("Stored session expired — sign in with your passcode.", true); }
+    try {
+      const me = await api("/api/auth/me");
+      localStorage.removeItem(LOCK_KEY);
+      enterApp(me);
+    } catch (e) {
+      // The fingerprint was right but the session behind it is gone, so the
+      // passcode is the only way back. Say that rather than "not recognised".
+      localStorage.removeItem("mc_token");
+      localStorage.removeItem(LOCK_KEY);
+      S.token = "";
+      showBioPanel();
+      gateMsg("That session has expired — sign in with your passcode.", true);
+    }
   } else {
     gateMsg("Not recognised.", true);
   }
   label.textContent = "Unlock";
 };
 
-function signOut(msg) {
-  localStorage.removeItem("mc_token");
-  S.token = "";
+/* ================= changing your own passcode =================
+   The server has always had the endpoint for this. Nothing ever called it, so
+   an operator handed a temporary passcode by a super admin kept it forever,
+   and `must_change` — set on every account the Admin screen creates — did
+   nothing at all.
+==================================================== */
+let pwForced = false;
+
+function openPasswordChange(forced) {
+  pwForced = !!forced;
+  $("#pw-sub").textContent = forced
+    ? "This passcode was set for you by an administrator. Choose your own before going on."
+    : "You will need the passcode you sign in with now.";
+  $("#pw-cancel").style.display = forced ? "none" : "";
+  ["#pw-cur", "#pw-new", "#pw-new2"].forEach(s => { $(s).value = ""; });
+  $("#pw-msg").textContent = "";
+  $("#pw-msg").classList.remove("ok");
+  $("#pw").hidden = false;
+  $("#pw-cur").focus();
+}
+
+function forcePasswordChange() {
+  setTimeout(() => openPasswordChange(true), 600);
+}
+
+function closePasswordChange() {
+  if (pwForced) return;      // no way past it except changing the passcode
+  $("#pw").hidden = true;
+}
+
+async function submitPasswordChange() {
+  const cur = $("#pw-cur").value, a = $("#pw-new").value, b = $("#pw-new2").value;
+  const msg = $("#pw-msg");
+  msg.classList.remove("ok");
+  if (!cur) { msg.textContent = "Enter the passcode you use now."; return; }
+  if (a.length < 8) { msg.textContent = "The new passcode needs at least 8 characters."; return; }
+  if (a !== b) { msg.textContent = "The two new passcodes do not match."; return; }
+  if (a === cur) { msg.textContent = "That is the passcode you already have."; return; }
+
+  const btn = $("#pw-save");
+  btn.disabled = true;
+  try {
+    await api("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: cur, new_password: a }),
+    });
+    msg.classList.add("ok");
+    msg.textContent = "Changed.";
+    pwForced = false;
+    setTimeout(() => { $("#pw").hidden = true; toast("Passcode changed"); }, 700);
+  } catch (e) {
+    msg.textContent = e.message || "Could not change the passcode.";
+  } finally { btn.disabled = false; }
+}
+
+/* ================= lock vs sign out =================
+   Two different things, and conflating them is what made the fingerprint
+   useless. Signing out throws the session away and the server retires the
+   token. Locking keeps the session and puts the device lock in front of it,
+   which is the whole point of enrolling a fingerprint.
+
+   A page load with an enrolled fingerprint starts locked. Previously a stored
+   token walked straight into the app and the fingerprint was never asked for
+   at all — the "Unlock" button could only ever appear when the gate was up,
+   and the gate only came up when there was no session left to unlock.
+==================================================== */
+const LOCK_KEY = "mc_locked";
+const IDLE_KEY = "mc_idle_minutes";
+const IDLE_DEFAULT = 15;
+
+const idleMinutes = () => {
+  const raw = parseInt(localStorage.getItem(IDLE_KEY) || "", 10);
+  return isNaN(raw) ? IDLE_DEFAULT : Math.max(0, Math.min(240, raw));
+};
+
+function tearDown() {
   if (S.ws) { try { S.ws.close(); } catch (e) {} S.ws = null; }
   clearInterval(boot._a); clearInterval(boot._b); clearInterval(boot._c);
+}
+
+/** Keep the session, demand the fingerprint (or the passcode) to get back in. */
+function lockApp(msg) {
+  if (!localStorage.getItem("mc_token")) return;
+  localStorage.setItem(LOCK_KEY, "1");
+  tearDown();
+  $("#gate").classList.remove("hide");
+  showBioPanel();
+  if (msg) gateMsg(msg, false);
+}
+
+/** Throw the session away. The server retires the token so a copy is dead too. */
+function signOut(msg) {
+  const token = localStorage.getItem("mc_token");
+  if (token) {
+    // Fire and forget: the local session goes regardless of whether the
+    // server is reachable, otherwise an offline server traps you signed in.
+    fetch(S.url + "/api/auth/logout",
+          { method: "POST", headers: { "X-API-Token": token } }).catch(() => {});
+  }
+  localStorage.removeItem("mc_token");
+  localStorage.removeItem(LOCK_KEY);
+  S.token = "";
+  tearDown();
   $("#gate").classList.remove("hide");
   showBioPanel();
   if (msg) gateMsg(msg, true);
 }
 
+const isLocked = () =>
+  !!localStorage.getItem(LOCK_KEY) && !!localStorage.getItem("mc_token");
+
 async function showBioPanel() {
-  const has = !!localStorage.getItem(BIO_KEY) && !!localStorage.getItem("mc_token");
-  $("#bio-panel").style.display = (has && await bioAvailable()) ? "block" : "none";
+  const locked = isLocked();
+  const enrolled = !!localStorage.getItem(BIO_KEY);
+  const usable = enrolled && locked && await bioAvailable();
+  $("#bio-panel").style.display = usable ? "block" : "none";
+  const note = $("#g-locked");
+  if (note) {
+    note.hidden = !locked;
+    $("#g-locked-who").textContent = localStorage.getItem("mc_user") || "someone";
+  }
+  // While locked the passcode is the fallback, so the operator name is known.
+  if (locked) {
+    const u = $("#g-user");
+    if (u && !u.value) u.value = localStorage.getItem("mc_user") || "";
+  }
 }
+
+/* Idle lock. The timer is deliberately reset by real input only — a chart
+   redrawing on its own is not someone sitting at the desk. */
+let idleTimer = null;
+
+function armIdleLock() {
+  if (idleTimer) clearTimeout(idleTimer);
+  const mins = idleMinutes();
+  if (!mins || !localStorage.getItem("mc_token")) return;
+  idleTimer = setTimeout(() => {
+    if (!$("#gate").classList.contains("hide")) return;   // already at the gate
+    lockApp(`Locked after ${plural(mins, "minute")} without activity.`);
+  }, mins * 60000);
+}
+
+["pointerdown", "keydown", "wheel", "touchstart"].forEach(ev =>
+  document.addEventListener(ev, armIdleLock, { passive: true }));
 
 function enterApp(me) {
   $("#gate").classList.add("hide");
@@ -2125,18 +2404,23 @@ function enterApp(me) {
   applyRole();
 
   const useIdentity = m => {
+    S._me = m;
     S.role = m.role || "viewer";
     S.user = m.user || S.user;
     localStorage.setItem("mc_role", S.role);
     localStorage.setItem("mc_user", S.user);
     $("#r-user").textContent = `${m.user} · ${String(m.role).replace("_", " ")}`;
     applyRole();
+    // Also caught here, not only on the login path: resuming a session or
+    // unlocking with a fingerprint must not skip a forced passcode change.
+    if (m.must_change_password && $("#pw").hidden) forcePasswordChange();
   };
 
   // The caller usually just validated the session, so its answer is reused
   // rather than asking again — resuming a session was firing /auth/me twice.
   if (me) useIdentity(me);
   else api("/api/auth/me").then(useIdentity).catch(() => {});
+  armIdleLock();
   boot();
 }
 
@@ -3338,6 +3622,7 @@ document.addEventListener("keydown", e => {
   }
   if (e.key === "Escape") {
     if (!$("#pal").hidden) { palClose(); return; }
+    if (!$("#doc").hidden) { docClose(); return; }
     if (!$("#dif").hidden) { difClose(); return; }
     if (!$("#rep").hidden) { repClose(); return; }
     const open = $("#tv-wrap");
@@ -4190,6 +4475,7 @@ const AUDIT_LABELS = {
   algorithm_deleted:   ["Algorithm deleted", "down"],
   session_started:     ["Session started", "up"],
   session_stopped:     ["Session stopped", "dim"],
+  signed_out:          ["Signed out", "dim"],
 };
 
 function auditGroup(action) {
@@ -4463,6 +4749,142 @@ $("#a-template").onclick = async () => {
     toast("Starter loaded — edit it, then check");
   } catch (e) { toast(e.message); }
 };
+
+/* ---------------- the authoring brief ----------------
+   Fetched rather than duplicated in the page: the contract it describes is
+   the backend's, and a copy here would drift the first time an event kind
+   changed. Cached for the session so the three buttons cost one request.
+==================================================== */
+let briefCache = null;
+
+async function loadBrief() {
+  if (briefCache === null) briefCache = (await api("/api/algorithm/brief")).markdown;
+  return briefCache;
+}
+
+async function copyText(text, what) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(`${what} copied — paste it into a Claude chat`);
+    return true;
+  } catch (e) {
+    // Clipboard access needs a secure context and a user gesture, and either
+    // can be missing. Showing the text beats a silent failure.
+    toast("Could not reach the clipboard — opening it to copy by hand");
+    return false;
+  }
+}
+
+$("#a-brief").onclick = async () => {
+  const btn = $("#a-brief"); btn.disabled = true;
+  try {
+    const md = await loadBrief();
+    if (!await copyText(md, "Brief")) showDoc("Algorithm brief", md);
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; }
+};
+
+$("#a-brief-dl").onclick = async () => {
+  try {
+    const md = await loadBrief();
+    const url = URL.createObjectURL(new Blob([md], { type: "text/markdown" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "meridian-algorithm-brief.md";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) { toast(e.message); }
+};
+
+$("#a-brief-read").onclick = async () => {
+  try { showDoc("Algorithm brief", await loadBrief()); }
+  catch (e) { toast(e.message); }
+};
+
+/* A deliberately small markdown renderer — headings, fenced code, tables,
+   lists and inline code are all the brief uses, and pulling in a library for
+   one document would be the wrong trade. Everything is escaped first, so the
+   document is treated as text throughout. */
+function renderMarkdown(md) {
+  const out = [];
+  const lines = md.split("\n");
+  let i = 0, inList = false;
+
+  const closeList = () => { if (inList) { out.push("</ul>"); inList = false; } };
+  const inline = s => esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (line.startsWith("```")) {
+      closeList();
+      const body = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) body.push(lines[i++]);
+      i++;
+      out.push(`<pre><code>${esc(body.join("\n"))}</code></pre>`);
+      continue;
+    }
+
+    // A table is a header row, a separator of dashes, then body rows.
+    if (line.startsWith("|") && (lines[i + 1] || "").replace(/[\s|:-]/g, "") === "") {
+      closeList();
+      const cells = r => r.split("|").slice(1, -1).map(c => c.trim());
+      const head = cells(line);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].startsWith("|")) rows.push(cells(lines[i++]));
+      out.push(`<table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join("")}</tr></thead>`
+        + `<tbody>${rows.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}`
+        + `</tbody></table>`);
+      continue;
+    }
+
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { closeList(); out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); i++; continue; }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      if (!inList) { out.push("<ul>"); inList = true; }
+      out.push(`<li>${inline(line.replace(/^\s*[-*]\s+/, ""))}</li>`);
+      i++;
+      continue;
+    }
+
+    if (/^---+$/.test(line.trim())) { closeList(); out.push("<hr>"); i++; continue; }
+
+    if (!line.trim()) { closeList(); i++; continue; }
+
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !/^([#`|]|\s*[-*]\s)/.test(lines[i])
+           && !/^---+$/.test(lines[i].trim())) {
+      para.push(lines[i++]);
+    }
+    if (para.length) { closeList(); out.push(`<p>${inline(para.join(" "))}</p>`); }
+    else i++;
+  }
+  closeList();
+  return out.join("\n");
+}
+
+let docText = "";
+
+function showDoc(title, markdown, sub) {
+  docText = markdown;
+  $("#doc-title").textContent = title;
+  $("#doc-sub").textContent = sub || "Copy this into a Claude chat, then describe the strategy you want.";
+  $("#doc-body").innerHTML = renderMarkdown(markdown);
+  $("#doc-body").scrollTop = 0;
+  $("#doc").hidden = false;
+  $("#doc-close").focus();
+}
+
+function docClose() { const d = $("#doc"); if (d) d.hidden = true; }
+$("#doc-close").onclick = docClose;
+$("#doc-copy").onclick = () => copyText(docText, "Brief");
+$("#doc").onclick = e => { if (e.target === $("#doc")) docClose(); };
 $("#a-check").onclick = async () => {
   const source = $("#a-source").value;
   if (!source.trim()) { toast("Paste or load some source first"); return; }
@@ -4692,7 +5114,31 @@ $("#c-save").onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 $("#c-bio-enroll").onclick = () => bioEnroll().then(loadControl);
-$("#c-logout").onclick = () => signOut("");
+$("#c-lock").onclick = () => {
+  if (!localStorage.getItem(BIO_KEY)) {
+    toast("Enrol a fingerprint first, or this locks you out to the passcode");
+  }
+  lockApp("Locked.");
+};
+$("#c-passwd").onclick = () => openPasswordChange(false);
+$("#c-idle").onchange = () => {
+  localStorage.setItem(IDLE_KEY, $("#c-idle").value);
+  armIdleLock();
+  const m = idleMinutes();
+  toast(m ? `Locks after ${plural(m, "minute")} idle` : "Idle lock off");
+};
+$("#pw-save").onclick = submitPasswordChange;
+$("#pw-cancel").onclick = closePasswordChange;
+["#pw-cur", "#pw-new", "#pw-new2"].forEach(sel =>
+  $(sel).addEventListener("keydown", e => {
+    if (e.key === "Enter") submitPasswordChange();
+  }));
+$("#c-logout").onclick = () => {
+  if (!confirm("Sign out?\n\nThis session is retired on the server, so the "
+             + "passcode is needed to get back in — a fingerprint will not do "
+             + "it. Use “Lock now” instead if you are coming back.")) return;
+  signOut("");
+};
 $("#c-logout-all").onclick = async () => {
   if (!confirm("Sign out every device?\n\nEvery existing session stops working "
              + "immediately, including this one and any phone with biometric unlock "
@@ -4725,15 +5171,29 @@ async function loadControl() {
 
     const bioOn = !!localStorage.getItem(BIO_KEY);
     const avail = await bioAvailable();
+    const expiry = S._me && S._me.expires_at
+      ? new Date(S._me.expires_at * 1000).toLocaleDateString("en-GB",
+          { day: "2-digit", month: "short", year: "numeric" })
+      : "—";
+    const mins = idleMinutes();
     $("#c-sec").innerHTML = `
       ${row("Operator", S.user || "—")}
       ${row("Server", S.url.replace(/^https?:\/\//, ""))}
-      ${row("Biometric unlock", bioOn ? "Enabled on this device" : (avail ? "Available" : "Not supported here"))}
+      ${row("Biometric unlock", bioOn ? "On — asked for on every open"
+            : (avail ? "Available, not enrolled" : "Not supported here"))}
+      ${row("This session expires", expiry)}
       ${row("Dashboard build", BUILD)}
       <div class="dim" style="font-size:10px;line-height:1.6;margin-top:9px">
-        Biometrics lock this device. Your passcode is what the server verifies.</div>`;
+        ${bioOn
+          ? "Opening the dashboard asks for your fingerprint before showing anything. "
+          : "Without a fingerprint enrolled, an open session resumes without being asked. "}
+        The fingerprint locks this device; your passcode is what the server verifies.</div>`;
     $("#c-bio-enroll").textContent = bioOn ? "Re-enrol biometric unlock" : "Enable biometric unlock";
     $("#c-bio-enroll").style.display = avail ? "block" : "none";
+    $("#c-lock").style.display = bioOn ? "block" : "none";
+    $("#c-idle").value = String(mins);
+    $("#c-passwd").style.display =
+      (S._me && S._me.kind === "api-token") ? "none" : "block";
   } catch (e) { toast(e.message); }
 }
 
@@ -4770,8 +5230,16 @@ function boot() {
 
 /* ---------------- start ---------------- */
 (async function init() {
+  // A session that survives a page load starts locked whenever a fingerprint
+  // is enrolled — that is what enrolling one is for. Without one there is
+  // nothing to unlock with, so the stored session resumes as before.
+  if (S.token && localStorage.getItem(BIO_KEY) && await bioAvailable()) {
+    localStorage.setItem(LOCK_KEY, "1");
+  } else {
+    localStorage.removeItem(LOCK_KEY);
+  }
   await showBioPanel();
-  if (S.token && S.url) {
+  if (S.token && S.url && !isLocked()) {
     try { enterApp(await api("/api/auth/me")); }
     catch (e) { /* fall through to the gate */ }
   }

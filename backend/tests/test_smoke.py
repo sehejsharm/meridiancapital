@@ -427,6 +427,121 @@ def test_log_severity() -> None:
     check("plain output is info", _guess_level("Scanning 24500CE / 24500PE") == "info")
 
 
+def test_starter_and_brief() -> None:
+    """The starter is the answer to "my algorithm runs but shows nothing".
+
+    So it is not enough for it to be valid Python: it has to actually produce
+    the events the deck, Trades and Reports read, and it has to shut down when
+    the supervisor asks. This runs it the way the supervisor does — as a
+    subprocess with stdout on a pipe — and reads what comes back.
+    """
+    import json as _json
+    import signal as _signal
+    import subprocess
+    import time as _time
+
+    print("\nStarter algorithm")
+    from app import algorithms
+
+    src = algorithms.template()
+    check("the starter is valid Python", _compiles(src))
+    check("it stands alone — no relative imports",
+          "from ." not in src and "import app." not in src)
+    check("it has an entry point", '__name__ == "__main__"' in src)
+
+    report = algorithms.validate(src, "starter.py")
+    check("the starter passes its own validator", report["ok"],
+          _json.dumps([c for c in report["checks"] if not c["passed"]])[:300])
+    check("the validator sees it emitting events",
+          any(c["name"] == "Emits dashboard events" and c["passed"]
+              for c in report["checks"]))
+
+    # --- run it the way the supervisor does ---
+    path = Path(algorithms.TEMPLATE_PATH)
+    env = {**os.environ, "PAPER_MODE": "true", "SLOT": "1",
+           "PYTHONUNBUFFERED": "1"}
+    proc = subprocess.Popen([sys.executable, str(path)], stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, env=env)
+    try:
+        _time.sleep(2.5)
+        proc.send_signal(_signal.SIGTERM)
+        out, _ = proc.communicate(timeout=20)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        out, _ = proc.communicate()
+        check("the starter stops when asked", False, "it ignored SIGTERM")
+        return
+
+    check("it exits cleanly on SIGTERM", proc.returncode == 0, f"code {proc.returncode}")
+
+    events = []
+    for line in out.splitlines():
+        if line.startswith("@@EVT@@"):
+            try:
+                events.append(_json.loads(line[len("@@EVT@@"):]))
+            except ValueError:
+                check("every event line is parseable JSON", False, line[:120])
+    kinds = [e["kind"] for e in events]
+    check(f"it emits structured events ({len(events)})", len(events) > 0, out[:300])
+
+    for kind in ("boot", "ready", "status", "minute", "eod", "stopping", "shutdown"):
+        check(f"it emits {kind!r}", kind in kinds, f"got {sorted(set(kinds))}")
+
+    # The three that decide whether the dashboard has anything to show.
+    snap = next((e["payload"] for e in events if e["kind"] == "status"), None)
+    check("the status event carries a snapshot", snap is not None)
+    if snap:
+        for field in ("equity", "day_pnl", "trades", "max_trades", "position",
+                      "decision", "market", "paper", "peak_equity",
+                      "drawdown_pct", "kill_used", "kill_limit"):
+            check(f"the snapshot has {field!r}", field in snap, str(sorted(snap))[:200])
+        check("it reports paper mode from the environment", snap["paper"] is True)
+        check("a flat book says why it is not trading",
+              bool((snap.get("decision") or {}).get("reason")))
+
+    eod = next((e["payload"] for e in events if e["kind"] == "eod"), None)
+    check("the end-of-day event carries a report", eod and "report" in eod)
+    if eod:
+        r = eod["report"]
+        # These four are what every risk metric downstream is built from.
+        for field in ("Date", "Mode", "Trades", "OpenEquity", "CloseEquity",
+                      "DayPnL", "Charges", "PeakEquity", "DrawdownPct"):
+            check(f"the daily report has {field!r}", field in r, str(sorted(r))[:200])
+        check("a day with no trades still files a report", r["Trades"] == 0)
+        check("the report survives the row mapper",
+              _eod_maps(eod), "keys did not map onto the sessions table")
+
+    mark = next((e["payload"] for e in events if e["kind"] == "minute"), None)
+    check("the minute mark carries equity", mark and "equity" in mark and "day_pnl" in mark)
+
+    # --- the brief ---
+    brief = algorithms.brief()
+    check("the brief is present and substantial", len(brief) > 4000, str(len(brief)))
+    for token in ("@@EVT@@", "flush()", "ledger", "eod", "minute", "status",
+                  "PAPER_MODE", "SIGTERM", "NetPnL", "OpenEquity"):
+        check(f"the brief documents {token!r}", token in brief)
+    check("the brief names every key the trades table reads",
+          all(k in brief for k in ("EntryTime", "ExitTime", "Symbol", "Qty",
+                                   "AvgEntry", "ExitFill", "Charges", "Reason")))
+    check("the brief warns about the thing that actually goes wrong",
+          "running but not reporting" in brief or "only prints" in brief)
+
+
+def _compiles(src: str) -> bool:
+    try:
+        compile(src, "<starter>", "exec")
+        return True
+    except SyntaxError:
+        return False
+
+
+def _eod_maps(payload: dict) -> bool:
+    """The starter's report keys must land on real columns, not vanish."""
+    from app.runner import _eod_to_row
+    row = _eod_to_row(payload)
+    return row["session_date"] is not None and row["close_equity"] is not None
+
+
 def test_news() -> None:
     """Parsing and failure behaviour, without touching the network."""
     print("\nNews feed")
@@ -760,6 +875,73 @@ def test_api() -> None:
         r = client.get("/api/audit?limit=0", headers=sh)
         check("a nonsense limit is refused", r.status_code == 422)
 
+        # ---- forced passcode change ----
+        # Every account the Admin screen creates is flagged must_change. The
+        # flag was written and then read by nothing, so a passcode an admin
+        # typed stayed the operator's passcode indefinitely.
+        r = client.post("/api/users", headers=sh,
+                        json={"username": "newhire", "password": "temp-passcode-1",
+                              "role": "operator"})
+        check("a new operator is created", r.status_code == 200, r.text[:200])
+        hire_id = r.json()["id"]
+
+        r = client.post("/api/auth/login",
+                        json={"username": "newhire", "password": "temp-passcode-1"})
+        check("the new operator can sign in", r.status_code == 200)
+        check("login says the passcode must be replaced",
+              r.json().get("must_change") is True, r.text[:200])
+        nh = {"X-API-Token": r.json()["token"]}
+
+        r = client.get("/api/auth/me", headers=nh)
+        check("whoami says so too, for a resumed session",
+              r.json().get("must_change_password") is True, r.text[:200])
+
+        r = client.post("/api/auth/change-password", headers=nh,
+                        json={"current_password": "wrong", "new_password": "chosen-passcode-2"})
+        check("changing needs the current passcode", r.status_code == 401)
+
+        r = client.post("/api/auth/change-password", headers=nh,
+                        json={"current_password": "temp-passcode-1",
+                              "new_password": "chosen-passcode-2"})
+        check("the operator can change their own passcode", r.status_code == 200, r.text[:200])
+        r = client.get("/api/auth/me", headers=nh)
+        check("the flag clears once it is changed",
+              r.json().get("must_change_password") is False, r.text[:200])
+        check("the old passcode stops working",
+              client.post("/api/auth/login",
+                          json={"username": "newhire",
+                                "password": "temp-passcode-1"}).status_code == 401)
+
+        # ---- signing out retires the token ----
+        r = client.post("/api/auth/login",
+                        json={"username": "newhire", "password": "chosen-passcode-2"})
+        doomed = {"X-API-Token": r.json()["token"]}
+        r = client.post("/api/auth/login",
+                        json={"username": "newhire", "password": "chosen-passcode-2"})
+        other = {"X-API-Token": r.json()["token"]}
+        check("two devices can be signed in at once",
+              client.get("/api/status", headers=doomed).status_code == 200 and
+              client.get("/api/status", headers=other).status_code == 200)
+
+        r = client.post("/api/auth/logout", headers=doomed)
+        check("signing out reports the session retired",
+              r.status_code == 200 and r.json()["revoked"] is True, r.text[:200])
+        check("the signed-out token stops working",
+              client.get("/api/status", headers=doomed).status_code == 401)
+        check("the other device is untouched",
+              client.get("/api/status", headers=other).status_code == 200)
+        check("signing out is audited",
+              any(e["action"] == "signed_out"
+                  for e in client.get("/api/audit", headers=sh).json()["entries"]))
+
+        r = client.post("/api/auth/logout", headers=h)
+        check("signing out a static API token is a no-op, not an error",
+              r.status_code == 200 and r.json()["revoked"] is False, r.text[:200])
+        check("the API token still works afterwards",
+              client.get("/api/status", headers=h).status_code == 200)
+
+        client.delete(f"/api/users/{hire_id}", headers=sh)
+
         # Repeated failures must lock out rather than allow unlimited guessing.
         codes = [
             client.post("/api/auth/login",
@@ -784,6 +966,7 @@ def main() -> int:
     test_live_mode_approval()
     test_expiry()
     test_log_severity()
+    test_starter_and_brief()
     test_news()
     test_api()
     print("\n" + "=" * 60)

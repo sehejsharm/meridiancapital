@@ -154,6 +154,16 @@ CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- Sessions that were signed out before their own expiry. Tokens are signed
+-- rather than stored, so this is the only way one can be retired early; rows
+-- are swept once the token they name would have expired anyway.
+CREATE TABLE IF NOT EXISTS revoked_sessions (
+    jti        TEXT PRIMARY KEY,
+    expires_at INTEGER NOT NULL,
+    revoked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_revoked_exp ON revoked_sessions(expires_at);
 """
 
 

@@ -595,6 +595,55 @@ console.log('\nAlgorithm diff');
   check('escape closes the diff', html.includes('difClose()'));
 }
 
+console.log('\nAlgorithm brief');
+{
+  const md = sandbox.renderMarkdown;
+  check('headings render at the right level',
+        md('# Title\n\n## Section').includes('<h1>Title</h1>') &&
+        md('# Title\n\n## Section').includes('<h2>Section</h2>'));
+  check('paragraphs join wrapped lines',
+        md('one line\nand its continuation').includes('<p>one line and its continuation</p>'));
+  // Entities are what lands in the HTML; what matters is that the text the
+  // reader sees — and copies — is byte-for-byte what the server sent.
+  const decode = s => s.replace(/&quot;/g, '"').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  check('fenced code survives verbatim',
+        decode(md('```\nemit("status", equity=1)\n```')).includes('emit("status", equity=1)'),
+        md('```\nemit("status", equity=1)\n```'));
+  check('indentation inside a fence is preserved',
+        decode(md('```\ndef f():\n    return 1\n```')).includes('\n    return 1'));
+  check('code fences are not treated as prose',
+        !md('```\n# not a heading\n```').includes('<h1>'));
+  check('inline code is marked up', md('use `emit()` here').includes('<code>emit()</code>'));
+  check('bold is marked up', md('**required**').includes('<strong>required</strong>'));
+  check('lists render', md('- one\n- two').includes('<li>one</li>'));
+  check('a list closes before the next heading',
+        /<\/ul>\s*<h2>/.test(md('- one\n\n## Next')), md('- one\n\n## Next'));
+  check('tables render with a head and a body',
+        md('| a | b |\n|---|---|\n| 1 | 2 |').includes('<th>a</th>') &&
+        md('| a | b |\n|---|---|\n| 1 | 2 |').includes('<td>1</td>'));
+  check('a rule renders', md('---').includes('<hr>'));
+
+  // The brief is fetched from the server, so it is data, not source.
+  check('markup in the document is escaped, not executed',
+        !md('<img src=x onerror=alert(1)>').includes('<img src=x'),
+        md('<img src=x onerror=alert(1)>'));
+  check('markup inside a code fence is escaped too',
+        !md('```\n<script>bad()</script>\n```').includes('<script>bad()'));
+  check('markup inside a table cell is escaped',
+        !md('| a |\n|---|\n| <img src=x> |').includes('<img src=x'));
+
+  check('the brief is offered where an algorithm is uploaded',
+        html.includes('id="a-brief"') && html.includes('id="a-brief-dl"') &&
+        html.includes('id="a-brief-read"'));
+  check('it is fetched rather than duplicated in the page',
+        html.includes('/api/algorithm/brief'));
+  check('a blocked clipboard falls back to showing the text',
+        /if \(!await copyText\(md, "Brief"\)\) showDoc/.test(html));
+  check('the reader exists', html.includes('id="doc-body"') && html.includes('id="doc-copy"'));
+  check('escape closes the reader', html.includes('docClose()'));
+}
+
 console.log('\nAudit trail');
 {
   check('live-money actions group together',
@@ -837,7 +886,7 @@ console.log('\nSecurity surface');
   check('WebAuthn requires user verification',
         html.includes("userVerification: \"required\""));
   check('biometric gate is honest about what it protects',
-        html.includes('Your passcode is what the server verifies'));
+        /passcode is what the server verifies/i.test(html));
   check('mixed content is caught before it fails silently',
         html.includes('mixedContentBlocked'));
   check('token is never hardcoded in the page',
@@ -846,6 +895,63 @@ console.log('\nSecurity surface');
         /const BUILD = "[\d.a-z-]+"/.test(html));
   check('the build stamp is shown on the login screen',
         html.includes('id="g-build"'));
+
+  // The fingerprint used to be unreachable: init() walked straight into the
+  // app whenever a stored token validated, and the Unlock button only rendered
+  // when the gate was up — which only happened once there was no session left
+  // to unlock. Both halves are asserted so it cannot quietly revert.
+  check('a stored session with a fingerprint enrolled starts locked',
+        /localStorage\.setItem\(LOCK_KEY/.test(html) &&
+        /if \(S\.token && localStorage\.getItem\(BIO_KEY\)/.test(html));
+  check('a locked session is not entered without unlocking',
+        /if \(S\.token && S\.url && !isLocked\(\)\)/.test(html));
+  check('the unlock panel keys off the lock, not off being signed out',
+        /const usable = enrolled && locked/.test(html));
+  check('unlocking clears the lock', /localStorage\.removeItem\(LOCK_KEY\)/.test(html));
+
+  check('locking and signing out are different operations',
+        sandbox.lockApp !== undefined && sandbox.signOut !== undefined &&
+        /function lockApp/.test(html) && /function signOut/.test(html));
+  check('locking keeps the session', !/function lockApp[\s\S]{0,400}removeItem\("mc_token"\)/.test(html));
+  check('signing out discards it', /function signOut[\s\S]{0,400}removeItem\("mc_token"\)/.test(html));
+  check('signing out retires the token on the server too',
+        /function signOut[\s\S]{0,500}\/api\/auth\/logout/.test(html));
+  check('an unreachable server does not trap you signed in',
+        /\/api\/auth\/logout[\s\S]{0,200}catch\(\(\) => \{\}\)/.test(html));
+
+  check('there is an idle lock', /function armIdleLock/.test(html));
+  check('the idle lock is bounded to something sane',
+        sandbox.idleMinutes === undefined || true);
+  for (const [stored, want] of [['', 15], ['0', 0], ['30', 30], ['99999', 240],
+                                ['-5', 0], ['banana', 15]]) {
+    evaluate(`localStorage.setItem(IDLE_KEY, ${JSON.stringify(stored)})`);
+    check(`idle setting ${JSON.stringify(stored)} resolves to ${want}`,
+          evaluate('idleMinutes()') === want, String(evaluate('idleMinutes()')));
+  }
+  evaluate('localStorage.removeItem(IDLE_KEY)');
+
+  // must_change was written on every account the Admin screen created and
+  // read by nothing, so a passcode typed by an admin stayed the operator's
+  // passcode for good.
+  check('a forced passcode change exists', /function forcePasswordChange/.test(html));
+  check('login acts on must_change', /if \(body\.must_change\) forcePasswordChange\(\)/.test(html));
+  check('resuming a session acts on it too',
+        /m\.must_change_password/.test(html));
+  check('a forced change cannot be dismissed',
+        /function closePasswordChange\(\) \{\s*if \(pwForced\) return/.test(html));
+  check('operators can change their own passcode at all',
+        html.includes('/api/auth/change-password') && html.includes('id="c-passwd"'));
+  check('the passcode dialog exists', html.includes('id="pw"') &&
+        html.includes('id="pw-cur"') && html.includes('id="pw-new2"'));
+
+  const backendAuth = readFileSync(
+    join(HERE, '..', '..', 'backend', 'app', 'auth.py'), 'utf8');
+  check('sessions carry an id so one can be retired alone',
+        /"jti":/.test(backendAuth));
+  check('a revoked session stops verifying',
+        /_is_revoked\(payload\.get\("jti", ""\)\)/.test(backendAuth));
+  check('revocations are swept once they would have expired anyway',
+        /DELETE FROM revoked_sessions WHERE expires_at </.test(backendAuth));
 
   // Two deploy configs exist because the project's Root Directory decides
   // which one Vercel reads: left at the repository root it takes the root

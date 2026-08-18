@@ -512,110 +512,22 @@ def active_target(slot: int = 0) -> tuple[str, Optional[str]]:
     return "file", str(path)
 
 
-TEMPLATE = '''"""Starter algorithm for Meridian Capital.
-
-Upload this, or something shaped like it. Two things make it work with the
-rest of the system:
-
-  1. It runs standalone — no relative imports, and a __main__ block.
-  2. It prints @@EVT@@ lines, which is how the dashboard, Trades and Reports
-     learn what happened. Anything else you print shows up in the Live feed.
-
-Without the @@EVT@@ lines the bot still runs and you still see its output,
-but the position cards, trade history and exports stay empty — nothing is
-telling them anything.
-"""
-import json
-import os
-import signal
-import sys
-import threading
-import time
-from datetime import datetime
-
-# --- the event protocol, inlined so this file stands alone ----------------
-
-_seq = 0
-
-
-def emit(kind, message="", level="info", **payload):
-    """One structured event. The supervisor reads these off stdout."""
-    global _seq
-    _seq += 1
-    sys.stdout.write("@@EVT@@" + json.dumps({
-        "kind": kind, "level": level, "message": message,
-        "ts": datetime.now().isoformat(timespec="milliseconds"),
-        "seq": _seq, "payload": payload or None,
-    }, default=str) + "\\n")
-    sys.stdout.flush()
-
-
-# --- graceful shutdown ----------------------------------------------------
-# The supervisor sends SIGTERM at the scheduled stop, or when you press Stop.
-# Flatten any open position here — this is your last chance.
-
-_stop = threading.Event()
-
-
-def _on_signal(signum, _frame):
-    emit("stopping", "Stop requested", level="warn")
-    _stop.set()
-
-
-for _sig in (signal.SIGTERM, signal.SIGINT):
-    signal.signal(_sig, _on_signal)
-
-
-# --- your credentials, from the environment -------------------------------
-# Never hardcode these. The supervisor passes them in from .env.
-
-API_KEY = os.getenv("ANGEL_API_KEY", "")
-CLIENT_ID = os.getenv("ANGEL_CLIENT_ID", "")
-PASSWORD = os.getenv("ANGEL_PASSWORD", "")
-TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET", "")
-PAPER_MODE = (os.getenv("PAPER_MODE", "true").lower() in ("1", "true", "yes"))
-DATA_DIR = os.getenv("DATA_DIR", "./data")
-
-
-def main():
-    if not all([API_KEY, CLIENT_ID, PASSWORD, TOTP_SECRET]):
-        emit("fatal", "Missing broker credentials in the environment", level="error")
-        sys.exit(2)
-
-    print("=" * 60)
-    print("  MY ALGORITHM  |  MODE:", "PAPER" if PAPER_MODE else "LIVE MONEY")
-    print("=" * 60)
-
-    emit("boot", "Algorithm starting", level="success", paper=PAPER_MODE)
-
-    # ... connect to your broker here ...
-
-    emit("ready", "Armed and watching the market", level="success", equity=20000.0)
-
-    while not _stop.is_set():
-        # ... your logic each cycle ...
-
-        # Tell the dashboard what you see. `status` is ephemeral — sent live,
-        # never stored — so it is safe to emit often.
-        emit("status", "", level="debug",
-             equity=20000.0, day_pnl=0.0, trades=0, max_trades=3,
-             position=None,
-             decision={"action": None, "reason": "WATCHING",
-                       "detail": "No signal yet"})
-
-        _stop.wait(2.0)
-
-    # On the way out: flatten, then report.
-    emit("shutdown", "Algorithm stopped", level="warn", equity=20000.0)
-
-
-if __name__ == "__main__":
-    main()
-'''
+# The starter file and the authoring brief live next to the bot as real files
+# rather than as strings in here: the starter has to stay a runnable, testable
+# .py, and the brief is long-form prose that reads badly escaped inside Python.
+_BOT_DIR = Path(__file__).resolve().parent / "bot"
+TEMPLATE_PATH = _BOT_DIR / "template_starter.py"
+BRIEF_PATH = _BOT_DIR / "CONTRACT.md"
 
 
 def template() -> str:
-    return TEMPLATE
+    """The runnable starter algorithm."""
+    return TEMPLATE_PATH.read_text(encoding="utf-8")
+
+
+def brief() -> str:
+    """The authoring brief — everything Claude needs to write a working file."""
+    return BRIEF_PATH.read_text(encoding="utf-8")
 
 
 def active_description(slot: int = 0) -> str:
