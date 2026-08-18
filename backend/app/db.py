@@ -485,14 +485,23 @@ def aggregate(start: str, end: str, slot: Optional[int] = None) -> dict:
     close_equity = sess[-1]["close_equity"] if sess else None
     peak = max((s.get("peak_equity") or 0) for s in sess) if sess else None
 
-    # Max drawdown across the daily closes in range.
-    curve = [s["close_equity"] for s in sess if s.get("close_equity") is not None]
+    # Max peak-to-trough decline across the window.
+    #
+    # The running peak starts at the equity the window opened with, not at the
+    # first close. Seeding from the first close meant a window containing a
+    # single losing session could only ever report 0.00% — capital fell from
+    # 20,000 to 19,616 and the report claimed no drawdown at all. Each session's
+    # intraday high also counts, so a day that ran up and gave it back is
+    # measured from the high rather than from the close.
     max_dd = 0.0
-    running_peak = curve[0] if curve else 0.0
-    for v in curve:
-        running_peak = max(running_peak, v)
+    running_peak = open_equity or 0.0
+    for s in sess:
+        close = s.get("close_equity")
+        if close is None:
+            continue
+        running_peak = max(running_peak, s.get("peak_equity") or 0.0, close)
         if running_peak > 0:
-            max_dd = min(max_dd, (v - running_peak) / running_peak)
+            max_dd = min(max_dd, (close - running_peak) / running_peak)
 
     return {
         "start": start,

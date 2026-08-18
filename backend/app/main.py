@@ -472,18 +472,41 @@ def _diagnostics() -> dict:
     event_age = age(last_event.get("ts"))
     tick_age = age(snap.get("_ts"))
 
-    faults = db.query(
-        """SELECT ts, kind, level, message FROM events
-           WHERE session_date = ? AND (level = 'error' OR kind IN ('fatal','error'))
-           ORDER BY id DESC LIMIT 12""",
+    # Only things that actually went wrong. A warning is shown but does not
+    # count as an error, and routine status never reaches here at all.
+    raw_faults = db.query(
+        """SELECT ts, slot, kind, level, message FROM events
+           WHERE session_date = ?
+             AND (level IN ('error','critical','warn') OR kind IN ('fatal','error'))
+           ORDER BY ts DESC, id DESC LIMIT 200""",
         (today,),
     )
+
+    # The same broker error repeating 90 times is one problem, not ninety, and
+    # listing each copy pushes the other faults off the panel.
+    faults: list[dict] = []
+    seen: dict[str, dict] = {}
+    for row in raw_faults:
+        key = (row["message"] or row["kind"] or "")[:120]
+        if key in seen:
+            entry = seen[key]
+            entry["count"] += 1
+            entry["first_ts"] = row["ts"]         # rows arrive newest first
+            continue
+        entry = {**row, "count": 1, "first_ts": row["ts"]}
+        seen[key] = entry
+        faults.append(entry)
+        if len(faults) >= 12:
+            break
+
     counts = db.query(
         """SELECT level, COUNT(*) AS n FROM events
            WHERE session_date = ? GROUP BY level""",
         (today,),
     )
     by_level = {r["level"]: r["n"] for r in counts}
+    errors_today = by_level.get("error", 0) + by_level.get("critical", 0)
+    events_today = sum(by_level.values())
 
     # A running child that has gone quiet for longer than two status intervals is
     # not obviously healthy, and saying so is the whole point of this endpoint.
@@ -500,7 +523,7 @@ def _diagnostics() -> dict:
         st.get("state") != "error"
         and not st.get("last_error")
         and heartbeat in ("live", "stopped")
-        and not by_level.get("error")
+        and not errors_today
     )
 
     return {
@@ -523,8 +546,11 @@ def _diagnostics() -> dict:
         "inside_window": st.get("inside_window"),
         "schedule": st.get("schedule"),
         "schedule_next": next_runs(),
-        "errors_today": by_level.get("error", 0),
+        "errors_today": errors_today,
         "warnings_today": by_level.get("warn", 0),
+        # Everything the bot said, so the deck can show activity without
+        # implying that activity is failure.
+        "events_today": events_today,
         "faults": faults,
         "server_time": now.isoformat(timespec="seconds"),
     }

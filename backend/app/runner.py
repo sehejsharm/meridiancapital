@@ -503,15 +503,77 @@ class BotSupervisor:
         }
 
 
+# A risk rail reporting that it has not been touched is the most reassuring
+# line the bot prints, and it printed roughly every minute. Matching the words
+# "daily kill" made all of it read as failure: the error counter ran to 166 on
+# a healthy session, and the one genuine fault — the broker rate-limiting us —
+# was buried in it. An operator who learns to ignore a red counter is worse off
+# than one with no counter at all, so severity is decided by what a line means,
+# not by whether an alarming word appears in it.
+
+_EXPLICIT = (
+    ("[FATAL]", "critical"), ("[CRITICAL]", "critical"),
+    ("[ERROR]", "error"), ("[FAIL]", "error"),
+    ("[WARN]", "warn"), ("[WARNING]", "warn"),
+    ("[OK]", "success"), ("[DEBUG]", "debug"),
+)
+
+# Things that genuinely went wrong, whoever printed them.
+_ERROR_SIGNS = (
+    "TRACEBACK", "EXCEPTION", "ACCESS DENIED", "RATE LIMIT", "EXCEEDING ACCESS",
+    "ORDER REJECTED", "REJECTED BY", "LOGIN FAILED", "AUTH FAILED",
+    "CONNECTION REFUSED", "TIMED OUT", "COULDN'T PARSE", "COULD NOT PARSE",
+)
+
+# The kill switch is only news when it actually bites.
+_KILL_BREACHED = ("KILL SWITCH HIT", "DAILY KILL HIT", "KILL SWITCH TRIGGERED",
+                  "HALTED", "TRADING STOPPED")
+
+
 def _guess_level(line: str) -> str:
+    """Classify a plain stdout line: debug | info | success | warn | error | critical."""
     upper = line.upper()
-    if any(k in upper for k in ("[FATAL]", "[FAIL]", "ERROR", "REJECTED", "DAILY KILL")):
+
+    for tag, level in _EXPLICIT:
+        if tag in upper:
+            return level
+
+    if any(sign in upper for sign in _ERROR_SIGNS):
         return "error"
-    if any(k in upper for k in ("[WARN]", "WARNING", "BLOCKED", "NO ENTRY", "CHOP SKIP")):
+
+    # "Daily kill : Rs 0 / Rs 3,000 used" is the rail reporting itself healthy.
+    # Only a breach, or a rail that has actually been consumed, is worth a
+    # colour — and even then it is a warning until the bot says it has halted.
+    if "KILL" in upper:
+        if any(sign in upper for sign in _KILL_BREACHED):
+            return "error"
+        used = _kill_used_fraction(line)
+        if used is not None and used >= 0.6:
+            return "warn"
+        return "info"
+
+    if any(k in upper for k in ("WARNING", "BLOCKED", "NO ENTRY", "CHOP SKIP")):
         return "warn"
-    if any(k in upper for k in ("[OK]", "ORDER TAKEN", "LADDER", "POSITION CLOSED")):
+    if any(k in upper for k in ("ORDER TAKEN", "LADDER", "POSITION CLOSED")):
         return "success"
     return "info"
+
+
+_KILL_NUMS = re.compile(r"([\d,]+(?:\.\d+)?)\s*/\s*(?:RS\.?\s*)?([\d,]+(?:\.\d+)?)",
+                        re.IGNORECASE)
+
+
+def _kill_used_fraction(line: str) -> Optional[float]:
+    """How much of the kill-switch budget a status line says has been spent."""
+    m = _KILL_NUMS.search(line.replace("Rs", "").replace("₹", ""))
+    if not m:
+        return None
+    try:
+        used = float(m.group(1).replace(",", ""))
+        limit = float(m.group(2).replace(",", ""))
+    except ValueError:
+        return None
+    return used / limit if limit > 0 else None
 
 
 def _ledger_to_row(led: dict) -> dict:

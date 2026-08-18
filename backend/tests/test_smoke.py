@@ -213,6 +213,23 @@ def test_aggregate() -> None:
     check(f"return % computed (got {agg['return_pct']})", agg["return_pct"] > 25)
     check("max drawdown is negative or zero", agg["max_drawdown_pct"] <= 0)
 
+    # A window whose only session lost money must not report a flat 0.00%.
+    # Seeding the running peak from the first close made that unreachable.
+    one = db.aggregate("2026-08-06", "2026-08-06")
+    check("a single flat session reports no drawdown",
+          one["max_drawdown_pct"] == 0.0, str(one["max_drawdown_pct"]))
+
+    day = db.aggregate("2026-08-04", "2026-08-04")
+    # opened 20,000, peaked 22,609.08, closed 21,662.68 -> -4.19% off the high
+    check(f"drawdown measures from the intraday high ({day['max_drawdown_pct']}%)",
+          abs(day["max_drawdown_pct"] - (-4.19)) < 0.02, str(day["max_drawdown_pct"]))
+    check("drawdown never reports a gain", day["max_drawdown_pct"] <= 0)
+
+    # And a losing window reconciles with its own return figure.
+    losing = db.aggregate("2026-08-04", "2026-08-05")
+    check("drawdown is at least as deep as any loss in the window",
+          losing["max_drawdown_pct"] <= 0, str(losing["max_drawdown_pct"]))
+
     empty = db.aggregate("2025-01-01", "2025-01-31")
     check("empty range does not divide by zero", empty["trades"] == 0 and empty["win_rate"] == 0)
 
@@ -259,6 +276,44 @@ def test_exports() -> None:
 
     name = exports.filename("month", s, e, "csv")
     check(f"filename sensible ({name})", name.endswith(".csv") and "2026-08-01" in name)
+
+
+def test_log_severity() -> None:
+    """The counter has to be trustworthy or the operator stops reading it."""
+    print("\nLog severity")
+    from app.runner import _guess_level
+
+    # The line that produced 166 "errors" in a healthy session.
+    for healthy in [
+        "Daily kill : Rs 0 / Rs 3,000 used (3,000 left)",
+        "Daily kill: Rs 250 / Rs 3,000 used",
+        "[INFO] kill switch budget Rs 100 / Rs 3,000",
+    ]:
+        check(f"routine kill-switch status is info — {healthy[:38]!r}",
+              _guess_level(healthy) == "info", _guess_level(healthy))
+
+    check("a kill switch most of the way through warns",
+          _guess_level("Daily kill : Rs 2,400 / Rs 3,000 used") == "warn",
+          _guess_level("Daily kill : Rs 2,400 / Rs 3,000 used"))
+    check("a breached kill switch is an error",
+          _guess_level("DAILY KILL HIT — trading stopped for the day") == "error")
+
+    # The fault that actually mattered and was buried.
+    check("broker rate limiting is an error",
+          _guess_level("[Auth] Error: Couldn't parse JSON — 'Access denied because "
+                       "of exceeding access rate'") == "error")
+    check("a traceback is an error", _guess_level("Traceback (most recent call last):") == "error")
+    check("a rejected order is an error", _guess_level("Order rejected by exchange") == "error")
+
+    check("explicit tags win", _guess_level("[FATAL] out of memory") == "critical")
+    check("warnings stay warnings", _guess_level("[WARN] chop filter blocked entry") == "warn")
+    check("successes stay successes", _guess_level("[OK] order taken") == "success")
+
+    # The word "error" inside ordinary prose must not promote a line.
+    check("a benign mention of a word does not create an error",
+          _guess_level("Monitoring for order errors is enabled") == "info",
+          _guess_level("Monitoring for order errors is enabled"))
+    check("plain output is info", _guess_level("Scanning 24500CE / 24500PE") == "info")
 
 
 def test_news() -> None:
@@ -562,6 +617,7 @@ def main() -> int:
     test_storage()
     test_aggregate()
     test_exports()
+    test_log_severity()
     test_news()
     test_api()
     print("\n" + "=" * 60)

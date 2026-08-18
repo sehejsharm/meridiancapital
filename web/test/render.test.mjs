@@ -62,6 +62,11 @@ function makeElement(id = '') {
 
 const elements = new Map();
 const doc = {
+  // The real page toggles classes on body (live-money, stale), so the stub
+  // needs one or renderDash throws before it draws anything.
+  body: makeElement('body'),
+  createElement: () => makeElement(),
+  head: { appendChild() {} },
   querySelector(sel) {
     if (!elements.has(sel)) elements.set(sel, makeElement(sel));
     return elements.get(sel);
@@ -453,6 +458,66 @@ console.log('\nNews');
   sandbox.renderNews();
   check('an empty feed explains itself',
         sandbox.document.querySelector('#d-news').innerHTML.includes('News is unavailable'));
+}
+
+console.log('\nPluralisation');
+{
+  check('one is singular', evaluate('plural(1, "trade")') === '1 trade',
+        evaluate('plural(1, "trade")'));
+  check('zero is plural', evaluate('plural(0, "trade")') === '0 trades',
+        evaluate('plural(0, "trade")'));
+  check('many is plural', evaluate('plural(4, "session")') === '4 sessions');
+  check('counts use Indian grouping',
+        evaluate('plural(120000, "trade")') === '1,20,000 trades',
+        evaluate('plural(120000, "trade")'));
+  check('an explicit plural form is honoured',
+        evaluate('plural(2, "entry", "entries")') === '2 entries');
+  check('a missing count does not render NaN',
+        evaluate('plural(null, "trade")') === '0 trades',
+        evaluate('plural(null, "trade")'));
+}
+
+console.log('\nLive-money guard');
+{
+  // Never assume live from missing data, and never assume paper from a live flag.
+  evaluate('S.snap = {}; S.status = {}');
+  check('unknown mode is treated as paper', evaluate('isLive()') === false);
+  evaluate('S.snap = { paper: true }');
+  check('paper is paper', evaluate('isLive()') === false);
+  evaluate('S.snap = { paper: false }');
+  check('real money is detected', evaluate('isLive()') === true);
+  evaluate('S.snap = {}; S.status = { config: { paper_mode: false } }');
+  check('the mode falls back to server config', evaluate('isLive()') === true);
+
+  evaluate('S.snap = { paper: false }; S.status = {}');
+  sandbox.renderDash();
+  check('a real-money banner is switched on',
+        sandbox.document.body.classList.contains('live-money'));
+  evaluate('S.snap = { paper: true }');
+  sandbox.renderDash();
+  check('and switched off again in paper',
+        !sandbox.document.body.classList.contains('live-money'));
+}
+
+console.log('\nConnection state');
+{
+  sandbox.setLink('live');
+  check('a live link reads live',
+        sandbox.document.querySelector('#linkpill').innerHTML.includes('live'));
+  check('nothing is dimmed while live',
+        !sandbox.document.body.classList.contains('stale'));
+
+  sandbox.setLink('reconnecting');
+  check('a dropped link is announced',
+        sandbox.document.querySelector('#linkpill').innerHTML.includes('reconnecting'));
+  // The dangerous case is a frozen number that still looks current.
+  check('live figures are dimmed when the feed is not live',
+        sandbox.document.body.classList.contains('stale'));
+
+  sandbox.setLink('down');
+  check('an offline link says offline',
+        sandbox.document.querySelector('#linkpill').innerHTML.includes('offline'));
+  sandbox.setLink('live');
 }
 
 console.log('\nBrand');

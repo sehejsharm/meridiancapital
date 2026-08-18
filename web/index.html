@@ -29,7 +29,13 @@
      #050506, which is roughly 2:1 contrast — unreadable on a phone in daylight
      and failing WCAG by a distance. Nothing meaningful is below 10px now, and
      the greys are light enough to actually read. */
-  --text:#f6f1e8; --muted:#b3ab9a; --dim:#8a8377; --faint:#635d53;
+  /* Measured against the darkest surface each is used on (#111116). Every
+     value here clears WCAG AA at 4.5:1 for body text — --faint was 2.89:1,
+     which is why the timestamps and captions were hard to read. */
+  --text:#f6f1e8;    /* 16.7:1 */
+  --muted:#b3ab9a;   /*  8.3:1 */
+  --dim:#8a8377;     /*  5.0:1 */
+  --faint:#8a8377;   /*  5.0:1 — was #635d53 at 2.9:1 */
 
   /* label / caption / body / figure — used instead of ad-hoc px everywhere */
   --t-label:10px; --t-cap:11.5px; --t-body:13px; --t-fig:19px;
@@ -58,6 +64,22 @@ input,select{font-family:inherit}
 .up{color:var(--up)} .down{color:var(--down)} .warn{color:var(--au)}
 .muted{color:var(--muted)} .dim{color:var(--dim)} .gold{color:var(--au)}
 ::selection{background:rgba(232,196,88,.26)}
+
+/* Available to a screen reader, absent from the layout. Each view gets one of
+   these as its h1 so the document has a real outline — the terminal design
+   never had room for a visible page title. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* Every interactive element needs a visible focus ring for keyboard use. The
+   dark theme swallowed the browser default, so this is explicit. */
+:focus-visible{outline:2px solid var(--au);outline-offset:2px;border-radius:4px}
+.field:focus-visible{outline-offset:0}
+/* Pointer users keep a clean surface; only keyboard focus draws the ring. */
+:focus:not(:focus-visible){outline:none}
+
+/* h2 inherits a browser margin that would push every card title off its row. */
+h1,h2,h3{margin:0;font-weight:inherit;font-size:inherit}
 
 /* Scrollbars, because a default grey bar undoes a lot of careful dark work. */
 *{scrollbar-width:thin;scrollbar-color:rgba(232,196,88,.22) transparent}
@@ -241,7 +263,11 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .fault{display:flex;gap:10px;margin-top:8px;font-family:var(--mono);font-size:11px;
   line-height:1.5}
 .fault-t{color:var(--faint);flex-shrink:0}
+/* Red means act now. A warning is amber, not another shade of alarm. */
 .fault-m{color:var(--down);word-break:break-word}
+.fault.warn .fault-m{color:var(--au)}
+.fault-n{background:rgba(255,255,255,.08);border-radius:4px;padding:0 5px;
+  font-size:10px;color:var(--muted)}
 .span-all{grid-column:1/-1}
 
 /* ================= hero ================= */
@@ -420,6 +446,18 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
   font-family:var(--mono)}
 
 /* ================= chart ================= */
+/* ---- real-money banner ----
+   Always on screen while PAPER_MODE is false, above every other layer. The
+   cost of not noticing is real orders. */
+body.live-money::after{content:"● LIVE MONEY — ORDERS ARE REAL";
+  position:fixed;top:0;left:0;right:0;z-index:300;
+  background:linear-gradient(90deg,#7a0d18,#c2202f,#7a0d18);color:#fff;
+  font-family:var(--mono);font-size:10.5px;font-weight:800;letter-spacing:2.2px;
+  text-align:center;padding:4px 8px;pointer-events:none;
+  padding-top:calc(4px + var(--safe-t))}
+body.live-money{padding-top:22px}
+@media (min-width:1000px){ body.live-money main{padding-top:44px} }
+
 /* ---- live tape ---- */
 .tape{display:flex;gap:0;align-items:stretch;overflow-x:auto;scrollbar-width:none;
   border:1px solid var(--line);border-radius:var(--r);background:
@@ -504,6 +542,24 @@ details.card > summary:hover .card-t{color:var(--au-lit)}
 .lv-error .lv-m{color:var(--down)} .lv-error .lv-kind{color:var(--down);background:var(--down-bg)}
 .lv-warn .lv-m{color:var(--au)}
 .lv-success .lv-m{color:var(--up)} .lv-success .lv-kind{color:var(--up);background:var(--up-bg)}
+
+/* ---- connection state ---- */
+.linkpill{display:inline-flex;align-items:center;gap:5px;font-size:11px;
+  font-family:var(--mono);letter-spacing:.6px;color:var(--up)}
+.linkpill.reconnecting{color:var(--au)}
+.linkpill.down{color:var(--down)}
+/* Every live figure dims while the feed is not live, so a frozen number never
+   looks current. */
+body.stale .tp-spot,body.stale .hero-eq,body.stale .pb-pnl{opacity:.45}
+
+/* ---- news skeleton ---- */
+.nw.skel{pointer-events:none}
+.sk{background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.09),
+  rgba(255,255,255,.04));background-size:200% 100%;border-radius:5px;
+  animation:shimmer 1.4s ease-in-out infinite}
+.sk-h{height:13px;width:82%}
+.sk-m{height:9px;width:38%;margin-top:7px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
 /* ---- news ---- */
 .newslist{display:flex;flex-direction:column;gap:1px;max-height:360px;overflow-y:auto}
@@ -623,6 +679,16 @@ details.card > summary:hover .card-t{color:var(--au-lit)}
   color:var(--au);font-size:14px;line-height:1;font-family:var(--mono)}
 .stepper button:hover{border-color:var(--line-3);background:var(--au-bg)}
 .stepper .val{min-width:70px;text-align:center;font-size:13px;font-family:var(--mono)}
+/* hour and minute as two labelled groups rather than four bare arrows */
+.timeset{display:flex;gap:8px;flex-shrink:0}
+.tunit{display:flex;align-items:center;gap:2px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:7px;padding:2px}
+.tunit button{width:24px;height:24px;color:var(--au);font-size:14px;line-height:1;
+  font-family:var(--mono);border-radius:5px}
+.tunit button:hover{background:var(--au-bg)}
+.tval{min-width:38px;text-align:center;font-size:13px;font-family:var(--mono)}
+.tval i{font-style:normal;color:var(--dim);font-size:10px;margin-left:1px}
+
 .stepper input[type=text]{width:126px;text-align:right;background:var(--surface-2);
   border:1px solid var(--line);padding:7px 10px;color:var(--text);font-size:12px;
   font-family:var(--mono)}
@@ -809,7 +875,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       <summary style="font-size:9.5px;letter-spacing:1.4px;color:var(--faint);cursor:pointer;
         font-family:var(--mono);text-transform:uppercase">Use an API token instead</summary>
       <div style="margin-top:11px;display:flex;flex-direction:column;gap:9px">
-        <input class="field" id="g-token" type="password" placeholder="API token"
+        <input class="field" id="g-token" aria-label="API token" type="password" placeholder="API token"
                autocapitalize="off" autocorrect="off" spellcheck="false">
         <button class="btn ghost" id="g-token-go">Connect with token</button>
       </div>
@@ -870,6 +936,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 <main>
   <!-- ============ DASHBOARD ============ -->
   <section class="view on" id="v-dash">
+    <h1 class="sr-only">Deck</h1>
     <!-- Always-on tape. Ticks every second so the page is visibly alive even
          when the algorithm is flat and nothing else on screen is moving. -->
     <div class="tape" id="d-tape"></div>
@@ -900,23 +967,23 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       <div id="d-posbox" class="span-all slotpanel"></div>
 
       <div class="card slotpanel">
-        <div class="card-h"><span class="card-t">Market</span>
+        <div class="card-h"><h2 class="card-t">Market</h2>
           <span class="muted num mono" id="d-spot" style="font-size:11px"></span></div>
         <div class="mgrid" id="d-market"></div>
       </div>
 
       <div class="card slotpanel">
-        <div class="card-h"><span class="card-t">Risk rails</span></div>
+        <div class="card-h"><h2 class="card-t">Risk rails</h2></div>
         <div class="mgrid" id="d-risk"></div>
       </div>
 
       <div class="card slotpanel">
-        <div class="card-h"><span class="card-t">Link telemetry</span></div>
+        <div class="card-h"><h2 class="card-t">Link telemetry</h2></div>
         <div id="d-lat"></div>
       </div>
 
       <div class="card span-all">
-        <div class="card-h"><span class="card-t">Market news</span>
+        <div class="card-h"><h2 class="card-t">Market news</h2>
           <span class="dim mono" id="d-newsage" style="font-size:10px"></span></div>
         <div id="d-news" class="newslist"></div>
       </div>
@@ -925,7 +992,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
            than something to keep half a screen reserved for. -->
       <details class="card span-all" id="d-livewrap">
         <summary class="card-h" style="cursor:pointer;margin-bottom:0">
-          <span class="card-t">Live activity</span>
+          <h2 class="card-t">Live activity</h2>
           <span class="dim mono" id="d-livecount" style="font-size:10px"></span>
         </summary>
         <div id="d-live" class="livelist" style="margin-top:13px"></div>
@@ -935,40 +1002,18 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 
   <!-- ============ CHART ============ -->
   <section class="view" id="v-chart">
+    <h1 class="sr-only">Chart</h1>
     <div class="deck">
-      <!-- TradingView carries the underlying: real depth, real drawing tools,
-           and it is the chart people already know. The bot's own view of the
-           feed stays below it, because that is what it actually traded on. -->
+      <!-- The bot's own renderer leads. It draws the exact series the algorithm
+           traded on, needs no third-party data entitlement, and works — the
+           TradingView embed could not resolve a single one of its symbols
+           because NSE index feeds require a paid subscription. TradingView is
+           still available below for drawing and depth, for anyone entitled. -->
       <div class="card span-all">
         <div class="card-h">
-          <span class="card-t" id="ch-title">NIFTY 50 · TradingView</span>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <div class="seg tvseg" id="tv-src"></div>
-            <div class="seg tvseg" id="tv-tf">
-              <button data-i="1">1m</button>
-              <button class="on" data-i="5">5m</button>
-              <button data-i="15">15m</button>
-              <button data-i="60">1H</button>
-              <button data-i="D">1D</button>
-            </div>
-          </div>
+          <h2 class="card-t" id="ch-title">Underlying · 1 min</h2>
+          <span class="num mono" id="ch-spot" style="font-size:12.5px"></span>
         </div>
-        <div id="tv-host" class="tvwrap"><div id="tv-chart"></div></div>
-        <div class="dim" style="font-size:10.5px;margin-top:8px;line-height:1.5">
-          NSE index feeds need a TradingView data subscription. The CFD mirrors
-          track the same index and quote for free — switch above if one is blank.
-        </div>
-        <div class="tv-fallback" id="tv-fallback" hidden>
-          TradingView could not load — the network may be blocking it.
-          The bot's own chart below is unaffected.
-        </div>
-      </div>
-
-      <div id="ch-tradebox" class="span-all"></div>
-
-      <div class="card span-all">
-        <div class="card-h"><span class="card-t">Bot feed · 1 min</span>
-          <span class="num mono" id="ch-spot" style="font-size:12px"></span></div>
         <div class="chartwrap" id="ch-candles"></div>
         <div class="legend">
           <span class="lg"><i style="background:#e8c458"></i>EMA 9</span>
@@ -979,12 +1024,43 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
         </div>
         <div class="dim mono" id="ch-meta" style="font-size:10px;margin-top:9px;letter-spacing:.8px"></div>
       </div>
+
+      <div id="ch-tradebox" class="span-all"></div>
       <div class="card" id="ch-context"></div>
+
+      <details class="card span-all" id="tv-wrap">
+        <summary class="card-h" style="cursor:pointer;margin-bottom:0">
+          <h2 class="card-t">TradingView</h2>
+          <span class="dim mono" style="font-size:10px">optional · needs a data subscription</span>
+        </summary>
+        <div style="margin-top:13px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:11px">
+            <div class="seg tvseg" id="tv-src"></div>
+            <div class="seg tvseg" id="tv-tf">
+              <button data-i="1">1m</button>
+              <button class="on" data-i="5">5m</button>
+              <button data-i="15">15m</button>
+              <button data-i="60">1H</button>
+              <button data-i="D">1D</button>
+            </div>
+          </div>
+          <div id="tv-host" class="tvwrap"><div id="tv-chart"></div></div>
+          <div class="dim" style="font-size:11px;margin-top:9px;line-height:1.55">
+            NSE index symbols need a TradingView data subscription — without one
+            the widget reports the symbol as unavailable. The chart above uses
+            the bot's own feed and needs nothing.
+          </div>
+          <div class="tv-fallback" id="tv-fallback" hidden>
+            TradingView could not load — the network may be blocking it.
+          </div>
+        </div>
+      </details>
     </div>
   </section>
 
   <!-- ============ FEED ============ -->
   <section class="view" id="v-feed">
+    <h1 class="sr-only">Live feed</h1>
     <div class="feedbar" id="f-filters"></div>
     <div id="feed"></div>
     <div style="display:flex;gap:9px;margin-top:11px">
@@ -995,6 +1071,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 
   <!-- ============ TRADES ============ -->
   <section class="view" id="v-trades">
+    <h1 class="sr-only">Trades</h1>
     <div class="seg" id="t-seg">
       <button class="on" data-p="day">Today</button>
       <button data-p="week">Week</button>
@@ -1010,6 +1087,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 
   <!-- ============ REPORTS ============ -->
   <section class="view" id="v-reports">
+    <h1 class="sr-only">Reports</h1>
     <div class="seg" id="r-seg">
       <button data-p="day">Day</button>
       <button data-p="week">Week</button>
@@ -1023,7 +1101,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
            what the download will contain, then the buttons. The old layout
            split those across two cards in no particular order. -->
       <div class="card span-all">
-        <div class="card-h"><span class="card-t">Download a report</span></div>
+        <div class="card-h"><h2 class="card-t">Download a report</h2></div>
 
         <div class="rgrid">
           <div>
@@ -1031,8 +1109,8 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
             <div class="seg" id="r-slot" style="margin-bottom:0"></div>
           </div>
           <div>
-            <label class="lbl">Any date inside the window</label>
-            <input class="field num" type="date" id="r-anchor">
+            <label class="lbl" for="r-anchor">Any date inside the window</label>
+            <input class="field num" type="date" id="r-anchor" aria-label="Any date inside the report window">
           </div>
         </div>
 
@@ -1040,7 +1118,8 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 
         <label class="sw">
           <span style="font-size:12.5px">Include the full event log</span>
-          <span class="toggle" id="r-events"></span>
+          <span class="toggle" id="r-events" role="switch" tabindex="0"
+                aria-checked="false" aria-label="Include the full event log"></span>
         </label>
 
         <div class="dl">
@@ -1052,7 +1131,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       </div>
       <div class="card span-all" id="r-summary"></div>
       <div class="card span-all">
-        <div class="card-h"><span class="card-t">Sessions</span></div>
+        <div class="card-h"><h2 class="card-t">Sessions</h2></div>
         <div id="r-days"></div>
       </div>
     </div>
@@ -1060,8 +1139,9 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 
   <!-- ============ STRATEGY ============ -->
   <section class="view" id="v-strategy">
+    <h1 class="sr-only">Strategy</h1>
     <div class="card">
-      <div class="card-h"><span class="card-t">Strategy parameters</span></div>
+      <div class="card-h"><h2 class="card-t">Strategy parameters</h2></div>
       <div class="muted" style="font-size:12px;line-height:1.6">
         The numbers the algorithm trades on. Every edit is checked against the rules that
         must hold — a ladder floor above its own trigger is refused, not saved.
@@ -1073,9 +1153,10 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 
   <!-- ============ ADMIN ============ -->
   <section class="view" id="v-admin">
+    <h1 class="sr-only">Administration</h1>
     <div class="deck">
       <div class="card span-all">
-        <div class="card-h"><span class="card-t">Operators</span>
+        <div class="card-h"><h2 class="card-t">Operators</h2>
           <span class="dim mono" style="font-size:9.5px" id="u-count"></span></div>
         <div class="muted" style="font-size:12px;line-height:1.6">
           Who can sign in, and what each of them is allowed to do. A viewer can read
@@ -1087,11 +1168,11 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
         <div id="u-add" style="display:none;margin-top:12px;padding-top:13px;
              border-top:1px solid var(--line)">
           <label class="lbl">Username</label>
-          <input class="field" id="u-name" placeholder="analyst" autocapitalize="off">
+          <input class="field" id="u-name" aria-label="New operator username" placeholder="analyst" autocapitalize="off">
           <label class="lbl" style="margin-top:11px">Password</label>
-          <input class="field" id="u-pass" type="password" placeholder="at least 8 characters">
+          <input class="field" id="u-pass" aria-label="New operator password" type="password" placeholder="at least 8 characters">
           <label class="lbl" style="margin-top:11px">Role</label>
-          <select class="field" id="u-role"></select>
+          <select class="field" id="u-role" aria-label="New operator role"></select>
           <div style="display:flex;gap:9px;margin-top:12px">
             <button class="btn ghost" id="u-cancel">Cancel</button>
             <button class="btn" id="u-create">Create</button>
@@ -1100,7 +1181,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       </div>
 
       <div class="card span-all">
-        <div class="card-h"><span class="card-t">Algorithm</span>
+        <div class="card-h"><h2 class="card-t">Algorithm</h2>
           <span class="dim mono" style="font-size:9.5px" id="a-active"></span></div>
         <div class="muted" style="font-size:12px;line-height:1.6">
           Replace the trading logic entirely. An upload is checked before it can be
@@ -1120,14 +1201,14 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
         </div>
 
         <div style="margin-top:14px">
-          <label class="lbl">Name this version</label>
-          <input class="field" id="a-name" placeholder="e.g. v12 wider stops">
-          <label class="lbl" style="margin-top:11px">Algorithm source</label>
-          <textarea class="field mono" id="a-source" rows="10" spellcheck="false"
+          <label class="lbl" for="a-name">Name this version</label>
+          <input class="field" id="a-name" aria-label="Name for this algorithm version" placeholder="e.g. v12 wider stops">
+          <label class="lbl" for="a-source" style="margin-top:11px">Algorithm source</label>
+          <textarea class="field mono" id="a-source" aria-label="Algorithm source code" rows="10" spellcheck="false"
             style="resize:vertical;font-size:11px;line-height:1.5"
             placeholder="Paste your Python here, or choose a .py file below"></textarea>
           <div style="display:flex;gap:9px;margin-top:10px;flex-wrap:wrap">
-            <input type="file" id="a-file" accept=".py,.txt" style="display:none">
+            <input type="file" id="a-file" aria-label="Choose an algorithm .py file" accept=".py,.txt" style="display:none">
             <button class="btn ghost" id="a-pick" style="flex:1;min-width:130px">Choose .py file</button>
             <button class="btn ghost" id="a-template" style="flex:1;min-width:130px">Load starter</button>
             <button class="btn ghost" id="a-check" style="flex:1;min-width:130px">Check only</button>
@@ -1147,9 +1228,10 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 
   <!-- ============ CONTROL ============ -->
   <section class="view" id="v-ctrl">
+    <h1 class="sr-only">Control</h1>
     <div class="deck">
       <div class="card">
-        <div class="card-h"><span class="card-t">Session control</span></div>
+        <div class="card-h"><h2 class="card-t">Session control</h2></div>
         <div id="c-slots" style="margin-bottom:12px"></div>
         <div class="ctrl">
           <button class="btn" id="c-start">Start</button>
@@ -1161,14 +1243,15 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       </div>
 
       <div class="card">
-        <div class="card-h"><span class="card-t">Schedule</span></div>
+        <div class="card-h"><h2 class="card-t">Schedule</h2></div>
         <label class="sw"><span style="font-size:12.5px">Run every trading day</span>
-          <span class="toggle" id="c-auto"></span></label>
+          <span class="toggle" id="c-auto" role="switch" tabindex="0"
+                aria-checked="false" aria-label="Automatic daily schedule"></span></label>
         <div class="row"><span class="row-k">Start</span>
-          <input class="field num" type="time" id="c-t-start"
+          <input class="field num" type="time" id="c-t-start" aria-label="Session start time"
                  style="width:126px;padding:7px 10px;text-align:right;font-size:12px"></div>
         <div class="row"><span class="row-k">Stop</span>
-          <input class="field num" type="time" id="c-t-stop"
+          <input class="field num" type="time" id="c-t-stop" aria-label="Session stop time"
                  style="width:126px;padding:7px 10px;text-align:right;font-size:12px"></div>
         <button class="btn ghost" id="c-save" style="margin-top:11px">Save schedule</button>
         <div class="row"><span class="row-k">Next start</span><span class="row-v" id="c-next-start">—</span></div>
@@ -1176,12 +1259,12 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       </div>
 
       <div class="card">
-        <div class="card-h"><span class="card-t">System</span></div>
+        <div class="card-h"><h2 class="card-t">System</h2></div>
         <div id="c-sys"></div>
       </div>
 
       <div class="card">
-        <div class="card-h"><span class="card-t">Security</span></div>
+        <div class="card-h"><h2 class="card-t">Security</h2></div>
         <div id="c-sec"></div>
         <button class="btn ghost" id="c-bio-enroll" style="margin-top:11px">Enable biometric unlock</button>
         <button class="btn ghost" id="c-logout-all" style="margin-top:9px">Sign out everywhere</button>
@@ -1199,7 +1282,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.18-obsidian.4";
+const BUILD = "2026.08.18-obsidian.5-audit";
 
 /* The dashboard is a static file with nowhere of its own to keep state, so it
    has to be told which trading server to talk to. Rather than ask for that
@@ -1246,6 +1329,14 @@ const signed = (v, d = 0) => (v >= 0 ? "+" : "−") + money(Math.abs(v), d);
 const pct = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? "—"
   : (v >= 0 ? "+" : "") + Number(v).toFixed(d) + "%";
 const cls = v => v > 0 ? "up" : v < 0 ? "down" : "muted";
+/* "1 trades" reads as a bug in a financial report even when the number is
+   right, so counts go through here. Intl.PluralRules rather than n === 1 so
+   this still holds if the interface is ever translated. */
+const _pr = new Intl.PluralRules("en");
+const plural = (n, one, many) => {
+  const v = Number(n) || 0;
+  return `${v.toLocaleString("en-IN")} ${_pr.select(v) === "one" ? one : (many || one + "s")}`;
+};
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -1419,6 +1510,7 @@ $("#g-token-go").onclick = async () => {
     const me = await api("/api/auth/me");
     S.user = me.user; S.role = me.role || "viewer";
     localStorage.setItem("mc_token", token);
+    S._me = me;
     localStorage.setItem("mc_user", S.user);
     localStorage.setItem("mc_role", S.role);
     enterApp();
@@ -1431,7 +1523,7 @@ $("#g-bio").onclick = async () => {
   if (await bioUnlock()) {
     S.token = localStorage.getItem("mc_token") || "";
     S.user = localStorage.getItem("mc_user") || "";
-    try { await api("/api/auth/me"); enterApp(); }
+    try { enterApp(await api("/api/auth/me")); }
     catch (e) { gateMsg("Stored session expired — sign in with your passcode.", true); }
   } else {
     gateMsg("Not recognised.", true);
@@ -1454,17 +1546,24 @@ async function showBioPanel() {
   $("#bio-panel").style.display = (has && await bioAvailable()) ? "block" : "none";
 }
 
-function enterApp() {
+function enterApp(me) {
   $("#gate").classList.add("hide");
   $("#r-user").textContent = S.user || "—";
   applyRole();
-  // Confirm the role with the server rather than trusting what is cached.
-  api("/api/auth/me").then(me => {
-    S.role = me.role || "viewer";
+
+  const useIdentity = m => {
+    S.role = m.role || "viewer";
+    S.user = m.user || S.user;
     localStorage.setItem("mc_role", S.role);
-    $("#r-user").textContent = `${me.user} · ${String(me.role).replace("_", " ")}`;
+    localStorage.setItem("mc_user", S.user);
+    $("#r-user").textContent = `${m.user} · ${String(m.role).replace("_", " ")}`;
     applyRole();
-  }).catch(() => {});
+  };
+
+  // The caller usually just validated the session, so its answer is reused
+  // rather than asking again — resuming a session was firing /auth/me twice.
+  if (me) useIdentity(me);
+  else api("/api/auth/me").then(useIdentity).catch(() => {});
   boot();
 }
 
@@ -1484,7 +1583,7 @@ function go(id) {
   if (id === "reports") loadReports();
   if (id === "ctrl") loadControl();
   if (id === "feed") renderFeed();
-  if (id === "chart") { loadChart(); renderTVSources(); mountTV(); }
+  if (id === "chart") { loadChart(); renderTVSources(); }
   if (id === "strategy") loadStrategy();
   if (id === "admin") { loadUsers(); loadAlgorithm(); }
   window.scrollTo(0, 0);
@@ -1518,7 +1617,8 @@ function connectWS() {
   try { S.ws = new WebSocket(`${proto}://${host}/ws?token=${encodeURIComponent(S.token)}`); }
   catch (e) { return; }
 
-  S.ws.onopen = () => { S.wsRetry = 0; };
+  S.ws.onopen = () => { S.wsRetry = 0; setLink("live"); };
+  S.ws.onerror = () => setLink("down");
   S.ws.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
     if (m.kind === "ping") return;
@@ -1550,9 +1650,25 @@ function connectWS() {
   };
   S.ws.onclose = () => {
     if (!S.token) return;
+    setLink("reconnecting");
     S.wsRetry = Math.min(S.wsRetry + 1, 6);
     setTimeout(connectWS, 1000 * Math.pow(1.7, S.wsRetry));
   };
+}
+
+/* ================= connection state =================
+   A dashboard that silently keeps showing the last number it received is worse
+   than one that admits it has lost the server: the figures still look live.
+   This says so, on every screen, and the tape dims when the data is stale.
+==================================================== */
+function setLink(state) {
+  S.link = state;
+  const el = $("#linkpill");
+  if (!el) return;
+  const label = { live: "live", reconnecting: "reconnecting", down: "offline" }[state] || state;
+  el.className = "linkpill " + state;
+  el.innerHTML = `<span class="dot ${state === "live" ? "beat" : ""}"></span>${esc(label)}`;
+  document.body.classList.toggle("stale", state !== "live");
 }
 
 function pushLine(e) {
@@ -1629,16 +1745,17 @@ function renderSys() {
         ${stat("Uptime", d.running ? dur(d.uptime_seconds) : "—")}
         ${stat("Errors today", d.errors_today ?? 0, d.errors_today ? "down" : "muted")}
         ${stat("Warnings", d.warnings_today ?? 0, d.warnings_today ? "warn" : "muted")}
-        ${stat("Restarts", d.restarts ?? 0, d.restarts ? "warn" : "muted")}
+        ${stat("Events", d.events_today ?? "—", "muted")}
         ${stat("Market feed", d.has_market_data ? "receiving" : "none",
                d.has_market_data ? "up" : "muted")}
       </div>
       ${(d.faults || []).length ? `
         <details class="faults">
-          <summary>${d.faults.length} recent fault${d.faults.length > 1 ? "s" : ""} — tap to read</summary>
-          ${d.faults.map(f => `<div class="fault">
+          <summary>${plural(d.faults.length, "issue")} — tap to read</summary>
+          ${d.faults.map(f => `<div class="fault ${esc(f.level || "error")}">
             <span class="fault-t">${esc(String(f.ts || "").slice(11, 19))}</span>
-            <span class="fault-m">${esc(f.message || f.kind)}</span></div>`).join("")}
+            <span class="fault-m">${esc(f.message || f.kind)}${
+              f.count > 1 ? ` <span class="fault-n">×${f.count}</span>` : ""}</span></div>`).join("")}
         </details>` : ""}
     </div>`;
 }
@@ -1689,7 +1806,10 @@ function tapeTick() {
     ${cell("ADX", m.adx ? Number(m.adx).toFixed(1) : "—")}
     ${cell("Vol", m.garch ? Number(m.garch).toFixed(1) + "%" : "—")}
     ${cell("P&L today", signed(S.snap.day_pnl ?? 0, 0), cls(S.snap.day_pnl ?? 0))}
-    ${cell("IST", clock)}`;
+    ${cell("IST", clock)}
+    <div class="tp-i"><span class="tp-k">Link</span>
+      <span class="linkpill ${esc(S.link || "live")}" id="linkpill">
+        <span class="dot beat"></span>${esc(S.link || "live")}</span></div>`;
 }
 
 /* ---------------- fleet ---------------- */
@@ -1754,7 +1874,7 @@ function renderFleet() {
   const emptyCount = f.slots.length - shown.length;
   box.innerHTML = `
     <div class="card">
-      <div class="card-h"><span class="card-t">Algorithms</span>
+      <div class="card-h"><h2 class="card-t">Algorithms</h2>
         <span class="dim mono" style="font-size:10px">
           ${f.running_count} of ${f.max_slots} running${
             f.memory_free_mb != null ? ` · ${f.memory_free_mb} MB free` : ""}${
@@ -1791,8 +1911,18 @@ function renderLive() {
 }
 
 /* ---------------- news ---------------- */
+const NEWS_SKELETON = Array.from({ length: 5 }, () =>
+  `<div class="nw skel"><div class="sk sk-h"></div><div class="sk sk-m"></div></div>`).join("");
+
 async function loadNews() {
-  try { S.news = await api("/api/news"); renderNews(); } catch (e) {}
+  const box = $("#d-news");
+  if (box && !(S.news && S.news.items && S.news.items.length)) box.innerHTML = NEWS_SKELETON;
+  try { S.news = await api("/api/news"); renderNews(); }
+  catch (e) {
+    if (box && !(S.news && S.news.items)) {
+      box.innerHTML = `<div class="empty">Headlines unavailable right now.</div>`;
+    }
+  }
 }
 
 function renderNews() {
@@ -1828,6 +1958,9 @@ function renderDash() {
   $("#r-state").textContent = stateTxt.toUpperCase();
 
   const paper = s.paper !== undefined ? s.paper : (st.config ? st.config.paper_mode : true);
+  // Real money gets a permanent red band across the top of the app. A pill in
+  // a corner is too easy to stop noticing after a few hours.
+  document.body.classList.toggle("live-money", !paper);
   const hm = $("#h-mode");
   hm.className = "pill " + (paper ? "paper" : "real");
   hm.textContent = paper ? "paper" : "live money";
@@ -2055,6 +2188,11 @@ function renderFeed() {
 }
 
 /* ---------------- trades ---------------- */
+const tvWrap = $("#tv-wrap");
+if (tvWrap) tvWrap.addEventListener("toggle", () => {
+  if (tvWrap.open) { renderTVSources(); mountTV(); }
+});
+
 $$("#tv-tf button").forEach(b => b.onclick = () => {
   tvInterval = b.dataset.i;
   $$("#tv-tf button").forEach(x => x.classList.toggle("on", x === b));
@@ -2076,9 +2214,9 @@ async function loadTrades() {
     ]);
     const s = sum.summary;
     $("#t-summary").innerHTML = `
-      <div class="card-h"><span class="card-t">${esc(d.range.label)}</span></div>
+      <div class="card-h"><h2 class="card-t">${esc(d.range.label)}</h2></div>
       <div class="mgrid">
-        ${metric("Net P&L", signed(s.net_pnl, 0), s.trades + " trades")}
+        ${metric("Net P&L", signed(s.net_pnl, 0), plural(s.trades, "trade"))}
         ${metric("Win rate", s.win_rate.toFixed(0) + "%", s.wins + "W / " + s.losses + "L",
           s.win_rate, s.win_rate >= 50 ? "var(--up)" : "var(--au)")}
         ${metric("Profit factor", s.profit_factor != null ? s.profit_factor.toFixed(2) : "—",
@@ -2458,7 +2596,8 @@ async function loadChart() {
     const d = S.chart ? { available: true, ...S.chart } : await api("/api/chart");
     S.chart = d;
     const m = (S.snap && S.snap.market) || {};
-    $("#ch-title").textContent = (d.index || "Underlying") + " · 1 min";
+    $("#ch-title").textContent =
+      `${d.index || "Underlying"} · ${d.interval_label || "1 min"} · bot feed`;
     $("#ch-spot").innerHTML = m.spot
       ? `${Number(m.spot).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
          <span class="${cls(m.day_move)}">${m.day_move >= 0 ? "+" : ""}${(m.day_move || 0).toFixed(1)}</span>` : "";
@@ -2518,21 +2657,21 @@ async function loadChart() {
         ${pos.entry_reason ? `<div class="trade-why">${esc(pos.entry_reason)}</div>` : ""}
       </div>`;
     } else {
-      box.innerHTML = `<div class="card"><div class="card-h"><span class="card-t">Trade box</span></div>
+      box.innerHTML = `<div class="card"><div class="card-h"><h2 class="card-t">Trade box</h2></div>
         <div class="empty">${S.status && S.status.running
           ? "Flat — the trade box opens with the next position,<br>entry, stop and every ladder level drawn live"
           : "Bot offline"}</div></div>`;
     }
 
     $("#ch-context").innerHTML = m.spot ? `
-      <div class="card-h"><span class="card-t">Context</span></div>
+      <div class="card-h"><h2 class="card-t">Context</h2></div>
       ${row("VWAP", `${(m.vwap || 0).toFixed(1)} · spot ${m.vwap_side}`)}
       ${row("EMA 9 / 21", `${(m.ema9 || 0).toFixed(1)} / ${(m.ema21 || 0).toFixed(1)}`)}
       ${row("EMA slope", (m.slope || 0).toFixed(2))}
       ${row("ADX", `${(m.adx || 0).toFixed(1)} · ${m.trend || ""}`)}
       ${row("ATR", `${(m.atr || 0).toFixed(1)} pts`)}
       ${row("Day range", `${(m.day_range_pts || 0).toFixed(0)} pts · ${(m.day_range_pct || 0).toFixed(2)}%`)}`
-      : `<div class="card-h"><span class="card-t">Context</span></div><div class="empty">No data</div>`;
+      : `<div class="card-h"><h2 class="card-t">Context</h2></div><div class="empty">No data</div>`;
   } catch (e) { toast(e.message); }
 }
 
@@ -2544,11 +2683,21 @@ $$("#r-seg button").forEach(b => b.onclick = () => {
 });
 $("#r-anchor").value = S.anchor;
 $("#r-anchor").onchange = e => { S.anchor = e.target.value; loadReports(); };
-$("#r-events").onclick = () => {
+function bindSwitch(el, onToggle) {
+  if (!el) return;
+  const fire = () => onToggle();
+  el.onclick = fire;
+  el.addEventListener("keydown", e => {
+    if (e.key === " " || e.key === "Enter") { e.preventDefault(); fire(); }
+  });
+}
+
+bindSwitch($("#r-events"), () => {
   S.includeEvents = !S.includeEvents;
   $("#r-events").classList.toggle("on", S.includeEvents);
+  $("#r-events").setAttribute("aria-checked", String(S.includeEvents));
   setDownloads();
-};
+});
 
 function setDownloads() {
   $("#dl-pdf").href = dlUrl(S.reportPeriod, "pdf");
@@ -2589,12 +2738,13 @@ async function loadReports() {
         || `slot ${S.reportSlot + 1}`;
     $("#r-what").innerHTML =
       `<b>${esc(r.label)}</b> · ${r.start} → ${r.end}<br>
-       ${s.trades} trade${s.trades === 1 ? "" : "s"} across ${s.sessions}
-       session${s.sessions === 1 ? "" : "s"} · ${esc(who)}`;
+       ${plural(s.trades, "trade")} across ${plural(s.sessions, "session")}
+       · ${esc(who)}`;
     $("#r-summary").innerHTML = `
-      <div class="card-h"><span class="card-t">${esc(r.label)}</span></div>
+      <div class="card-h"><h2 class="card-t">${esc(r.label)}</h2></div>
       <div class="mgrid">
-        ${metric("Net P&L", signed(s.net_pnl, 0), s.trades + " trades · " + s.sessions + " sessions")}
+        ${metric("Net P&L", signed(s.net_pnl, 0),
+          plural(s.trades, "trade") + " · " + plural(s.sessions, "session"))}
         ${metric("Return", pct(s.return_pct), money(s.open_equity, 0) + " → " + money(s.close_equity, 0))}
         ${metric("Win rate", s.win_rate.toFixed(0) + "%", s.wins + "W / " + s.losses + "L",
           s.win_rate, s.win_rate >= 50 ? "var(--up)" : "var(--au)")}
@@ -2602,13 +2752,13 @@ async function loadReports() {
         ${metric("Max drawdown", pct(s.max_drawdown_pct), "peak " + money(s.peak_equity, 0))}
         ${metric("Charges", money(s.charges, 0), "avg " + signed(s.avg_trade, 0))}
         ${metric("Best", signed(s.best_trade, 0), "worst " + signed(s.worst_trade, 0))}
-        ${metric("Sat out", s.days_blocked_chop + " days", s.days_killed + " halted")}
+        ${metric("Sat out", plural(s.days_blocked_chop, "day"), s.days_killed + " halted")}
       </div>`;
     const days = sum.sessions.slice().reverse();
     $("#r-days").innerHTML = days.length ? days.map(d => `
       <div class="day">
         <div><div class="day-d">${esc(d.session_date)}</div>
-          <div class="day-m">${d.trades} trades${d.chop_blocked ? " · chop blocked" : ""}${d.killed ? " · halted" : ""} · ${esc(d.vol_regime || "")}</div></div>
+          <div class="day-m">${plural(d.trades, "trade")}${d.chop_blocked ? " · chop blocked" : ""}${d.killed ? " · halted" : ""} · ${esc(d.vol_regime || "")}</div></div>
         <div class="day-p num ${cls(d.day_pnl)}">${signed(d.day_pnl, 0)}</div>
       </div>`).join("") : `<div class="empty">No sessions in window</div>`;
   } catch (e) { toast(e.message); }
@@ -2636,7 +2786,7 @@ function renderStrategy() {
   let html = "";
   const drift = Object.entries(d.drift || {});
   if (drift.length) {
-    html += `<div class="card span-all"><div class="card-h"><span class="card-t">Deviation from v11</span></div>
+    html += `<div class="card span-all"><div class="card-h"><h2 class="card-t">Deviation from v11</h2></div>
       ${drift.map(([k, x]) => row(x.label, `${fmtv(x.v11)} → ${fmtv(x.current)}`)).join("")}
       <button class="btn ghost" id="st-reset" style="margin-top:12px">Restore v11 baseline</button></div>`;
   }
@@ -2645,21 +2795,34 @@ function renderStrategy() {
   }
 
   for (const g of d.groups) {
-    html += `<div class="card"><div class="card-h"><span class="card-t">${esc(g.name)}</span></div>`;
+    html += `<div class="card"><div class="card-h"><h2 class="card-t">${esc(g.name)}</h2></div>`;
     for (const p of g.params) {
       const v = val(p), edited = p.key in S.stratEdits;
       let control;
       if (p.type === "bool") {
         control = `<span class="toggle ${v ? "on" : ""}" data-tog="${p.key}"></span>`;
       } else if (p.type === "text") {
-        control = `<input type="text" data-txt="${p.key}" value="${esc(v)}">`;
+        control = `<input type="text" data-txt="${p.key}" value="${esc(v)}"
+               aria-label="${esc(p.label || p.key)}">`;
       } else if (p.type === "time") {
-        control = `<span class="stepper">
-          <button data-t="${p.key}" data-u="h" data-d="-1">−</button>
-          <span class="val">${esc(v)}</span>
-          <button data-t="${p.key}" data-u="h" data-d="1">+</button>
-          <button data-t="${p.key}" data-u="m" data-d="-1">−</button>
-          <button data-t="${p.key}" data-u="m" data-d="1">+</button></span>`;
+        // Two unlabelled [−][+] pairs around one number gave no clue which
+        // moved hours and which moved minutes. Each pair now carries its unit.
+        const [hh, mm] = String(v).split(":");
+        control = `<span class="timeset">
+          <span class="tunit">
+            <button data-t="${p.key}" data-u="h" data-d="-1"
+              aria-label="${esc(p.label)}: one hour earlier">−</button>
+            <span class="tval num">${esc(hh || "00")}<i>h</i></span>
+            <button data-t="${p.key}" data-u="h" data-d="1"
+              aria-label="${esc(p.label)}: one hour later">+</button>
+          </span>
+          <span class="tunit">
+            <button data-t="${p.key}" data-u="m" data-d="-1"
+              aria-label="${esc(p.label)}: five minutes earlier">−</button>
+            <span class="tval num">${esc(mm || "00")}<i>m</i></span>
+            <button data-t="${p.key}" data-u="m" data-d="1"
+              aria-label="${esc(p.label)}: five minutes later">+</button>
+          </span></span>`;
       } else {
         const isPct = p.type === "pct";
         const shown = isPct ? (v * 100).toFixed(1) + "%"
@@ -2679,10 +2842,10 @@ function renderStrategy() {
     html += `</div>`;
   }
 
-  html += `<div class="card"><div class="card-h"><span class="card-t">Profiles</span></div>
+  html += `<div class="card"><div class="card-h"><h2 class="card-t">Profiles</h2></div>
     <div class="muted" style="font-size:12px">Save a parameter set and switch back later.</div>
     <div style="display:flex;gap:9px;margin-top:11px">
-      <input class="field" id="st-pname" placeholder="Profile name" style="flex:1">
+      <input class="field" id="st-pname" aria-label="Your display name" placeholder="Profile name" style="flex:1">
       <button class="btn ghost" id="st-psave" style="width:auto;padding:12px 20px">Save</button></div>
     ${(d.profiles || []).map(p => `<div class="day">
       <div><div class="day-d">${esc(p.name)}</div>
@@ -2692,7 +2855,7 @@ function renderStrategy() {
         <button class="btn danger" data-pd="${esc(p.name)}" style="width:auto;padding:7px 13px;font-size:9px">Delete</button>
       </div></div>`).join("")}</div>`;
 
-  html += `<div class="card"><div class="card-h"><span class="card-t">Changing the logic</span></div>
+  html += `<div class="card"><div class="card-h"><h2 class="card-t">Changing the logic</h2></div>
     <div class="muted" style="font-size:12px;line-height:1.6">These controls change the algorithm's
     inputs. For new logic — a different signal rule or indicator — edit
     <span class="mono gold">backend/app/bot/strategy.py</span> and redeploy. The supervisor,
@@ -2800,6 +2963,7 @@ async function loadUsers() {
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
           <select class="field" data-urole="${u.id}"
+                 aria-label="Role for ${esc(u.username)}"
                   style="width:auto;padding:6px 8px;font-size:11px">
             ${d.roles.map(r => `<option value="${esc(r.value)}"
               ${r.value === u.role ? "selected" : ""}>${esc(r.value.replace("_", " "))}</option>`).join("")}
@@ -3031,26 +3195,65 @@ function renderCtrlSlots() {
   });
 }
 
+/* ================= confirming a capital-affecting action =================
+   In paper mode a mistake costs nothing and a plain confirm is enough. On real
+   money the same click places or flattens orders, so the mode is named, the
+   consequence is spelled out, and the operator has to type the lane's name —
+   deliberately not something that can be dismissed by a reflex Enter press.
+========================================================================== */
+function isLive() {
+  const s = S.snap || {};
+  if (s.paper !== undefined) return !s.paper;
+  if (S.status && S.status.config) return !S.status.config.paper_mode;
+  return false;                 // unknown means assume paper, never assume live
+}
+
+function confirmAction({ title, detail, laneName }) {
+  const mode = isLive() ? "LIVE MONEY" : "PAPER";
+  if (!isLive()) return confirm(`${title}\n\nMode: ${mode}\n\n${detail}`);
+  const typed = prompt(
+    `${title}\n\n⚠ Mode: ${mode} — this places or closes real orders.\n\n` +
+    `${detail}\n\nType "${laneName}" to confirm.`);
+  return typed !== null && typed.trim().toLowerCase() === laneName.toLowerCase();
+}
+
+function laneName(slot) {
+  const l = ((S.fleet && S.fleet.slots) || []).find(x => x.slot === slot);
+  return (l && l.name) || (slot === 0 ? "Primary" : `Slot ${slot + 1}`);
+}
+
 $("#c-start").onclick = async () => {
+  const name = laneName(ctrlSlot());
+  if (!confirmAction({
+    title: `Start ${name}?`,
+    detail: "The algorithm begins evaluating the market and may open a position.",
+    laneName: name,
+  })) return;
   try { await api("/api/bot/start",
       { method: "POST", body: JSON.stringify({ force: false, slot: ctrlSlot() }) });
     toast("Starting…"); } catch (e) { toast(e.message); }
   refreshStatus(); loadFleet();
 };
 $("#c-stop").onclick = async () => {
-  if (!confirm("Stop the bot? Any open position is flattened first.")) return;
+  const name = laneName(ctrlSlot());
+  if (!confirmAction({
+    title: `Stop ${name}?`,
+    detail: "Any open position is closed at market before the process exits.",
+    laneName: name,
+  })) return;
   toast("Stopping — flattening position…");
   try { await api("/api/bot/stop", { method: "POST",
       body: JSON.stringify({ reason: "manual stop from app", slot: ctrlSlot() }) });
     toast("Stopped"); } catch (e) { toast(e.message); }
   refreshStatus(); loadFleet();
 };
-$("#c-auto").onclick = async () => {
+bindSwitch($("#c-auto"), async () => {
   const on = !$("#c-auto").classList.contains("on");
   $("#c-auto").classList.toggle("on", on);
+  $("#c-auto").setAttribute("aria-checked", String(on));
   try { await api("/api/schedule", { method: "POST", body: JSON.stringify({ enabled: on }) });
     toast("Schedule " + (on ? "armed" : "paused")); loadControl(); } catch (e) { toast(e.message); }
-};
+});
 $("#c-save").onclick = async () => {
   try {
     await api("/api/schedule", { method: "POST", body: JSON.stringify({
@@ -3061,7 +3264,9 @@ $("#c-save").onclick = async () => {
 $("#c-bio-enroll").onclick = () => bioEnroll().then(loadControl);
 $("#c-logout").onclick = () => signOut("");
 $("#c-logout-all").onclick = async () => {
-  if (!confirm("Sign out every device? All existing sessions stop working.")) return;
+  if (!confirm("Sign out every device?\n\nEvery existing session stops working "
+             + "immediately, including this one and any phone with biometric unlock "
+             + "enabled. The bot keeps trading — this only affects access.")) return;
   try { await api("/api/auth/logout-everywhere", { method: "POST" }); } catch (e) {}
   localStorage.removeItem(BIO_KEY);
   signOut("Signed out everywhere.");
@@ -3137,7 +3342,7 @@ function boot() {
 (async function init() {
   await showBioPanel();
   if (S.token && S.url) {
-    try { await api("/api/auth/me"); enterApp(); }
+    try { enterApp(await api("/api/auth/me")); }
     catch (e) { /* fall through to the gate */ }
   }
 })();
