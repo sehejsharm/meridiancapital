@@ -271,8 +271,51 @@ def require_role(required: str):
     return _guard
 
 
+def require_capability(capability: str):
+    """Dependency factory keyed on what the caller needs to *do*.
+
+    The rank check answers "is this role senior enough", which stopped being
+    the right question once a risk manager needed to stop a session without
+    being allowed to edit the strategy, and a quant needed to upload code
+    without being allowed near real money.
+    """
+    from . import users
+
+    async def _guard(
+        authorization: Optional[str] = Header(default=None),
+        x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
+    ) -> str:
+        token = _extract(authorization, x_api_token)
+        if not _valid(token):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Sign in again")
+        role = role_of(token)          # type: ignore[arg-type]
+        if not users.can(role, capability):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"{users.ROLE_LABEL.get(role, role).split('—')[0].strip()} "
+                       f"cannot do this: {users.CAPABILITIES.get(capability, capability).lower()}.",
+            )
+        return token                    # type: ignore[return-value]
+
+    return _guard
+
+
 require_operator = require_role("operator")
 require_super_admin = require_role("super_admin")
+
+# Capability guards. Named for the action, so the endpoint reads as what it
+# lets somebody do rather than which tier of person may call it.
+require_view = require_capability("view")
+require_kill = require_capability("kill")
+require_start = require_capability("operate")
+require_tune = require_capability("tune_strategy")
+require_upload = require_capability("upload_algorithm")
+require_activate = require_capability("activate_algorithm")
+require_audit = require_capability("view_audit")
+require_manage_users = require_capability("manage_users")
+require_arm_live = require_capability("arm_live")
+require_alerts = require_capability("configure_alerts")
 
 
 async def authorise_websocket(ws: WebSocket) -> bool:

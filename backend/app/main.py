@@ -30,11 +30,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from . import algorithms, approvals
+from . import alerts, algorithms, approvals
 from . import auth as auth_mod
 from . import db, exports, news, strategy_config, users
-from .auth import (authorise_websocket, require_operator, require_super_admin,
-                   require_token, require_token_query)
+from .auth import (authorise_websocket, require_activate, require_arm_live,
+                   require_audit, require_kill, require_manage_users,
+                   require_operator, require_start, require_super_admin,
+                   require_alerts, require_token, require_token_query,
+                   require_tune, require_upload)
 from .config import settings
 from .holidays import expiry_state
 from .runner import MAX_SLOTS, fleet, fleet_status, get_slot, supervisor
@@ -112,6 +115,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _capture_client_ip(request: Request, call_next):
+    """Make the caller's address available to the audit trail.
+
+    Set here rather than passed to every `record()` call: most of them happen
+    two or three layers below the handler, and some happen on the supervisor's
+    thread where no request exists at all. Cleared afterwards so a background
+    write never inherits the last request's address.
+
+    The proxy header is trusted only for the first hop, which is what sits in
+    front of this service; anything further left is client-controlled.
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    ip = (forwarded.split(",")[0].strip()
+          or (request.client.host if request.client else None))
+    approvals.set_request_ip(ip)
+    try:
+        return await call_next(request)
+    finally:
+        approvals.set_request_ip(None)
 
 
 # ============================================================ models
@@ -226,11 +251,15 @@ async def login(body: LoginRequest, request: Request):
     if session is None:
         auth_mod.record_failure(ip)
         log.warning("failed login for %r from %s", body.username[:32], ip)
+        # Failures are audited too: a run of them against one name is the
+        # signal, and it is invisible if only successes are recorded.
+        approvals.record(body.username[:32], "sign_in_failed", f"from {ip}")
         raise HTTPException(status_code=401,
                             detail="Incorrect operator name or passcode")
 
     auth_mod.clear_failures(ip)
     log.info("login succeeded for %s from %s", session["user"], ip)
+    approvals.record(session["user"], "signed_in", f"from {ip}")
     return session
 
 
@@ -293,7 +322,7 @@ async def change_own_password(body: ChangePasswordRequest,
 
 
 @app.get("/api/users")
-async def list_users(_: str = Depends(require_super_admin)):
+async def list_users(_: str = Depends(require_manage_users)):
     return {
         "users": users.list_all(),
         "roles": [{"value": r, "label": users.ROLE_LABEL[r]} for r in users.ROLES],
@@ -301,7 +330,7 @@ async def list_users(_: str = Depends(require_super_admin)):
 
 
 @app.post("/api/users")
-async def create_user(body: CreateUserRequest, token: str = Depends(require_super_admin)):
+async def create_user(body: CreateUserRequest, token: str = Depends(require_manage_users)):
     payload = auth_mod.verify_session(token)
     actor = payload["sub"] if payload else "api-token"
     try:
@@ -320,7 +349,7 @@ async def create_user(body: CreateUserRequest, token: str = Depends(require_supe
 
 @app.patch("/api/users/{user_id}")
 async def update_user(user_id: int, body: UpdateUserRequest,
-                      token: str = Depends(require_super_admin)):
+                      token: str = Depends(require_manage_users)):
     payload = auth_mod.verify_session(token)
     actor = payload["sub"] if payload else "api-token"
     target = users.get_by_id(user_id)
@@ -357,7 +386,7 @@ async def update_user(user_id: int, body: UpdateUserRequest,
 
 
 @app.delete("/api/users/{user_id}")
-async def delete_user(user_id: int, token: str = Depends(require_super_admin)):
+async def delete_user(user_id: int, token: str = Depends(require_manage_users)):
     payload = auth_mod.verify_session(token)
     actor = payload["sub"] if payload else "api-token"
     target = users.get_by_id(user_id)
@@ -410,14 +439,14 @@ async def algorithm_brief(_: str = Depends(require_token)):
 
 @app.post("/api/algorithm/validate")
 async def algorithm_validate(body: AlgorithmValidateRequest,
-                             _: str = Depends(require_super_admin)):
+                             _: str = Depends(require_upload)):
     """Check an algorithm without storing it — a dry run of the upload."""
     return await asyncio.to_thread(algorithms.validate, body.source, body.filename)
 
 
 @app.post("/api/algorithm/upload")
 async def algorithm_upload(body: AlgorithmUploadRequest,
-                           token: str = Depends(require_super_admin)):
+                           token: str = Depends(require_upload)):
     payload = auth_mod.verify_session(token)
     actor = payload["sub"] if payload else "api-token"
 
@@ -453,7 +482,7 @@ async def algorithm_upload(body: AlgorithmUploadRequest,
 
 
 @app.get("/api/algorithm/{version_id}/source")
-async def algorithm_source(version_id: str, _: str = Depends(require_super_admin)):
+async def algorithm_source(version_id: str, _: str = Depends(require_upload)):
     """The stored source of one version, so the app can diff it before switching."""
     src = algorithms.get_source(version_id)
     if src is None:
@@ -463,7 +492,7 @@ async def algorithm_source(version_id: str, _: str = Depends(require_super_admin
 
 @app.post("/api/algorithm/activate")
 async def algorithm_activate(body: ActivateRequest,
-                             token: str = Depends(require_super_admin)):
+                             token: str = Depends(require_activate)):
     payload = auth_mod.verify_session(token)
     actor = payload["sub"] if payload else "api-token"
     try:
@@ -484,7 +513,7 @@ async def algorithm_activate(body: ActivateRequest,
 
 
 @app.delete("/api/algorithm/{version_id}")
-async def algorithm_delete(version_id: str, token: str = Depends(require_super_admin)):
+async def algorithm_delete(version_id: str, token: str = Depends(require_upload)):
     try:
         result = algorithms.delete_version(version_id)
     except ValueError as exc:
@@ -495,7 +524,7 @@ async def algorithm_delete(version_id: str, token: str = Depends(require_super_a
 
 
 @app.get("/api/algorithm/{version_id}/source")
-async def algorithm_source(version_id: str, _: str = Depends(require_super_admin)):
+async def algorithm_source(version_id: str, _: str = Depends(require_upload)):
     source = algorithms.get_source(version_id)
     if source is None:
         raise HTTPException(status_code=404, detail="No such version.")
@@ -761,7 +790,7 @@ async def live_mode_state(_: str = Depends(require_token)):
 
 @app.post("/api/live-mode/request")
 async def live_mode_request(body: LiveRequestBody,
-                            token: str = Depends(require_super_admin)):
+                            token: str = Depends(require_arm_live)):
     if not settings.paper_mode:
         raise HTTPException(status_code=409, detail="Already trading real money.")
     if _super_admin_count() < 2:
@@ -816,9 +845,226 @@ async def live_mode_back_to_paper(token: str = Depends(require_super_admin)):
 
 
 @app.get("/api/audit")
-async def audit_trail(limit: int = Query(default=200, ge=1, le=1000),
-                      _: str = Depends(require_super_admin)):
-    return {"entries": await asyncio.to_thread(approvals.trail, limit)}
+async def audit_trail(
+    limit: int = Query(default=200, ge=1, le=5000),
+    action: str = Query(default="", max_length=64),
+    actor: str = Query(default="", max_length=64),
+    start: str = Query(default="", max_length=32),
+    end: str = Query(default="", max_length=32),
+    _: str = Depends(require_audit),
+):
+    entries = await asyncio.to_thread(approvals.trail, limit, action, actor, start, end)
+    return {
+        "entries": entries,
+        "actors": await asyncio.to_thread(approvals.actors),
+        "filters": {"action": action, "actor": actor, "start": start, "end": end},
+    }
+
+
+@app.get("/api/audit/export")
+async def audit_export(
+    fmt: str = Query(default="csv", pattern="^(csv|json)$"),
+    action: str = Query(default="", max_length=64),
+    actor: str = Query(default="", max_length=64),
+    start: str = Query(default="", max_length=32),
+    end: str = Query(default="", max_length=32),
+    token: str = Depends(require_token_query),
+):
+    """The trail as a file, honouring the same filters as the screen."""
+    if not users.can(auth_mod.role_of(token), "view_audit"):
+        raise HTTPException(status_code=403,
+                            detail="This role cannot read the audit trail.")
+    rows = await asyncio.to_thread(approvals.trail, 5000, action, actor, start, end)
+    stamp = datetime.now().strftime("%Y-%m-%d")
+    name = f"meridian_audit_{stamp}.{fmt}"
+    if fmt == "json":
+        return Response(
+            content=json.dumps({"generated_at": datetime.now().isoformat(timespec="seconds"),
+                                "count": len(rows), "entries": rows}, indent=2, default=str),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'})
+    return Response(
+        content=approvals.to_csv(rows), media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+# ============================================================ alerts
+
+
+class AlertConfigRequest(BaseModel):
+    channels: dict = Field(default_factory=dict)
+    rules: dict = Field(default_factory=dict)
+
+
+class AlertTestRequest(BaseModel):
+    channel: str = Field(pattern="^(email|webhook|slack)$")
+
+
+@app.get("/api/alerts")
+async def alerts_get(_: str = Depends(require_token)):
+    """Rules, destinations, and what each rule means."""
+    return {
+        "config": alerts.public_config(),
+        "rules": [{"key": k, **v} for k, v in alerts.RULES.items()],
+        "channels": list(alerts.CHANNELS),
+    }
+
+
+@app.put("/api/alerts")
+async def alerts_put(body: AlertConfigRequest,
+                     token: str = Depends(require_alerts)):
+    saved = await asyncio.to_thread(
+        alerts.save, {"channels": body.channels, "rules": body.rules})
+    enabled = [k for k, r in saved["rules"].items() if r.get("enabled")]
+    approvals.record(_actor(token), "alerts_changed",
+                     f"{len(enabled)} rule(s) armed: {', '.join(enabled) or 'none'}",
+                     rules=enabled)
+    return {"config": saved}
+
+
+@app.post("/api/alerts/test")
+async def alerts_test(body: AlertTestRequest,
+                      token: str = Depends(require_alerts)):
+    """Send one message now, and report exactly why if it does not arrive."""
+    who = _actor(token)
+    result = await asyncio.to_thread(
+        alerts.deliver, body.channel, "Test alert",
+        f"This is a test from Meridian Capital, sent by {who} at "
+        f"{datetime.now().strftime('%H:%M:%S')} IST. If you are reading it, "
+        f"the {body.channel} channel works.",
+        {"rule": "test", "severity": "info"})
+    return result
+
+
+# ============================================================ permissions
+
+
+@app.get("/api/permissions")
+async def permissions(_: str = Depends(require_token)):
+    """The role/capability matrix, generated from the same constants the
+    guards use — so what the Admin page promises cannot drift from what the
+    API actually enforces."""
+    return users.permission_matrix()
+
+
+# ============================================================ risk
+
+
+@app.get("/api/risk")
+async def risk_state(slot: Optional[int] = Query(default=None, ge=0, le=4),
+                     _: str = Depends(require_token)):
+    """Everything the risk panel draws, in one call.
+
+    Assembled here rather than on the client because two of these numbers —
+    exposure and how close the kill switch is — are the ones somebody acts on
+    in a hurry, and they should not depend on the dashboard having assembled
+    them correctly from three separate polls.
+    """
+    lane = get_slot(slot or 0)
+    snap = lane.snapshot or {}
+    pos = snap.get("position") or None
+
+    kill_used = float(snap.get("kill_used") or 0)
+    kill_limit = float(snap.get("kill_limit") or 0)
+    trades = int(snap.get("trades") or 0)
+    max_trades = int(snap.get("max_trades") or 0)
+
+    exposure = 0.0
+    if pos:
+        exposure = float(pos.get("current") or 0) * float(pos.get("qty") or 0)
+
+    today = db.today_str()
+    marks = await asyncio.to_thread(db.equity_marks, today, slot)
+    recent = await asyncio.to_thread(
+        db.query,
+        """SELECT session_date, symbol, avg_entry, exit_fill, qty, net_pnl,
+                  risk_rs, reason, stage
+             FROM trades ORDER BY id DESC LIMIT 10""")
+
+    # Realised risk/reward per trade: what was actually made against what was
+    # actually being risked when the position was opened.
+    for t in recent:
+        risk = t.get("risk_rs")
+        t["rr"] = (round(abs(t["net_pnl"]) / risk, 2)
+                   if risk and t.get("net_pnl") is not None and risk > 0 else None)
+
+    return {
+        "slot": lane.slot,
+        "name": lane.name,
+        "running": lane.running,
+        "paper": snap.get("paper", settings.paper_mode),
+        "kill": {
+            "used": kill_used, "limit": kill_limit,
+            "fraction": (kill_used / kill_limit) if kill_limit > 0 else 0.0,
+            "tripped": bool(snap.get("killed")),
+        },
+        "trades": {"taken": trades, "limit": max_trades,
+                   "fraction": (trades / max_trades) if max_trades > 0 else 0.0},
+        "exposure": round(exposure, 2),
+        "margin": float(pos.get("real_margin") or 0) if pos else 0.0,
+        "equity": snap.get("equity"),
+        "unrealised": snap.get("unrealised") or 0.0,
+        "drawdown_pct": snap.get("drawdown_pct") or 0.0,
+        "peak_equity": snap.get("peak_equity"),
+        "position": pos,
+        "intraday": [{"ts": m["ts"], "equity": m["equity"], "day_pnl": m["day_pnl"]}
+                     for m in marks],
+        "recent_trades": recent,
+    }
+
+
+# ============================================================ report schedules
+
+
+class ReportScheduleRequest(BaseModel):
+    id: Optional[str] = None
+    enabled: bool = True
+    period: str = Field(default="day", pattern="^(day|week|month)$")
+    fmt: str = Field(default="pdf", pattern="^(pdf|csv|xlsx|json)$")
+    include_log: bool = False
+    slot: Optional[int] = Field(default=None, ge=0, le=4)
+    channels: list[str] = Field(default_factory=lambda: ["email"])
+    recipients: str = Field(default="", max_length=500)
+
+
+KV_SCHEDULES = "report_schedules"
+
+
+def _schedules() -> list[dict]:
+    raw = db.kv_get(KV_SCHEDULES)
+    return raw if isinstance(raw, list) else []
+
+
+@app.get("/api/reports/schedules")
+async def report_schedules(_: str = Depends(require_token)):
+    return {"schedules": _schedules()}
+
+
+@app.put("/api/reports/schedules")
+async def report_schedule_save(body: ReportScheduleRequest,
+                               token: str = Depends(require_alerts)):
+    import secrets as _secrets
+    rows = _schedules()
+    entry = body.model_dump()
+    entry["id"] = entry.get("id") or _secrets.token_urlsafe(6)
+    entry["updated_by"] = _actor(token)
+    entry["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    rows = [r for r in rows if r.get("id") != entry["id"]] + [entry]
+    db.kv_set(KV_SCHEDULES, rows)
+    approvals.record(_actor(token), "report_scheduled",
+                     f"{entry['period']} {entry['fmt'].upper()} to "
+                     f"{entry['recipients'] or 'no recipient'}",
+                     schedule=entry)
+    return {"schedules": rows}
+
+
+@app.delete("/api/reports/schedules/{schedule_id}")
+async def report_schedule_delete(schedule_id: str,
+                                 token: str = Depends(require_alerts)):
+    rows = [r for r in _schedules() if r.get("id") != schedule_id]
+    db.kv_set(KV_SCHEDULES, rows)
+    approvals.record(_actor(token), "report_schedule_removed", schedule_id)
+    return {"schedules": rows}
 
 
 @app.get("/api/fleet")
@@ -834,7 +1080,7 @@ async def fleet_state(_: str = Depends(require_token)):
 
 
 @app.post("/api/bot/start")
-async def bot_start(body: StartRequest, token: str = Depends(require_operator)):
+async def bot_start(body: StartRequest, token: str = Depends(require_start)):
     lane = get_slot(body.slot)
     result = await asyncio.to_thread(lane.start, "manual", body.force)
     if not result.get("ok"):
@@ -845,7 +1091,7 @@ async def bot_start(body: StartRequest, token: str = Depends(require_operator)):
 
 
 @app.post("/api/bot/stop")
-async def bot_stop(body: StopRequest, token: str = Depends(require_operator)):
+async def bot_stop(body: StopRequest, token: str = Depends(require_kill)):
     lane = get_slot(body.slot)
     result = await asyncio.to_thread(lane.stop, body.reason)
     if not result.get("ok"):
@@ -988,32 +1234,52 @@ async def strategy_get(_: str = Depends(require_token)):
 
 
 @app.put("/api/strategy")
-async def strategy_put(body: StrategyUpdateRequest, _: str = Depends(require_operator)):
+async def strategy_put(body: StrategyUpdateRequest,
+                       token: str = Depends(require_tune)):
     """Edit strategy parameters.
 
     Accepted while the bot is running, but deliberately not applied until it
     next starts — an open position must finish under the rules it was opened
     with.
     """
+    # Read before applying, so the audit trail records what each value was
+    # rather than only what it became. "Stop loss 10% -> 12%" is the entry
+    # somebody needs six months later; "stop loss changed" is not.
+    before = strategy_config.effective()
     try:
         strategy_config.apply(body.values)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    changes = {k: {"from": before.get(k), "to": v} for k, v in body.values.items()
+               if before.get(k) != v}
     supervisor._emit_local(
         "strategy",
         f"Strategy updated — {len(body.values)} parameter(s) changed"
         + (" (applies when the bot next starts)" if supervisor.running else ""),
         level="warn",
     )
-    return await strategy_get(_)
+    approvals.record(
+        _actor(token), "strategy_changed",
+        ", ".join(f"{k} {c['from']} → {c['to']}" for k, c in list(changes.items())[:6])
+        + ("…" if len(changes) > 6 else "") or "no effective change",
+        changes=changes, running=supervisor.running)
+    return await strategy_get(token)
 
 
 @app.post("/api/strategy/reset")
-async def strategy_reset(_: str = Depends(require_operator)):
+async def strategy_reset(token: str = Depends(require_tune)):
+    before = strategy_config.effective()
     strategy_config.reset()
     supervisor._emit_local("strategy", "Strategy reset to the v11 baseline", level="warn")
-    return await strategy_get(_)
+    after = strategy_config.effective()
+    approvals.record(
+        _actor(token), "strategy_reset",
+        f"{sum(1 for k, v in before.items() if after.get(k) != v)} parameter(s) "
+        f"returned to the v11 baseline",
+        changes={k: {"from": v, "to": after.get(k)}
+                 for k, v in before.items() if after.get(k) != v})
+    return await strategy_get(token)
 
 
 @app.post("/api/strategy/profiles")

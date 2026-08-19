@@ -71,11 +71,15 @@ class Check:
     fatal: bool                    # a failed fatal check blocks activation
     detail: str = ""
     items: list[str] = field(default_factory=list)
+    # Where in the file, when it can be pinned down. The editor puts a marker
+    # on this line — "line 214: unexpected indent" beside the line beats the
+    # same sentence in a panel underneath a 600-line file.
+    line: Optional[int] = None
 
     def as_dict(self) -> dict:
         return {
             "name": self.name, "passed": self.passed, "fatal": self.fatal,
-            "detail": self.detail, "items": self.items,
+            "detail": self.detail, "items": self.items, "line": self.line,
         }
 
 
@@ -281,6 +285,7 @@ def validate(source: str, filename: str = "algorithm.py") -> dict:
             "Valid Python syntax", False, True,
             f"Line {exc.lineno}: {exc.msg}",
             items=[exc.text.rstrip()] if exc.text else [],
+            line=exc.lineno,
         ))
         return _report(checks, source, filename)
 

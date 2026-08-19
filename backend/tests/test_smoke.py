@@ -10,9 +10,11 @@ from __future__ import annotations
 import io
 import os
 import sys
+import threading
 import tempfile
 from datetime import date, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -720,6 +722,172 @@ def test_exit_message() -> None:
           "exit_code=code" in src)
 
 
+def test_roles() -> None:
+    """Roles are sets of permissions, not a ladder.
+
+    Each of the three newer roles exists to express something a rank cannot:
+    stop without changing, upload without going live, read without touching.
+    """
+    print("\nRoles and capabilities")
+    from app import users
+
+    for role in ("risk_manager", "quant_dev", "compliance"):
+        check(f"{role} is a role", role in users.ROLES)
+        check(f"{role} is described", role in users.ROLE_LABEL)
+
+    check("a risk manager can stop a session", users.can("risk_manager", "kill"))
+    check("and cannot tune the strategy", not users.can("risk_manager", "tune_strategy"))
+    check("and cannot upload code", not users.can("risk_manager", "upload_algorithm"))
+
+    check("a quant can upload", users.can("quant_dev", "upload_algorithm"))
+    check("and assign to a slot", users.can("quant_dev", "activate_algorithm"))
+    check("and cannot arm real money", not users.can("quant_dev", "arm_live"))
+    check("and cannot start a session", not users.can("quant_dev", "operate"))
+
+    check("compliance reads the audit trail", users.can("compliance", "view_audit"))
+    for cap in ("operate", "kill", "tune_strategy", "upload_algorithm",
+                "manage_users", "arm_live"):
+        check(f"compliance cannot {cap}", not users.can("compliance", cap))
+
+    check("only a super admin manages people",
+          [r for r in users.ROLES if users.can(r, "manage_users")] == ["super_admin"])
+    check("only a super admin arms real money",
+          [r for r in users.ROLES if users.can(r, "arm_live")] == ["super_admin"])
+    check("every role can at least look", all(users.can(r, "view") for r in users.ROLES))
+    check("an unknown role can do nothing", users.capabilities("wizard") == frozenset())
+    check("a missing role can do nothing", users.capabilities(None) == frozenset())
+
+    m = users.permission_matrix()
+    check("the matrix covers every role", len(m["roles"]) == len(users.ROLES))
+    check("and every capability", len(m["capabilities"]) == len(users.CAPABILITIES))
+    check("the matrix is generated from the same constants the guards use",
+          set(next(r for r in m["roles"] if r["value"] == "risk_manager")["grants"])
+          == set(users.ROLE_CAPS["risk_manager"]))
+
+
+def test_alerts() -> None:
+    print("\nAlerts")
+    from app import alerts
+
+    alerts.reset_state()
+    db.kv_set(alerts.KV_CONFIG, None)
+
+    cfg = alerts.config()
+    check("every rule has a default", set(cfg["rules"]) == set(alerts.RULES))
+    check("dangerous ones are armed out of the box",
+          cfg["rules"]["kill_switch"]["enabled"] and cfg["rules"]["bot_stopped"]["enabled"])
+    check("chatty ones are not", not cfg["rules"]["trade"]["enabled"])
+
+    # A config written before a rule existed must not hide that rule.
+    db.kv_set(alerts.KV_CONFIG, {"rules": {"drawdown": {"enabled": True}}})
+    cfg = alerts.config()
+    check("an old config still exposes new rules", "daily_summary" in cfg["rules"])
+    check("and keeps what it did say", cfg["rules"]["drawdown"]["enabled"] is True)
+
+    alerts.save({"channels": {"email": {"host": "smtp.test", "to": "a@b.c",
+                                        "password": "hunter2"}}, "rules": {}})
+    check("the SMTP password is stored",
+          alerts.config()["channels"]["email"]["password"] == "hunter2")
+    check("but never handed back",
+          alerts.public_config()["channels"]["email"]["password"] == "")
+    check("and the browser is told one exists",
+          alerts.public_config()["channels"]["email"]["password_set"] is True)
+
+    alerts.save({"channels": {"email": {"to": "c@d.e", "password": ""}}, "rules": {}})
+    check("saving with an empty password keeps the old one",
+          alerts.config()["channels"]["email"]["password"] == "hunter2")
+    check("while other fields update",
+          alerts.config()["channels"]["email"]["to"] == "c@d.e")
+
+    alerts.save({"channels": {}, "rules": {"drawdown": {"channels": ["email", "pigeon"]}}})
+    check("an unknown channel is dropped",
+          alerts.config()["rules"]["drawdown"]["channels"] == ["email"])
+
+    # Repeat suppression: the condition stays true, the message does not repeat.
+    sent: list[str] = []
+    alerts.save({"channels": {"webhook": {"enabled": True, "url": "http://x"}},
+                 "rules": {"drawdown": {"enabled": True, "channels": ["webhook"]}}})
+    with patch.object(alerts, "deliver",
+                      lambda c, s, b, m=None: sent.append(s) or {"ok": True, "detail": ""}):
+        for _ in range(5):
+            alerts.fire("drawdown", "Drawdown 9%", "body")
+        for t in threading.enumerate():
+            if t.name.startswith("alert-"):
+                t.join(timeout=5)
+    check("a rule that has fired stays quiet", len(sent) == 1, str(sent))
+
+    alerts.clear("drawdown")
+    with patch.object(alerts, "deliver",
+                      lambda c, s, b, m=None: sent.append(s) or {"ok": True, "detail": ""}):
+        alerts.fire("drawdown", "Drawdown 11%", "body")
+        for t in threading.enumerate():
+            if t.name.startswith("alert-"):
+                t.join(timeout=5)
+    check("and fires again once the condition clears", len(sent) == 2, str(sent))
+
+    sent.clear()
+    with patch.object(alerts, "deliver",
+                      lambda c, s, b, m=None: sent.append(s) or {"ok": True, "detail": ""}):
+        for i in range(3):
+            alerts.fire("trade", f"trade {i}", "body", repeatable=True)
+        for t in threading.enumerate():
+            if t.name.startswith("alert-"):
+                t.join(timeout=5)
+    check("a per-trade rule is not suppressed", len(sent) == 0,
+          "trade alerts are off by default, so nothing should send")
+
+    check("a disabled rule sends nothing",
+          alerts.fire("error_rate", "x", "y") is None)
+    r = alerts.deliver("webhook", "s", "b")
+    check("a dead webhook reports why rather than raising",
+          r["ok"] is False and r["detail"], str(r))
+    db.kv_set(alerts.KV_CONFIG, None)
+    alerts.reset_state()
+
+
+def test_audit_filters() -> None:
+    print("\nAudit filters")
+    from app import approvals
+
+    approvals.init()
+    db.execute("DELETE FROM audit")
+    approvals.set_request_ip("203.0.113.9")
+    approvals.record("Sehej", "user_created", "made a viewer")
+    approvals.record("Sehej", "user_deleted", "removed a viewer")
+    approvals.record("Raghav", "strategy_changed", "SL 10% → 12%")
+    approvals.set_request_ip(None)
+    approvals.record("system", "alert_sent", "kill switch")
+
+    check("the caller address is recorded",
+          approvals.trail(10)[-1]["ip"] == "203.0.113.9",
+          str([(r["action"], r["ip"]) for r in approvals.trail(10)]))
+    check("a background write has no address",
+          approvals.trail(1)[0]["ip"] is None)
+
+    check("filtering by operator narrows it",
+          len(approvals.trail(50, actor="Raghav")) == 1)
+    check("operator matching ignores case",
+          len(approvals.trail(50, actor="raghav")) == 1)
+    check("a group filter matches the whole group",
+          len(approvals.trail(50, action="user")) == 2,
+          str([r["action"] for r in approvals.trail(50, action="user")]))
+    check("an exact action still works",
+          len(approvals.trail(50, action="user_created")) == 1)
+    check("filters compose",
+          len(approvals.trail(50, action="user", actor="Sehej")) == 2)
+    check("a date in the future finds nothing",
+          approvals.trail(50, start="2099-01-01") == [])
+    check("a bare end date includes that whole day",
+          len(approvals.trail(50, end=date.today().isoformat())) == 4)
+
+    csv_text = approvals.to_csv(approvals.trail(50))
+    check("the export has a header row", csv_text.startswith("Timestamp,Operator"))
+    check("it carries the IP column", "IP address" in csv_text)
+    check("and the entries", "SL 10% → 12%" in csv_text)
+    check("every row is present", csv_text.strip().count("\n") == 4)
+    db.execute("DELETE FROM audit")
+
+
 def test_news() -> None:
     """Parsing and failure behaviour, without touching the network."""
     print("\nNews feed")
@@ -1146,6 +1314,9 @@ def main() -> int:
     test_log_severity()
     test_severity()
     test_exit_message()
+    test_roles()
+    test_alerts()
+    test_audit_filters()
     test_starter_and_brief()
     test_news()
     test_api()

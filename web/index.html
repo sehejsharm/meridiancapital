@@ -69,8 +69,20 @@
   --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
   --rail:0px;
   --r:10px;               /* one corner radius everywhere, so nothing looks bolted on */
+
+  /* ---- density ----
+     A trader watching five lanes wants more on screen; someone reviewing the
+     month wants it readable. One multiplier drives card padding and the two
+     type sizes that actually change the information density — nothing here
+     rescales the figures themselves, because a P&L that changes size between
+     modes is a P&L you misread. */
+  --d-pad:1;              /* card and row padding multiplier */
+  --card-pad:calc(15px * var(--d-pad));
+  --row-pad:calc(10px * var(--d-pad));
   --ease:cubic-bezier(.22,1,.36,1);
 }
+html[data-density="compact"]{--d-pad:.66;--t-cap:11px;--t-body:12.5px}
+html[data-density="comfortable"]{--d-pad:1.18}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans);
   overscroll-behavior-y:none;-webkit-font-smoothing:antialiased;
@@ -237,6 +249,48 @@ body::after{content:"";position:fixed;inset:-30%;pointer-events:none;z-index:0;
 .cal-c:hover{transform:scale(1.12);border-color:var(--au);z-index:2}
 .cal-c.out{background:transparent;border-color:transparent;cursor:default}
 .cal-c.out:hover{transform:none}
+/* The figure inside the cell. Shown only where the grid is wide enough for it
+   to be legible — a squeezed three-character number is worse than none. */
+.cal-v{font-size:9px;font-family:var(--mono);line-height:1;color:rgba(255,255,255,.82);
+  display:none;pointer-events:none}
+@media (min-width:420px){ .cal-c{display:grid;place-items:center} .cal-v{display:block} }
+.cal-legend{display:flex;align-items:center;gap:7px;margin-top:11px;flex-wrap:wrap;
+  font-family:var(--mono);font-size:9.5px;color:var(--dim);letter-spacing:.6px}
+.cal-scale{display:flex;gap:2px}
+.cal-scale i{width:13px;height:11px;border-radius:2px;border:1px solid var(--line)}
+.cal-tip{position:fixed;z-index:320;pointer-events:none;background:var(--raised);
+  border:1px solid var(--line-2);border-radius:7px;padding:8px 10px;
+  box-shadow:0 12px 34px -14px rgba(0,0,0,1);font-family:var(--mono);font-size:11px;
+  line-height:1.6;white-space:nowrap}
+.cal-tip[hidden]{display:none}
+.cal-tip .ct-d{color:var(--text);margin-bottom:3px}
+.cal-tip .ct-r{color:var(--muted);display:flex;gap:14px;justify-content:space-between}
+
+/* ---- interactive equity curve ---- */
+.cvwrap{position:relative}
+.cv{display:block;touch-action:pan-y}
+.cv:focus-visible{outline:1px solid var(--au);outline-offset:2px}
+.cv-hit rect{cursor:crosshair}
+.cv-vline{stroke:var(--au);stroke-width:1;stroke-dasharray:2 3;opacity:.75}
+.cv-dot{fill:var(--au);stroke:var(--bg);stroke-width:1.5}
+.cv-sel{fill:rgba(232,196,88,.14);stroke:rgba(232,196,88,.4);stroke-width:1}
+.cv-tip{position:absolute;top:8px;transform:translateX(10px);z-index:6;
+  background:var(--raised);border:1px solid var(--line-2);border-radius:8px;
+  padding:9px 11px;pointer-events:none;min-width:172px;
+  box-shadow:0 14px 38px -16px rgba(0,0,0,1)}
+.cv-tip.flip{transform:translateX(calc(-100% - 10px))}
+.cv-tip[hidden]{display:none}
+.cvt-d{font-family:var(--mono);font-size:11px;color:var(--text);margin-bottom:5px}
+.cvt-r{display:flex;justify-content:space-between;gap:16px;font-size:11px;
+  color:var(--dim);line-height:1.75}
+.cvt-r b{font-family:var(--mono);color:var(--muted);font-weight:400}
+.cv-reset{position:absolute;top:8px;right:8px;z-index:7;padding:5px 10px;
+  font-size:10px;font-family:var(--mono);letter-spacing:1px;border-radius:6px;
+  background:var(--surface-2);border:1px solid var(--line-2);color:var(--au);
+  cursor:pointer}
+.cv-reset:hover{background:var(--au-bg-2)}
+.cv-hint{font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.8px;
+  text-align:right;margin-top:4px}
 
 /* ---- expandable trade cards ---- */
 details.trade > summary{list-style:none;cursor:pointer}
@@ -282,6 +336,149 @@ details.trade[open]{border-color:var(--line-2)}
 .rep-log{margin-top:6px;background:#040405;border:1px solid var(--line);border-radius:8px;
   padding:12px;max-height:34vh;overflow-y:auto;font-family:var(--mono);font-size:11px;
   line-height:1.7}
+
+/* ---- risk ---- */
+.rb{margin-top:14px}
+.rb:first-of-type{margin-top:4px}
+.rb-h{display:flex;justify-content:space-between;gap:12px;align-items:baseline;
+  margin-bottom:6px}
+.rb-k{font-size:11.5px;color:var(--muted)}
+.rb-v{font-size:12px;font-family:var(--mono);color:var(--text)}
+.rb-track{height:9px;border-radius:99px;background:var(--surface-2);overflow:hidden;
+  border:1px solid var(--line)}
+.rb-fill{display:block;height:100%;border-radius:99px;
+  transition:width .5s var(--ease),background .3s var(--ease)}
+.rb-fill.ok{background:linear-gradient(90deg,var(--au-deep),var(--au))}
+.rb-fill.warn{background:linear-gradient(90deg,#c9821a,var(--warning))}
+.rb-fill.crit{background:linear-gradient(90deg,#8a0d1a,var(--critical))}
+.rrlist{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.rr{display:grid;grid-template-columns:minmax(0,1.4fr) auto minmax(0,.9fr) 58px minmax(0,1.2fr);
+  gap:10px;align-items:baseline;padding:9px 12px;border-bottom:1px solid var(--line);
+  font-size:11.5px}
+.rr:last-child{border-bottom:none}
+.rr:nth-child(odd){background:var(--surface-2)}
+.rr-s{font-family:var(--mono);color:var(--text);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.rr-d,.rr-w{font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rr-p,.rr-r{font-family:var(--mono);text-align:right}
+@media (max-width:620px){
+  .rr{grid-template-columns:1fr auto;row-gap:3px}
+  .rr-d,.rr-w{grid-column:1/-1}
+}
+
+/* ---- alerts ---- */
+.alr{border:1px solid var(--line);border-radius:9px;padding:12px 13px;margin-bottom:9px;
+  background:var(--surface-2);transition:border-color .2s var(--ease)}
+.alr.on{border-color:var(--line-2)}
+.alr-top{display:flex;gap:11px;align-items:flex-start}
+.alr-h{font-size:12.5px;color:var(--text)}
+.alr-s{font-size:11px;color:var(--dim);line-height:1.55;margin-top:2px}
+.alr-cfg{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:11px;
+  padding-top:11px;border-top:1px solid var(--line)}
+.alr-th{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--muted)}
+.alr-ch{display:flex;gap:6px;flex-wrap:wrap}
+.chip-t{padding:5px 11px;border-radius:99px;border:1px solid var(--line);
+  background:transparent;color:var(--dim);font-size:10px;font-family:var(--mono);
+  letter-spacing:1px;text-transform:uppercase;cursor:pointer}
+.chip-t.on{border-color:var(--line-3);background:var(--au-bg-2);color:var(--au)}
+.chip-t:hover{color:var(--muted)}
+
+/* ---- permissions matrix ---- */
+.pmwrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:8px}
+.pm{border-collapse:collapse;width:100%;min-width:600px;font-size:11.5px}
+.pm th,.pm td{border-bottom:1px solid var(--line);padding:8px 11px;text-align:left}
+.pm th{background:var(--surface-2);color:var(--muted);font-weight:400;
+  font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;
+  white-space:nowrap;position:sticky;top:0}
+.pm td:first-child{color:var(--muted)}
+.pm tr:last-child td{border-bottom:none}
+.pm .y{color:var(--profit);text-align:center;font-family:var(--mono)}
+.pm .n{color:var(--faint);text-align:center;font-family:var(--mono)}
+
+/* ---- keyboard hint ---- */
+.kbhint{position:fixed;right:16px;bottom:calc(84px + var(--safe-b));z-index:60;
+  width:26px;height:26px;border-radius:99px;border:1px solid var(--line-2);
+  background:var(--surface);color:var(--dim);font-family:var(--mono);font-size:11px;
+  cursor:pointer;display:none}
+.kbhint:hover{color:var(--au);border-color:var(--line-3)}
+@media (min-width:1024px){ .kbhint{display:block;bottom:16px} }
+.kbs{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;align-items:baseline}
+.kbs kbd{font-family:var(--mono);font-size:10.5px;background:var(--surface-2);
+  border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;
+  padding:2px 7px;color:var(--au);white-space:nowrap;justify-self:start}
+.kbs span{font-size:12px;color:var(--muted)}
+
+/* ---- code editor ----
+   Not a library. A bundler-free static page cannot npm-install Monaco and the
+   deploy CSP blocks CDN scripts, so this is a textarea with a syntax-coloured
+   layer painted behind it. The textarea is still the real control: selection,
+   undo, autocomplete, IME and screen readers behave exactly as they always
+   did, which is more than most drop-in editors manage. */
+.ed{display:flex;border:1px solid var(--line-2);border-radius:9px;overflow:hidden;
+  background:#040405;font-family:var(--mono);font-size:11.5px;line-height:1.65;
+  height:clamp(260px,46vh,560px)}
+.ed:focus-within{border-color:var(--line-3);box-shadow:0 0 0 1px var(--line-3)}
+.ed-gutter{flex:0 0 auto;padding:11px 9px 11px 12px;text-align:right;color:var(--faint);
+  background:var(--surface);border-right:1px solid var(--line);user-select:none;
+  overflow:hidden;white-space:pre;min-width:44px}
+.ed-gutter b{display:block;font-weight:400}
+.ed-gutter b.bad{color:var(--critical-text);background:var(--critical-bg);
+  border-radius:3px;margin:0 -4px;padding:0 4px}
+.ed-gutter b.warn{color:var(--warning);background:rgba(232,196,88,.1);
+  border-radius:3px;margin:0 -4px;padding:0 4px}
+.ed-scroll{position:relative;flex:1;min-width:0;overflow:auto}
+.ed-hl,.ed-ta{margin:0;padding:11px 13px;white-space:pre;font:inherit;
+  tab-size:4;border:0;min-height:100%;box-sizing:border-box}
+.ed-hl{position:absolute;inset:0;pointer-events:none;color:var(--muted);
+  overflow:hidden}
+.ed-ta{position:relative;display:block;width:100%;height:100%;resize:none;
+  background:transparent;color:transparent;caret-color:var(--au);outline:none;
+  overflow:auto}
+.ed-ta::selection{background:rgba(232,196,88,.28);color:transparent}
+.ed-ta::placeholder{color:var(--faint)}
+.tk-kw{color:#e8a0d8} .tk-str{color:#8fd98f} .tk-num{color:#e8c458}
+.tk-com{color:#6f6a60;font-style:italic} .tk-def{color:#7cc4f0}
+.tk-bi{color:#c9a13a} .tk-dec{color:#d8a05a}
+.ed-line.bad{background:rgba(224,20,42,.13);
+  box-shadow:-13px 0 0 rgba(224,20,42,.13),13px 0 0 rgba(224,20,42,.13)}
+.ed-line.warn{background:rgba(232,196,88,.08);
+  box-shadow:-13px 0 0 rgba(232,196,88,.08),13px 0 0 rgba(232,196,88,.08)}
+.ed-bar{display:flex;justify-content:space-between;gap:12px;align-items:center;
+  font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.8px;
+  padding:6px 2px 0;flex-wrap:wrap}
+.ed-marks{display:flex;gap:7px;flex-wrap:wrap}
+.ed-mark{cursor:pointer;border-radius:4px;padding:1px 6px;border:1px solid transparent}
+.ed-mark.bad{color:var(--critical-text);background:var(--critical-bg);
+  border-color:rgba(224,20,42,.35)}
+.ed-mark.warn{color:var(--warning);background:rgba(232,196,88,.1);
+  border-color:rgba(232,196,88,.3)}
+.ed-mark:hover{filter:brightness(1.25)}
+
+/* ---- confirmation, change list, undo ---- */
+#cfm{position:fixed;inset:0;z-index:425;background:rgba(3,3,5,.9);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;padding:16px;
+  animation:palIn .18s var(--ease)}
+#cfm[hidden]{display:none}
+#cfm .pw-box{max-width:520px}
+.chg{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.chg-r{display:flex;justify-content:space-between;gap:16px;padding:9px 12px;
+  border-bottom:1px solid var(--line);font-size:12px;align-items:baseline}
+.chg-r:last-child{border-bottom:none}
+.chg-r:nth-child(odd){background:var(--surface-2)}
+.chg-k{color:var(--muted);min-width:0}
+.chg-v{font-family:var(--mono);font-size:11.5px;white-space:nowrap;flex-shrink:0}
+.chg-v s{color:var(--faint)}
+.chg-v b{color:var(--au);font-weight:400}
+.undobar{position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(84px + var(--safe-b));z-index:125;display:flex;align-items:center;gap:11px;
+  padding:9px 11px 9px 15px;border-radius:11px;background:rgba(10,10,12,.97);
+  border:1px solid var(--line-3);backdrop-filter:blur(12px);
+  box-shadow:0 18px 48px -18px rgba(0,0,0,1);animation:saveIn .2s var(--ease)}
+.undobar[hidden]{display:none}
+@media (min-width:1024px){ .undobar{bottom:26px} }
+.ub-t{font-size:12px;color:var(--muted);white-space:nowrap}
+.undobar .btn{width:auto;padding:7px 12px;font-size:10.5px}
 
 /* ---- authoring brief ---- */
 .brief{margin-top:14px;padding:13px 14px;border:1px solid var(--line-3);border-radius:10px;
@@ -512,6 +709,13 @@ header{position:sticky;top:0;z-index:40;padding:calc(var(--safe-t) + 12px) 15px 
 .dot.beat{animation:beat 2s ease-in-out infinite}
 @keyframes beat{0%,100%{opacity:1}50%{opacity:.25}}
 .clock{font-family:var(--mono);font-size:11.5px;color:var(--muted);letter-spacing:.6px}
+.denbtn{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);
+  background:transparent;color:var(--dim);display:grid;place-items:center;
+  cursor:pointer;flex-shrink:0}
+.denbtn:hover{color:var(--au);border-color:var(--line-2)}
+.denbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;
+  stroke-linecap:round}
+html[data-density="compact"] .denbtn svg{stroke-width:2.2}
 
 main{padding:15px 15px 22px;position:relative;z-index:1}
 .view{display:none} .view.on{display:block;animation:viewin .38s var(--ease)}
@@ -530,7 +734,7 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .deck{display:grid;grid-template-columns:1fr;gap:13px}
 .card{background:linear-gradient(168deg,rgba(255,255,255,.035),transparent 46%),var(--surface);
   border:1px solid var(--line);border-radius:var(--r);
-  padding:16px;position:relative;
+  padding:var(--card-pad);position:relative;
   box-shadow:0 1px 0 rgba(255,255,255,.05) inset,0 10px 30px -18px rgba(0,0,0,.95);
   transition:border-color .3s var(--ease),transform .3s var(--ease),box-shadow .3s var(--ease)}
 .card:hover{border-color:var(--line-2);
@@ -684,7 +888,8 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .bar span{display:block;height:100%;border-radius:99px;
   transition:width .7s var(--ease);box-shadow:0 0 9px currentColor}
 
-.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;
+.row{display:flex;justify-content:space-between;align-items:center;
+  padding:calc(var(--row-pad) * .8) 0;
   border-bottom:1px solid var(--line);font-size:12.5px;gap:12px}
 .row:last-child{border-bottom:none}
 .row-k{color:var(--muted);font-size:11.5px;letter-spacing:.3px}
@@ -822,6 +1027,18 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
   box-shadow:0 0 10px var(--glow)}
 .empty{text-align:center;padding:32px 18px;color:var(--faint);font-size:12px;line-height:1.7;
   font-family:var(--mono)}
+/* An empty state that only says "nothing here" leaves the reader to work out
+   whether that is normal, broken, or waiting on them. Icon, one line of what
+   it means, and — where there is one — the thing to do about it. */
+.es{text-align:center;padding:30px 20px;display:flex;flex-direction:column;
+  align-items:center;gap:3px}
+.es svg{width:30px;height:30px;stroke:var(--dim);fill:none;stroke-width:1.4;
+  stroke-linecap:round;stroke-linejoin:round;margin-bottom:9px;opacity:.85}
+.es-h{font-size:12.5px;color:var(--muted);font-family:var(--mono);letter-spacing:.8px}
+.es-s{font-size:11.5px;color:var(--faint);line-height:1.65;max-width:44ch}
+.es .btn{width:auto;margin-top:13px;padding:8px 16px;font-size:11px}
+.es-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:13px}
+.es-row .btn{margin-top:0}
 
 /* ================= chart ================= */
 /* Zero is neutral: a green "+₹0" reads as a win when nothing happened. */
@@ -853,7 +1070,7 @@ body.live-money .modebar.live{display:block;
 @keyframes liveThrob{0%,100%{filter:brightness(1)}50%{filter:brightness(1.28)}}
 @media (prefers-reduced-motion:reduce){ body.live-money .modebar.live{animation:none} }
 body.paper-mode,body.live-money{padding-top:23px}
-@media (min-width:1000px){
+@media (min-width:1024px){
   body.paper-mode main,body.live-money main{padding-top:44px}
 }
 
@@ -909,8 +1126,14 @@ body.live-money .rail,body.live-money #mob-nav{background:#150c0e}
   transition:border-color .25s var(--ease),background .25s var(--ease);
   display:block;width:100%;text-align:left;font-family:inherit;color:inherit;cursor:pointer}
 .fl:hover{border-color:var(--line-2)}
-.fl.good{border-color:rgba(56,224,143,.3)}
-.fl.bad{border-color:rgba(255,85,102,.4)}
+/* State is carried by a left edge as well as a border tint, so the three
+   cases are separable at a glance and without relying on colour alone. */
+.fl{border-left-width:3px;border-left-style:solid;border-left-color:var(--line)}
+.fl.good{border-color:rgba(56,224,143,.3);border-left-color:var(--profit)}
+.fl.bad{border-color:rgba(255,85,102,.4);border-left-color:var(--critical)}
+.fl.idle{opacity:.72;border-left-color:var(--flat)}
+.fl.idle:hover{opacity:1}
+.fl-last{font-size:10px;color:var(--faint);font-family:var(--mono);margin-top:7px}
 /* the selected lane is the one the deck above is reporting on */
 .fl.sel{border-color:var(--au);box-shadow:0 0 0 1px var(--au) inset,0 0 24px -12px var(--glow);
   background:linear-gradient(160deg,var(--au-bg),transparent 60%),var(--surface-2)}
@@ -1137,9 +1360,24 @@ body.stale .tp-spot,body.stale .hero-eq,body.stale .pb-pnl{opacity:.45}
 .stepper input[type=text]{width:126px;text-align:right;background:var(--surface-2);
   border:1px solid var(--line);padding:7px 10px;color:var(--text);font-size:12px;
   font-family:var(--mono)}
-.savebar{position:sticky;bottom:calc(84px + var(--safe-b));display:flex;gap:9px;padding:11px;
-  background:rgba(10,10,12,.96);backdrop-filter:blur(12px);border:1px solid var(--line-3);
-  margin-top:11px;z-index:30}
+/* Floating rather than sticky-at-the-end: with a dozen parameter cards the
+   old bar sat below the fold, so you could edit four values and never see
+   that anything was unsaved. */
+.savebar{position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(84px + var(--safe-b));display:flex;gap:9px;align-items:center;
+  padding:10px 12px;border-radius:11px;width:min(560px,calc(100vw - 24px));
+  background:rgba(10,10,12,.97);backdrop-filter:blur(12px);
+  border:1px solid var(--line-3);z-index:120;
+  box-shadow:0 18px 48px -18px rgba(0,0,0,1);
+  animation:saveIn .2s var(--ease)}
+@keyframes saveIn{from{opacity:0;transform:translate(-50%,10px)}
+  to{opacity:1;transform:translate(-50%,0)}}
+@media (min-width:1024px){ .savebar{bottom:26px;left:calc(50% + var(--rail)/2)} }
+.savebar .sb-t{flex:1;min-width:0;font-size:11.5px;color:var(--au);
+  font-family:var(--mono);letter-spacing:.6px}
+.savebar .btn{width:auto;padding:9px 15px;font-size:11px;flex:0 0 auto}
+.errbox{background:var(--down-bg);border:1px solid rgba(240,80,90,.3);padding:12px;
+  font-size:11.5px;color:var(--down);line-height:1.6;margin-bottom:11px;font-family:var(--mono)}
 .errbox{background:var(--down-bg);border:1px solid rgba(240,80,90,.3);padding:12px;
   font-size:11.5px;color:var(--down);line-height:1.6;margin-bottom:11px;font-family:var(--mono)}
 
@@ -1170,9 +1408,41 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 .toast.show{opacity:1}
 
 /* ================================================================
+   BREAKPOINTS
+
+   The rail used to collapse straight into the bottom navigation at 1000px,
+   which meant a 1280×800 laptop — the most common machine this runs on — got
+   the phone layout. There are three states now:
+
+     < 1024px   bottom navigation (phone, small tablet)
+     1024–1279  rail, icons only (laptop; keeps the vertical nav without
+                spending 236px of a 1280px screen on labels)
+     >= 1280px  rail with labels
+
+   The middle band is CSS only: the same markup, a narrower rail and the
+   labels hidden, with the label text kept as a tooltip so nothing is lost.
+   ================================================================ */
+@media (min-width:1024px) and (max-width:1279.98px){
+  :root{--rail:62px}
+  .rail-brand{padding:0 0 18px;justify-content:center}
+  .rail-brand div{display:none}
+  .rail-nav button{justify-content:center;padding:12px 0;gap:0;
+    border-radius:0;border-left-width:3px}
+  .rail-nav button span.lbl{display:none}
+  .rail-foot{padding:14px 8px 0;align-items:center}
+  .rail-stat{flex-direction:column;gap:2px;text-align:center}
+  .rail-stat .k{font-size:8px;letter-spacing:.8px}
+  .rail-stat .v{font-size:9px;justify-content:center}
+  .rail-stat .v.trunc{max-width:54px}
+  /* Two of the five foot rows are noise at this width. */
+  .rail-foot .rail-stat:nth-child(n+4){display:none}
+  main{padding:22px 22px 40px}
+}
+
+/* ================================================================
    DESKTOP — rail navigation, wide telemetry grid
    ================================================================ */
-@media (min-width:1000px){
+@media (min-width:1024px){
   :root{--rail:236px}
   body{padding-bottom:0}
   nav{display:none}
@@ -1207,7 +1477,14 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
   .rail-stat{display:flex;align-items:center;justify-content:space-between;gap:8px}
   .rail-stat .k{font-size:10px;letter-spacing:1.3px;color:var(--faint);font-family:var(--mono);
     text-transform:uppercase}
-  .rail-stat .v{font-size:10.5px;font-family:var(--mono);color:var(--muted)}
+  .rail-stat .v{font-size:10.5px;font-family:var(--mono);color:var(--muted);
+    display:flex;align-items:center;gap:6px;min-width:0}
+  /* A long operator name used to wrap and push the rows apart. */
+  .rail-stat .v.trunc{display:block;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;max-width:118px;text-align:right}
+  .sdot{width:6px;height:6px;border-radius:99px;background:var(--flat);flex-shrink:0}
+  .sdot.run{background:var(--profit);box-shadow:0 0 7px var(--up-glow)}
+  .sdot.err{background:var(--critical);box-shadow:0 0 7px rgba(224,20,42,.7)}
 
   main{margin-left:var(--rail);padding:28px 32px 44px;max-width:1680px}
   .deck{grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:15px;align-items:start}
@@ -1374,6 +1651,26 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
   </div>
 </div>
 
+<!-- ======================= CONFIRMATION ======================= -->
+<div id="cfm" hidden>
+  <div class="pw-box" role="dialog" aria-modal="true" aria-labelledby="cfm-title">
+    <div class="dif-head">
+      <div style="min-width:0">
+        <div class="card-t" id="cfm-title"></div>
+        <div class="dif-sub" id="cfm-sub"></div>
+      </div>
+    </div>
+    <div style="padding:14px 18px;max-height:52vh;overflow-y:auto" id="cfm-body"></div>
+    <div style="display:flex;gap:9px;padding:0 18px 16px">
+      <button class="btn ghost" id="cfm-no">Cancel</button>
+      <button class="btn" id="cfm-yes">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ten seconds to take back something that has not taken effect yet. -->
+<div id="undo" class="undobar" hidden></div>
+
 <!-- ======================= DOCUMENT READER ======================= -->
 <div id="doc" hidden>
   <div class="doc-box" role="dialog" aria-modal="true" aria-labelledby="doc-title">
@@ -1506,11 +1803,17 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
     </div>
   </div>
   <div class="rail-nav" id="rail-nav"></div>
+  <!-- One line per fact, a coloured dot for the one that changes, and the
+       operator name truncated rather than wrapping the row. -->
   <div class="rail-foot">
-    <div class="rail-stat"><span class="k">Status</span><span class="v" id="r-state">—</span></div>
+    <div class="rail-stat"><span class="k">Status</span>
+      <span class="v"><i class="sdot" id="r-dot"></i><span id="r-state">—</span></span></div>
     <div class="rail-stat"><span class="k">Mode</span><span class="v" id="r-mode">—</span></div>
     <div class="rail-stat"><span class="k">IST</span><span class="v num" id="r-clock">--:--:--</span></div>
-    <div class="rail-stat"><span class="k">Operator</span><span class="v" id="r-user">—</span></div>
+    <div class="rail-stat"><span class="k">Operator</span>
+      <span class="v trunc" id="r-user" title="—">—</span></div>
+    <div class="rail-stat"><span class="k">Build</span>
+      <span class="v num" id="r-build">—</span></div>
   </div>
 </aside>
 
@@ -1532,6 +1835,11 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
     <div style="display:flex;align-items:center;gap:8px">
       <span class="modechip paper" id="h-mode">PAPER</span>
       <span class="clock num" id="h-clock">--:--:--</span>
+      <button class="denbtn" id="h-density" type="button"
+              title="Display density" aria-label="Display density">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
     </div>
   </div>
 </header>
@@ -1826,6 +2134,19 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
         </div>
       </div>
 
+      <!-- Generated from the same constants the API guards use, so what this
+           promises cannot drift from what is actually enforced. -->
+      <div class="card span-all">
+        <div class="card-h"><h2 class="card-t">What each role can do</h2>
+          <span class="dim mono" style="font-size:9.5px">ENFORCED SERVER-SIDE</span></div>
+        <div class="muted" style="font-size:12px;line-height:1.6">
+          Roles are sets of permissions, not a ladder. A risk manager can stop a
+          session but not change the strategy; a quant can upload code but never
+          point it at real money.
+        </div>
+        <div id="u-matrix"></div>
+      </div>
+
       <div class="card span-all">
         <div class="card-h"><h2 class="card-t">Algorithm</h2>
           <span class="dim mono" style="font-size:9.5px" id="a-active"></span></div>
@@ -1866,9 +2187,25 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
           <label class="lbl" for="a-name">Name this version</label>
           <input class="field" id="a-name" aria-label="Name for this algorithm version" placeholder="e.g. v12 wider stops">
           <label class="lbl" for="a-source" style="margin-top:11px">Algorithm source</label>
-          <textarea class="field mono" id="a-source" aria-label="Algorithm source code" rows="10" spellcheck="false"
-            style="resize:vertical;font-size:11px;line-height:1.5"
-            placeholder="Paste your Python here, or choose a .py file below"></textarea>
+          <!-- A textarea with a highlight layer painted behind it. The
+               textarea stays the real control — selection, undo, IME and
+               screen readers all keep working — and the layer underneath
+               carries the colours, so the two never disagree about what the
+               text is. -->
+          <div class="ed" id="a-ed">
+            <div class="ed-gutter" id="a-gutter" aria-hidden="true"></div>
+            <div class="ed-scroll" id="a-scroll">
+              <pre class="ed-hl" id="a-hl" aria-hidden="true"></pre>
+              <textarea class="ed-ta mono" id="a-source" spellcheck="false"
+                aria-label="Algorithm source code" autocapitalize="off"
+                autocomplete="off" autocorrect="off" wrap="off"
+                placeholder="Paste your Python here, or choose a .py file below"></textarea>
+            </div>
+          </div>
+          <div class="ed-bar">
+            <span id="a-edstat">0 lines</span>
+            <span class="ed-marks" id="a-edmarks"></span>
+          </div>
           <div style="display:flex;gap:9px;margin-top:10px;flex-wrap:wrap">
             <input type="file" id="a-file" aria-label="Choose an algorithm .py file" accept=".py,.txt" style="display:none">
             <button class="btn ghost" id="a-pick" style="flex:1;min-width:130px">Choose .py file</button>
@@ -1895,11 +2232,33 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
           Every change to who can sign in, which algorithm runs where, and any
           request to trade real money — with the name attached. Append only.
         </div>
+        <div class="rgrid" style="margin-top:13px">
+          <div>
+            <label class="lbl" for="au-actor">Operator</label>
+            <select class="field" id="au-actor" aria-label="Filter by operator"></select>
+          </div>
+          <div>
+            <label class="lbl" for="au-from">From</label>
+            <input class="field num" type="date" id="au-from" aria-label="From date">
+          </div>
+        </div>
+        <div class="rgrid" style="margin-top:9px">
+          <div>
+            <label class="lbl" for="au-to">To</label>
+            <input class="field num" type="date" id="au-to" aria-label="To date">
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end">
+            <a class="btn ghost" id="au-csv" style="flex:1">Export CSV</a>
+            <a class="btn ghost" id="au-json" style="flex:1">JSON</a>
+          </div>
+        </div>
         <div class="seg" id="au-filter" style="margin-top:12px;margin-bottom:0">
           <button class="on" data-au="">Everything</button>
           <button data-au="live">Live money</button>
           <button data-au="user">People</button>
           <button data-au="algorithm">Algorithm</button>
+          <button data-au="strategy">Strategy</button>
+          <button data-au="session">Sessions</button>
         </div>
         <div id="au-list" style="margin-top:12px"></div>
       </div>
@@ -1972,9 +2331,46 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       </div>
     </div>
   </section>
+  <!-- ============ RISK ============ -->
+  <section class="view" id="v-risk">
+    <h1 class="sr-only">Risk</h1>
+    <div class="seg" id="rk-slot" style="margin-bottom:13px"></div>
+    <div class="deck" id="rk-body">
+      <div class="card span-all"><div class="sk sk-line" style="width:40%"></div>
+        <div class="sk sk-block" style="margin-top:12px"></div></div>
+    </div>
+  </section>
+
+  <!-- ============ SESSION REPLAY ============ -->
+  <section class="view" id="v-replay">
+    <h1 class="sr-only">Session replay</h1>
+    <div class="deck">
+      <div class="card span-all">
+        <div class="card-h"><h2 class="card-t">Replay a trading day</h2>
+          <span class="dim mono" style="font-size:9.5px" id="rp-count"></span></div>
+        <div class="muted" style="font-size:12px;line-height:1.6">
+          Step through a session in order — every entry, exit, ladder move and
+          the reason the algorithm gave for sitting out. Status and chart pushes
+          are never stored, so this is the decision record, not a screen recording.
+        </div>
+        <div id="rp-days" style="margin-top:14px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ALERTS ============ -->
+  <section class="view" id="v-alerts">
+    <h1 class="sr-only">Alerts</h1>
+    <div class="deck" id="al-body">
+      <div class="card span-all"><div class="sk sk-line" style="width:36%"></div>
+        <div class="sk sk-block" style="margin-top:12px"></div></div>
+    </div>
+  </section>
 </main>
 
 <nav id="mob-nav"></nav>
+<button class="kbhint" id="kbhint" type="button" title="Keyboard shortcuts"
+        aria-label="Keyboard shortcuts">?</button>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1982,7 +2378,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.19-obsidian.10";
+const BUILD = "2026.08.19-obsidian.11";
 
 /* The dashboard is a static file with nowhere of its own to keep state, so it
    has to be told which trading server to talk to. Rather than ask for that
@@ -1992,6 +2388,30 @@ const BUILD = "2026.08.19-obsidian.10";
 const SERVER_URL = "https://meridian.tail3606fd.ts.net";
 
 const $ = s => document.querySelector(s);
+
+/* SVG fill/stroke attributes are generated as strings, so they cannot inherit
+   a CSS variable the way a class can. These are read from the same :root
+   tokens once at boot instead of being retyped as literals — which is how the
+   charts ended up using #3ecf8e for profit while everything else used
+   #38e08f, two greens for one meaning. */
+const C = (() => {
+  const fallback = {
+    profit: "#38e08f", loss: "#ff5566", flat: "#8a8377",
+    accent: "#e8c458", warning: "#e8c458", critical: "#e0142a",
+  };
+  try {
+    const cs = getComputedStyle(document.documentElement);
+    const read = (name, def) => (cs.getPropertyValue(name) || "").trim() || def;
+    return {
+      profit: read("--up", fallback.profit),
+      loss: read("--down", fallback.loss),
+      flat: read("--dim", fallback.flat),
+      accent: read("--au", fallback.accent),
+      warning: read("--warning", fallback.warning),
+      critical: read("--critical", fallback.critical),
+    };
+  } catch (e) { return fallback; }
+})();
 const $$ = s => [...document.querySelectorAll(s)];
 
 const VIEWS = [
@@ -1999,9 +2419,13 @@ const VIEWS = [
   { id: "chart",    label: "Chart",    icon: 'M3 3v18h18M7 15V9m5 6V5m5 10v-4' },
   { id: "feed",     label: "Live",     icon: 'M4 17l6-6-6-6M12 19h8' },
   { id: "trades",   label: "Trades",   icon: 'M3 17l6-6 4 4 8-8M21 7h-5m5 0v5' },
+  { id: "risk",     label: "Risk",     icon: 'M12 3l8 3v6c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V6zM12 8v4M12 16h.01' },
+  { id: "replay",   label: "Replay",   icon: 'M3 12a9 9 0 109-9M3 12l4-4M3 12l4 4M12 8v5l3.5 2' },
   { id: "reports",  label: "Reports",  icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M8 13h8M8 17h5' },
   { id: "strategy", label: "Strategy", icon: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6' },
   { id: "ctrl",     label: "Control",  icon: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2v.2a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.6 1.7 1.7 0 00-1.9.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00-1.2-2.9H3a2 2 0 110-4h.1A1.7 1.7 0 004.7 8a1.7 1.7 0 00-.4-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V2a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H22a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z' },
+  { id: "alerts",   label: "Alerts",   icon: 'M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0',
+    needs: "configure_alerts" },
   { id: "admin",    label: "Admin",    icon: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
     superOnly: true },
 ];
@@ -2019,7 +2443,9 @@ const S = {
   tradePeriod: "day", reportPeriod: "month",
   anchor: new Date().toISOString().slice(0, 10),
   includeEvents: false, reportPreview: null,
-  audit: [], auditFilter: "",
+  audit: [], auditFilter: "", auditActor: "", auditFrom: "", auditTo: "",
+  risk: null, riskSlot: 0, alerts: null, schedules: [],
+  curveSessions: [], curveZoom: null,
   ws: null, wsRetry: 0, marks: []
 };
 
@@ -2193,6 +2619,44 @@ function bootSequence() {
 
 /* ---------------- gate ---------------- */
 $("#g-build").textContent = BUILD;
+const kbBtn = $("#kbhint");
+if (kbBtn) kbBtn.onclick = showShortcuts;
+
+/* ---------------- display density ----------------
+   Three states, cycled from one button, remembered per browser. Applied to
+   documentElement rather than body so it is in effect before the first paint
+   on a reload — swapping density after the page is up is a visible lurch. */
+const DENSITY = ["comfortable", "default", "compact"];
+const DENSITY_LABEL = {
+  comfortable: "Comfortable — roomier, for reading",
+  default: "Default",
+  compact: "Compact — more on screen",
+};
+
+function applyDensity(mode) {
+  const m = DENSITY.includes(mode) ? mode : "default";
+  if (m === "default") document.documentElement.removeAttribute("data-density");
+  else document.documentElement.setAttribute("data-density", m);
+  localStorage.setItem("mc_density", m);
+  const btn = $("#h-density");
+  if (btn) {
+    btn.title = DENSITY_LABEL[m];
+    btn.setAttribute("aria-label", `Display density: ${DENSITY_LABEL[m]}`);
+  }
+  return m;
+}
+
+applyDensity(localStorage.getItem("mc_density") || "default");
+
+const denBtn = $("#h-density");
+if (denBtn) denBtn.onclick = () => {
+  const now = localStorage.getItem("mc_density") || "default";
+  const next = DENSITY[(DENSITY.indexOf(now) + 1) % DENSITY.length];
+  applyDensity(next);
+  toast(DENSITY_LABEL[next]);
+};
+const railBuild = $("#r-build");
+if (railBuild) railBuild.textContent = BUILD;
 $("#g-user").value = S.user || "Sehej";
 
 function gateMsg(text, isErr) {
@@ -2537,7 +3001,10 @@ function enterApp(me) {
     S.user = m.user || S.user;
     localStorage.setItem("mc_role", S.role);
     localStorage.setItem("mc_user", S.user);
-    $("#r-user").textContent = `${m.user} · ${String(m.role).replace("_", " ")}`;
+    const ru = $("#r-user");
+    const label = `${m.user} · ${String(m.role).replace(/_/g, " ")}`;
+    ru.textContent = label;
+    ru.title = label;
     applyRole();
     // Also caught here, not only on the login path: resuming a session or
     // unlocking with a fingerprint must not skip a forced passcode change.
@@ -2556,9 +3023,14 @@ function enterApp(me) {
 $("#mob-nav").innerHTML = VIEWS.map((v, i) =>
   `<button data-v="${v.id}" class="${i === 0 ? "on" : ""}">
      <svg viewBox="0 0 24 24"><path d="${v.icon}"/></svg>${v.label}</button>`).join("");
+// The label is a span so the icon-only band can hide it; `title` keeps the
+// name reachable there, and aria-label keeps it reachable to a screen reader
+// in every band.
 $("#rail-nav").innerHTML = VIEWS.map((v, i) =>
-  `<button data-v="${v.id}" class="${i === 0 ? "on" : ""}">
-     <svg viewBox="0 0 24 24"><path d="${v.icon}"/></svg>${v.label}</button>`).join("");
+  `<button data-v="${v.id}" class="${i === 0 ? "on" : ""}"
+     title="${esc(v.label)}" aria-label="${esc(v.label)}">
+     <svg viewBox="0 0 24 24"><path d="${v.icon}"/></svg
+     ><span class="lbl">${esc(v.label)}</span></button>`).join("");
 
 function go(id) {
   S.view = id;
@@ -2570,14 +3042,31 @@ function go(id) {
   if (id === "feed") renderFeed();
   if (id === "chart") { loadChart(); renderTVSources(); }
   if (id === "strategy") loadStrategy();
-  if (id === "admin") { loadUsers(); loadAlgorithm(); loadAudit(); }
+  if (id === "admin") { loadUsers(); loadAlgorithm(); loadAudit(); loadMatrix(); }
+  if (id === "risk") loadRisk();
+  if (id === "alerts") loadAlerts();
+  if (id === "replay") loadReplayPage();
   window.scrollTo(0, 0);
 }
 
+/* The command palette, the number-key shortcuts and several buttons were all
+   written against `show(...)`, which never existed — `go` is the navigation
+   function, so every one of those threw a ReferenceError and did nothing.
+   Aliased rather than renamed at ~10 call sites, because `show` reads better
+   at the call site than `go`. */
+function show(id) { return go(id); }
+
 /* Hide what this account cannot use, rather than letting it 403. */
+/* Role questions asked in more than one place. Kept as functions rather than
+   inline string comparisons so adding a role is one edit, not a grep. */
+function canOperate() {
+  return ["super_admin", "operator", "risk_manager"].includes(S.role);
+}
+function isSuperAdmin() { return S.role === "super_admin"; }
+
 function applyRole() {
-  const isSuper = S.role === "super_admin";
-  const canOperate = S.role === "super_admin" || S.role === "operator";
+  const isSuper = isSuperAdmin();
+  const canOperate = ["super_admin", "operator", "risk_manager"].includes(S.role);
   $$("[data-v='admin']").forEach(b => b.style.display = isSuper ? "" : "none");
   ["#c-start", "#c-stop", "#c-save", "#c-auto"].forEach(sel => {
     const el = $(sel);
@@ -2968,6 +3457,8 @@ function renderFleet() {
       </div>
       <div class="fl-algo">${esc(s.algorithm || "—")}</div>
       ${idleBadge(s)}
+      ${!s.running && s.last_run ? `<div class="fl-last">LAST RAN ${
+        esc(String(s.last_run).replace("T", " ").slice(0, 16))}</div>` : ""}
       ${silent ? `<div class="fl-silent">RUNNING — NO TELEMETRY</div>` : `
         <div class="fl-nums">
           <div><div class="fl-k">Day P&L</div>
@@ -2977,7 +3468,8 @@ function renderFleet() {
           <div><div class="fl-k">Position</div>
             <div class="fl-v num">${s.position ? "open" : "flat"}</div></div>
         </div>`}
-      ${s.last_error ? `<div class="fl-err">${esc(s.last_error)}</div>` : ""}
+      ${s.last_error ? `<div class="fl-err"><span aria-hidden="true">⚠</span> ${
+        esc(s.last_error)}</div>` : ""}
     </button>`;
   };
 
@@ -3040,7 +3532,9 @@ function renderNews() {
   $("#d-newsage").textContent = n.age_seconds == null ? ""
     : (n.stale ? "cached · " : "") + ago(n.age_seconds);
   if (!n.items || !n.items.length) {
-    box.innerHTML = `<div class="empty">${esc(n.error || "No headlines right now.")}</div>`;
+    box.innerHTML = emptyState("feed", "No headlines right now",
+      esc(n.error || "The wire is reachable but returned nothing. It refreshes "
+                   + "every few minutes on its own."));
     return;
   }
   box.innerHTML = n.items.slice(0, 12).map(i => `
@@ -3066,6 +3560,8 @@ function renderDash() {
   p.querySelector(".dot").className = "dot" + (running ? " beat" : "");
   t.textContent = stateTxt;
   $("#r-state").textContent = stateTxt.toUpperCase();
+  const rdot = $("#r-dot");
+  if (rdot) rdot.className = "sdot " + (st.state === "error" ? "err" : running ? "run" : "");
 
   const paper = s.paper !== undefined ? s.paper : (st.config ? st.config.paper_mode : true);
   // Real money gets a permanent red band across the top of the app. A pill in
@@ -3258,7 +3754,7 @@ function drawSpark() {
   const xy = vals.map((v, i) => [i / (vals.length - 1) * W, H - 3 - ((v - lo) / span) * (H - 8)]);
   const line = xy.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
   const up = vals[vals.length - 1] >= vals[0];
-  const c = up ? "#3ecf8e" : "#f0505a";
+  const c = up ? C.profit : C.loss;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.innerHTML = `<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="${c}" stop-opacity=".22"/>
@@ -3376,15 +3872,24 @@ function renderFeed() {
    underneath, so a run that made money by surviving a deep hole does not look
    the same as one that ground steadily upward.
 ==================================================== */
-function drawCurve(sessions) {
-  const pts = (sessions || [])
+function drawCurve(sessions, range) {
+  const all = (sessions || [])
     .filter(s => s.close_equity != null)
-    .map(s => ({ d: s.session_date, v: Number(s.close_equity) }));
-  if (pts.length < 2) {
+    .map(s => ({ d: s.session_date, v: Number(s.close_equity),
+                 p: Number(s.day_pnl) || 0, t: Number(s.trades) || 0 }));
+  if (all.length < 2) {
     return `<div class="chart-empty"><div class="ce-mark">◈</div>
       <div class="ce-h">Not enough sessions to draw a curve</div>
       <div class="ce-s">Two or more trading days in the window will plot here.</div></div>`;
   }
+
+  // A zoom is a slice of the same series, so every scale below is computed
+  // from what is actually on screen — zooming into a flat fortnight should
+  // fill the panel, not show a flat line across the middle of it.
+  const a = range ? Math.max(0, Math.min(all.length - 2, range[0])) : 0;
+  const b = range ? Math.min(all.length - 1, Math.max(a + 1, range[1])) : all.length - 1;
+  const pts = all.slice(a, b + 1);
+  const zoomed = pts.length !== all.length;
 
   const W = 900, H = 260, PAD = { t: 14, r: 62, b: 24, l: 8 };
   const vals = pts.map(p => p.v);
@@ -3395,8 +3900,14 @@ function drawCurve(sessions) {
   const x = i => PAD.l + (pts.length <= 1 ? pw / 2 : (i / (pts.length - 1)) * pw);
   const y = v => PAD.t + ph - ((v - lo) / (hi - lo)) * ph;
 
+  // The peak has to carry over from before the visible window, or a zoom into
+  // the middle of a drawdown would show no drawdown at all.
   let peak = -Infinity;
-  const peaks = pts.map(p => { peak = Math.max(peak, p.v); return peak; });
+  for (let i = 0; i <= b; i++) {
+    peak = Math.max(peak, all[i].v);
+    if (i >= a) all[i]._peak = peak;
+  }
+  const peaks = pts.map(p => p._peak);
 
   let g = `<defs>
     <linearGradient id="cf" x1="0" y1="0" x2="0" y2="1">
@@ -3415,23 +3926,166 @@ function drawCurve(sessions) {
   // Shade the gap between the running peak and equity: that is the drawdown.
   const peakPath = peaks.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join("");
   const backPath = pts.map((p, i) => `L${x(pts.length - 1 - i).toFixed(1)} ${y(pts[pts.length - 1 - i].v).toFixed(1)}`).join("");
-  g += `<path d="${peakPath} ${backPath} Z" fill="#ff5566" opacity=".1"/>`;
+  g += `<path d="${peakPath} ${backPath} Z" fill="${C.loss}" opacity=".1"/>`;
 
   const line = pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join("");
   g += `<path d="${line} L${x(pts.length - 1).toFixed(1)} ${H - PAD.b} L${x(0).toFixed(1)} ${H - PAD.b} Z"
       fill="url(#cf)"/>
-    <path d="${peakPath}" stroke="#ff5566" stroke-width="1" fill="none"
+    <path d="${peakPath}" stroke="${C.loss}" stroke-width="1" fill="none"
       stroke-dasharray="3 4" opacity=".5"/>
-    <path d="${line}" stroke="#e8c458" stroke-width="1.8" fill="none"/>
-    <circle cx="${x(pts.length - 1)}" cy="${y(pts[pts.length - 1].v)}" r="3.5" fill="#e8c458"/>`;
+    <path d="${line}" stroke="${C.accent}" stroke-width="1.8" fill="none"/>
+    <circle cx="${x(pts.length - 1)}" cy="${y(pts[pts.length - 1].v)}" r="3.5" fill="${C.accent}"/>`;
 
   g += `<text x="${PAD.l + 2}" y="${H - 6}" fill="#8a8377" font-size="10"
       font-family="ui-monospace,monospace">${esc(pts[0].d)}</text>
     <text x="${W - PAD.r}" y="${H - 6}" fill="#8a8377" font-size="10" text-anchor="end"
       font-family="ui-monospace,monospace">${esc(pts[pts.length - 1].d)}</text>`;
 
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"
-    role="img" aria-label="Equity curve with drawdown shaded">${g}</svg>`;
+  // Interaction layer. One invisible band per point rather than pointer maths
+  // on the path, so the hit target is the whole column and a touch anywhere
+  // near a day selects that day.
+  const bandW = pw / Math.max(1, pts.length - 1);
+  g += `<g class="cv-hit">` + pts.map((p, i) => {
+    const cx = x(i);
+    const dd = p._peak > 0 ? (p.v - p._peak) / p._peak * 100 : 0;
+    return `<rect x="${(cx - bandW / 2).toFixed(1)}" y="${PAD.t}"
+      width="${bandW.toFixed(1)}" height="${ph}" fill="transparent"
+      data-cv="${i}" data-cvx="${cx.toFixed(1)}" data-cvy="${y(p.v).toFixed(1)}"
+      data-d="${esc(p.d)}" data-v="${p.v}" data-p="${p.p}" data-t="${p.t}"
+      data-dd="${dd.toFixed(2)}"></rect>`;
+  }).join("") + `</g>
+    <g class="cv-cross" style="display:none">
+      <line class="cv-vline" y1="${PAD.t}" y2="${PAD.t + ph}"/>
+      <circle class="cv-dot" r="4"/>
+    </g>
+    <rect class="cv-sel" y="${PAD.t}" height="${ph}" style="display:none"/>`;
+
+  return `<div class="cvwrap" data-lo="${a}" data-hi="${b}" data-n="${all.length}">
+    <svg viewBox="0 0 ${W} ${H}" class="cv" style="width:100%;height:auto"
+      role="img" aria-label="Equity curve with drawdown shaded. ${
+        pts.length} sessions from ${esc(pts[0].d)} to ${esc(pts[pts.length - 1].d)}.">${g}</svg>
+    <div class="cv-tip" hidden></div>
+    ${zoomed ? `<button class="cv-reset" type="button">Reset zoom</button>` : ""}
+    <div class="cv-hint">Drag to zoom${zoomed ? " · double-click to reset" : ""}</div>
+  </div>`;
+}
+
+/* Wires the crosshair, the tooltip and drag-to-zoom onto a curve that has just
+   been written into the page. Re-run after every redraw — the nodes are new
+   each time, so listeners cannot survive.
+
+   Zoom state lives on S rather than in the DOM so switching period and coming
+   back does not leave you looking at a window you forgot you set. */
+function bindCurve(host, sessions, onZoom) {
+  const wrap = host.querySelector(".cvwrap");
+  if (!wrap) return;
+  const svg = wrap.querySelector("svg");
+  const tip = wrap.querySelector(".cv-tip");
+  const cross = wrap.querySelector(".cv-cross");
+  const vline = wrap.querySelector(".cv-vline");
+  const dot = wrap.querySelector(".cv-dot");
+  const sel = wrap.querySelector(".cv-sel");
+  const bands = [...wrap.querySelectorAll("[data-cv]")];
+  if (!bands.length) return;
+
+  const lo = Number(wrap.dataset.lo), n = Number(wrap.dataset.n);
+  let dragFrom = null;
+
+  const show = el => {
+    const d = el.dataset;
+    cross.style.display = "";
+    vline.setAttribute("x1", d.cvx); vline.setAttribute("x2", d.cvx);
+    dot.setAttribute("cx", d.cvx); dot.setAttribute("cy", d.cvy);
+    const dd = Number(d.dd);
+    tip.hidden = false;
+    tip.innerHTML = `<div class="cvt-d">${esc(d.d)}</div>
+      <div class="cvt-r"><span>Equity</span><b class="num">${money(Number(d.v), 2)}</b></div>
+      <div class="cvt-r"><span>Day P&L</span>
+        <b class="num ${cls(Number(d.p))}">${signed(Number(d.p), 0)}</b></div>
+      <div class="cvt-r"><span>From peak</span>
+        <b class="num ${dd < -0.005 ? "down" : "muted"}">${dd.toFixed(2)}%</b></div>
+      <div class="cvt-r"><span>Trades</span><b class="num">${d.t}</b></div>`;
+    // Flip the tooltip to the other side near the right edge rather than
+    // letting it hang off the panel.
+    const frac = Number(d.cvx) / 900;
+    tip.style.left = (frac * 100).toFixed(2) + "%";
+    tip.classList.toggle("flip", frac > 0.62);
+  };
+
+  const hide = () => {
+    cross.style.display = "none";
+    tip.hidden = true;
+    if (!dragFrom) sel.style.display = "none";
+  };
+
+  bands.forEach(band => {
+    band.addEventListener("pointerenter", () => {
+      show(band);
+      if (dragFrom !== null) {
+        const x1 = Number(dragFrom.dataset.cvx), x2 = Number(band.dataset.cvx);
+        sel.setAttribute("x", Math.min(x1, x2));
+        sel.setAttribute("width", Math.abs(x2 - x1));
+        sel.style.display = "";
+      }
+    });
+    band.addEventListener("pointerdown", e => {
+      dragFrom = band;
+      sel.style.display = "none";
+      if (svg.setPointerCapture && e.pointerId != null) {
+        try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+    });
+    band.addEventListener("pointerup", () => {
+      if (dragFrom === null) return;
+      const i = Number(dragFrom.dataset.cv), j = Number(band.dataset.cv);
+      dragFrom = null;
+      sel.style.display = "none";
+      // A click is a drag of zero width. Zooming to one point would show
+      // nothing, so anything under two sessions is treated as a click.
+      if (Math.abs(i - j) < 1) return;
+      onZoom([lo + Math.min(i, j), lo + Math.max(i, j)]);
+    });
+  });
+
+  svg.addEventListener("pointerleave", () => { dragFrom = null; hide(); });
+  svg.addEventListener("dblclick", () => onZoom(null));
+  const reset = wrap.querySelector(".cv-reset");
+  if (reset) reset.onclick = () => onZoom(null);
+
+  // Keyboard: the curve is reachable and readable without a pointer.
+  svg.setAttribute("tabindex", "0");
+  let k = bands.length - 1;
+  svg.addEventListener("keydown", e => {
+    if (e.key === "ArrowLeft") k = Math.max(0, k - 1);
+    else if (e.key === "ArrowRight") k = Math.min(bands.length - 1, k + 1);
+    else if (e.key === "Escape") { onZoom(null); return; }
+    else return;
+    e.preventDefault();
+    show(bands[k]);
+  });
+  svg.addEventListener("blur", hide);
+  void n;
+}
+
+/* Redraw the curve at the current zoom and re-attach its handlers. Kept apart
+   from loadReports so zooming does not re-request the whole summary. */
+function paintCurve() {
+  const host = $("#r-curve");
+  if (!host) return;
+  const rows = S.curveSessions || [];
+  host.innerHTML = drawCurve(rows, S.curveZoom);
+  bindCurve(host, rows, z => { S.curveZoom = z; paintCurve(); });
+
+  const note = $("#r-curve-note");
+  if (note) {
+    const shown = S.curveZoom
+      ? Math.min(rows.length, S.curveZoom[1] - S.curveZoom[0] + 1) : rows.length;
+    note.textContent = rows.length
+      ? (S.curveZoom
+          ? `${plural(shown, "session")} of ${rows.length} · zoomed`
+          : `${plural(rows.length, "session")} · drawdown shaded`).toUpperCase()
+      : "";
+  }
 }
 
 /* ================= daily P&L calendar =================
@@ -3472,16 +4126,74 @@ function drawCalendar(sessions) {
     const bg = v > 0 ? `rgba(56,224,143,${alpha})`
              : v < 0 ? `rgba(255,85,102,${alpha})`
              : "rgba(255,255,255,.05)";
+    // A day is worth reading at a glance: the figure goes in the cell where
+    // there is room, and the exact numbers come from the tooltip.
+    const compact = Math.abs(v) >= 1000
+      ? (v / 1000).toFixed(Math.abs(v) >= 10000 ? 0 : 1) + "k"
+      : String(Math.round(Math.abs(v)));
     cells.push(`<button class="cal-c ${tone}" style="background:${bg}"
       data-cal="${iso}" type="button"
-      title="${iso} · ${v >= 0 ? "+" : "−"}₹${Math.abs(Math.round(v)).toLocaleString("en-IN")} · ${s.trades || 0} trades"
-      aria-label="${iso}, ${v >= 0 ? "profit" : "loss"} ${Math.abs(Math.round(v))} rupees"></button>`);
+      data-pnl="${v}" data-trades="${s.trades || 0}"
+      aria-label="${iso}, ${v >= 0 ? "profit" : "loss"} ${Math.abs(Math.round(v))} rupees, ${
+        plural(s.trades || 0, "trade")}"
+      ><span class="cal-v">${v === 0 ? "·" : (v > 0 ? "" : "−") + compact}</span></button>`);
   }
+
+  // The scale is relative to this window, so it needs saying which end is
+  // which — a mid-green cell means nothing without the range beside it.
+  const sw = (a, c) => `<i style="background:${c}"></i>`;
+  const legend = `<div class="cal-legend">
+    <span>LOSS</span>
+    <span class="cal-scale">
+      ${[.9, .6, .35].map(x => sw(x, `rgba(255,85,102,${x})`)).join("")}
+      ${sw(0, "rgba(255,255,255,.05)")}
+      ${[.35, .6, .9].map(x => sw(x, `rgba(56,224,143,${x})`)).join("")}
+    </span>
+    <span>PROFIT</span>
+    <span style="margin-left:auto">${signed(down, 0)} … ${signed(up, 0)}</span>
+  </div>`;
 
   return `<div class="cal-days">
       ${["M", "T", "W", "T", "F", "S", "S"].map(d => `<span>${d}</span>`).join("")}
     </div>
-    <div class="cal-grid">${cells.join("")}</div>`;
+    <div class="cal-grid">${cells.join("")}</div>
+    ${legend}`;
+}
+
+/* A real tooltip rather than the browser's title attribute: title waits a
+   second, cannot be styled, and never appears at all on a touch screen. */
+function bindCalendar(host) {
+  if (!host) return;
+  let tip = $("#cal-tip");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.id = "cal-tip";
+    tip.className = "cal-tip";
+    tip.hidden = true;
+    document.body.appendChild(tip);
+  }
+  host.querySelectorAll("[data-cal][data-pnl]").forEach(cell => {
+    const place = e => {
+      const v = Number(cell.dataset.pnl), n = Number(cell.dataset.trades);
+      tip.innerHTML = `<div class="ct-d">${esc(cell.dataset.cal)}</div>
+        <div class="ct-r"><span>P&L</span>
+          <b class="${cls(v)}">${signed(v, 0)}</b></div>
+        <div class="ct-r"><span>Trades</span><b>${n}</b></div>
+        ${n === 0 ? `<div class="ct-r"><span class="dim">no qualifying setups</span></div>` : ""}`;
+      tip.hidden = false;
+      const r = cell.getBoundingClientRect();
+      const w = tip.offsetWidth || 150;
+      // Kept inside the viewport on both edges rather than clipped.
+      tip.style.left = Math.max(8, Math.min(window.innerWidth - w - 8,
+                                            r.left + r.width / 2 - w / 2)) + "px";
+      tip.style.top = (r.top > 90 ? r.top - tip.offsetHeight - 8 : r.bottom + 8) + "px";
+      void e;
+    };
+    cell.addEventListener("pointerenter", place);
+    cell.addEventListener("focus", place);
+    cell.addEventListener("pointerleave", () => { tip.hidden = true; });
+    cell.addEventListener("blur", () => { tip.hidden = true; });
+  });
 }
 
 /* ================= algorithm diff =================
@@ -3642,7 +4354,8 @@ function repRender() {
     <div class="ln ${esc(e.level || "info")}">
       <span class="ln-t">${esc(String(e.ts).slice(11, 19))}</span>
       <span class="ln-m"><span class="tag">${esc(e.kind)}</span>${esc(e.message)}</span>
-    </div>`).join("") : `<div class="empty">Nothing recorded for this session.</div>`;
+    </div>`).join("") : `${emptyState("file", "Nothing recorded for this session",
+      "The algorithm did not report any decisions on this date.")}`;
 }
 
 function repStep() {
@@ -3817,8 +4530,47 @@ if (palBack) palBack.addEventListener("pointerdown", e => {
    Single letters jump between sections. They are ignored while a field has
    focus, so typing a passcode or an algorithm name never navigates away.
 ==================================================== */
+/* Letters navigate; digits navigate by position, which is what people who use
+   several of these a day reach for. S and X are deliberately not start/stop:
+   an unmodified single key that opens a position is an accident waiting to
+   happen, so they go through the same confirmation as the buttons. */
 const KEYNAV = { d: "dash", c: "chart", l: "feed", t: "trades",
-                 r: "reports", s: "strategy", a: "admin", x: "ctrl" };
+                 r: "reports", g: "strategy", a: "admin", k: "risk",
+                 p: "replay", n: "alerts" };
+
+const SHORTCUTS = [
+  ["Ctrl / ⌘ + K", "Command palette — everything, searchable"],
+  ["1 – 9", "Jump to a section by position"],
+  ["D · C · L · T", "Deck · Chart · Live · Trades"],
+  ["R · K · P", "Reports · Risk · Replay"],
+  ["G · N · A", "Strategy · Alerts · Admin"],
+  ["S", "Start the selected algorithm (asks first)"],
+  ["X", "Stop the selected algorithm (asks first)"],
+  ["/", "Search the live log"],
+  ["?", "This list"],
+  ["Esc", "Close whatever is open"],
+];
+
+function visibleViews() {
+  return VIEWS.filter(v => {
+    if (v.superOnly) return isSuperAdmin();
+    if (v.needs) return isSuperAdmin();
+    return true;
+  });
+}
+
+function showShortcuts() {
+  showConfirm({
+    title: "Keyboard shortcuts",
+    sub: "Single keys work anywhere except inside a field.",
+    confirm: "Close",
+    body: `<div class="kbs">${SHORTCUTS.map(([k, d]) =>
+      `<kbd>${esc(k)}</kbd><span>${esc(d)}</span>`).join("")}</div>`,
+    onConfirm: () => {},
+  });
+  const no = $("#cfm-no");
+  if (no) no.style.display = "none";
+}
 
 document.addEventListener("keydown", e => {
   // Ctrl/Cmd+K opens the palette from anywhere, including from inside a field.
@@ -3836,14 +4588,60 @@ document.addEventListener("keydown", e => {
   if (typing) return;
   if ($("#gate") && !$("#gate").classList.contains("hide")) return;
 
-  const view = KEYNAV[String(e.key).toLowerCase()];
+  const key = String(e.key).toLowerCase();
+
+  const view = KEYNAV[key];
   if (view && VIEWS.some(v => v.id === view)) {
     e.preventDefault();
     show(view);
     return;
   }
+
+  // Digits address the nav by position, so they follow whatever the current
+  // role can actually see rather than a fixed list.
+  if (/^[1-9]$/.test(e.key)) {
+    const target = visibleViews()[Number(e.key) - 1];
+    if (target) { e.preventDefault(); show(target.id); }
+    return;
+  }
+
+  if (key === "s" || key === "x") {
+    if (!canOperate()) return;
+    e.preventDefault();
+    const slot = S.view === "ctrl" ? ctrlSlot() : deckSlot();
+    const name = laneName(slot);
+    const starting = key === "s";
+    if (!confirmAction({
+      title: `${starting ? "Start" : "Stop"} ${name}?`,
+      detail: starting
+        ? "The algorithm begins evaluating the market and may open a position."
+        : "Any open position is flattened, the end-of-day report is filed, then it exits.",
+      laneName: name,
+    })) return;
+    api(starting ? "/api/bot/start" : "/api/bot/stop", {
+      method: "POST",
+      body: JSON.stringify(starting ? { force: false, slot }
+                                    : { reason: "keyboard shortcut", slot }),
+    }).then(() => { toast(starting ? "Starting…" : "Stopping…"); refreshStatus(); loadFleet(); })
+      .catch(err => toast(err.message));
+    return;
+  }
+
+  if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+    e.preventDefault();
+    showShortcuts();
+    return;
+  }
+
+  if (e.key === "/") {
+    e.preventDefault();
+    show("feed");
+    setTimeout(() => { const f = $("#f-search"); if (f) f.focus(); }, 60);
+    return;
+  }
   if (e.key === "Escape") {
     if (!$("#pal").hidden) { palClose(); return; }
+    if (!$("#cfm").hidden) { closeConfirm(); return; }
     if (!$("#doc").hidden) { docClose(); return; }
     if (!$("#dif").hidden) { difClose(); return; }
     if (!$("#rep").hidden) { repClose(); return; }
@@ -3896,6 +4694,7 @@ async function loadTrades() {
       </div>`;
 
     $("#t-cal").innerHTML = drawCalendar(sum.sessions);
+    bindCalendar($("#t-cal"));
     // Clicking a day narrows the list to that session.
     $$("[data-cal]").forEach(el => el.onclick = () => {
       S.anchor = el.dataset.cal;
@@ -3906,9 +4705,14 @@ async function loadTrades() {
 
     const list = $("#t-list");
     if (!d.trades.length) {
-      list.innerHTML = `<div class="card"><div class="empty">
-        NO TRADES IN THIS PERIOD<br>
-        Days the algorithm did not trade are logged under Reports with the reason.</div></div>`;
+      list.innerHTML = `<div class="card">${emptyState(
+        "trades", "No trades in this period",
+        "The algorithm found no qualifying setups. Every day it sat out is "
+        + "logged with the reason it gave.",
+        [{ label: "Open the session log →", id: "te-feed" },
+         { label: "Review a session", id: "te-replay" }])}</div>`;
+      const f1 = $("#te-feed"); if (f1) f1.onclick = () => show("feed");
+      const f2 = $("#te-replay"); if (f2) f2.onclick = openReplay;
       return;
     }
     list.innerHTML = d.trades.slice().reverse().map(t => {
@@ -4151,7 +4955,7 @@ function drawCandles(d) {
   });
 
   cs.forEach((c, i) => {
-    const [, o, h, l, cl] = c, up = cl >= o, col = up ? "#3ecf8e" : "#f0505a";
+    const [, o, h, l, cl] = c, up = cl >= o, col = up ? C.profit : C.loss;
     const x = s.x(i), top = s.y(Math.max(o, cl)), bot = s.y(Math.min(o, cl));
     g += `<line x1="${x}" x2="${x}" y1="${s.y(h)}" y2="${s.y(l)}" stroke="${col}"
         stroke-width="1" opacity=".8"/>
@@ -4184,7 +4988,7 @@ function drawTradeBox(opt, cur) {
   let lo = Math.min(...pool), hi = Math.max(...pool);
   const pad = (hi - lo) * 0.1 || 1; lo -= pad; hi += pad;
   const s = makeScale(Math.max(prices.length, 2), lo, hi, W, H);
-  const profit = cur >= opt.entry, col = profit ? "#3ecf8e" : "#f0505a";
+  const profit = cur >= opt.entry, col = profit ? C.profit : C.loss;
 
   let g = `<defs><linearGradient id="pf" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0%" stop-color="${col}" stop-opacity=".2"/>
@@ -4192,7 +4996,7 @@ function drawTradeBox(opt, cur) {
 
   if (opt.sl >= lo && opt.sl <= hi) {
     g += `<rect x="${CHART_PAD.l}" y="${s.y(opt.sl)}" width="${W - CHART_PAD.r - CHART_PAD.l}"
-      height="${Math.max(0, H - CHART_PAD.b - s.y(opt.sl))}" fill="#f0505a" opacity=".07"/>`;
+      height="${Math.max(0, H - CHART_PAD.b - s.y(opt.sl))}" fill="${C.loss}" opacity=".07"/>`;
   }
 
   if (prices.length > 1) {
@@ -4373,10 +5177,35 @@ async function loadChart() {
         ${pos.entry_reason ? `<div class="trade-why">${esc(pos.entry_reason)}</div>` : ""}
       </div>`;
     } else {
+      const live = !!(S.status && S.status.running);
       box.innerHTML = `<div class="card"><div class="card-h"><h2 class="card-t">Trade box</h2></div>
-        <div class="empty">${S.status && S.status.running
-          ? "Flat — the trade box opens with the next position,<br>entry, stop and every ladder level drawn live"
-          : "Bot offline"}</div></div>`;
+        ${live
+          ? emptyState("search", "Flat — watching for a setup",
+              "The box opens with the next position, with entry, stop and every "
+              + "ladder level drawn live.")
+          : emptyState("power", "The algorithm is not running",
+              (S.status && S.status.not_trading_reason)
+                ? esc(S.status.not_trading_reason)
+                : "Nothing is being evaluated, so there is no position to draw.",
+              [{ label: "Go to Control →", id: "tb-ctrl" },
+               canOperate() ? { label: "Start now", id: "tb-start", ghost: false } : null])}
+      </div>`;
+      const goCtrl = $("#tb-ctrl");
+      if (goCtrl) goCtrl.onclick = () => show("ctrl");
+      const quick = $("#tb-start");
+      if (quick) quick.onclick = async () => {
+        const name = laneName(0);
+        if (!confirmAction({
+          title: `Start ${name}?`,
+          detail: "The algorithm begins evaluating the market and may open a position.",
+          laneName: name,
+        })) return;
+        try {
+          await api("/api/bot/start",
+            { method: "POST", body: JSON.stringify({ force: false, slot: 0 }) });
+          toast("Starting…"); refreshStatus(); loadFleet();
+        } catch (e) { toast(e.message); }
+      };
     }
 
     $("#ch-context").innerHTML = m.spot ? `
@@ -4502,9 +5331,8 @@ async function loadReports() {
         ${metric("Inactive days", plural(s.days_blocked_chop, "day"), s.days_killed + " halted")}
       </div>`;
     // Equity curve and the risk block, from the same window as the summary.
-    $("#r-curve").innerHTML = drawCurve(sum.sessions);
-    $("#r-curve-note").textContent = sum.sessions.length
-      ? `${plural(sum.sessions.length, "session")} · drawdown shaded`.toUpperCase() : "";
+    S.curveSessions = sum.sessions;
+    paintCurve();
 
     const rm = (k, v, sub, cls2) => metric(k, v == null ? "—" : v, sub, undefined, cls2);
     $("#r-risk").innerHTML = `
@@ -4525,7 +5353,8 @@ async function loadReports() {
         <div><div class="day-d">${esc(d.session_date)}</div>
           <div class="day-m">${plural(d.trades, "trade")}${d.chop_blocked ? " · chop blocked" : ""}${d.killed ? " · halted" : ""} · ${esc(d.vol_regime || "")}</div></div>
         <div class="day-p num ${cls(d.day_pnl)}">${signed(d.day_pnl, 0)}</div>
-      </div>`).join("") : `<div class="empty">No sessions in window</div>`;
+      </div>`).join("") : `${emptyState("clock", "No sessions in this window",
+      "Pick a wider period, or a date the algorithm actually ran.")}`;
   } catch (e) { toast(e.message); }
 }
 
@@ -4628,15 +5457,121 @@ function renderStrategy() {
     <span class="mono gold">backend/app/bot/strategy.py</span> and redeploy. The supervisor,
     dashboard, reports and exports keep working as long as it still prints what it prints today.</div></div>`;
 
-  const nEdits = Object.keys(S.stratEdits).length;
-  if (nEdits) {
-    html += `<div class="savebar span-all">
-      <button class="btn ghost" id="st-discard">Discard</button>
-      <button class="btn" id="st-save">Commit ${plural(nEdits, "change")}</button></div>`;
-  }
-
   $("#st-body").innerHTML = html;
+  renderSaveBar();
   wireStrategy();
+}
+
+/* The unsaved-changes bar. Lives outside #st-body so re-rendering the
+   parameter cards on every keystroke does not tear it down and rebuild it. */
+function renderSaveBar() {
+  let bar = $("#st-savebar");
+  const n = Object.keys(S.stratEdits).length;
+  if (!n) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "st-savebar";
+    bar.className = "savebar";
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `<span class="sb-t">${plural(n, "unsaved change")}</span>
+    <button class="btn ghost" id="st-discard">Discard</button>
+    <button class="btn" id="st-save">Review &amp; save</button>`;
+  $("#st-discard").onclick = () => { S.stratEdits = {}; renderStrategy(); };
+  $("#st-save").onclick = confirmStrategySave;
+}
+
+/* Every pending change spelled out before anything is written. A parameter
+   list is exactly the kind of screen where a mis-tapped [+] goes unnoticed,
+   and the value being changed decides how the algorithm risks money. */
+function fmtParam(p, v) {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "boolean") return v ? "on" : "off";
+  if (p && p.type === "pct" && typeof v === "number") return (v * 100).toFixed(1) + "%";
+  if (typeof v === "number" && v > 0 && v < 1) return (v * 100).toFixed(1) + "%";
+  return String(v);
+}
+
+function pendingChanges() {
+  const d = S.strategy;
+  if (!d) return [];
+  const all = d.groups.flatMap(g => g.params);
+  return Object.keys(S.stratEdits).map(k => {
+    const p = all.find(x => x.key === k) || { key: k };
+    return { key: k, label: p.label || k, param: p,
+             from: fmtParam(p, p.value), to: fmtParam(p, S.stratEdits[k]) };
+  }).filter(c => c.from !== c.to);
+}
+
+function confirmStrategySave() {
+  const changes = pendingChanges();
+  if (!changes.length) { S.stratEdits = {}; renderStrategy(); return; }
+  const running = S.strategy && S.strategy.bot_running;
+  showConfirm({
+    title: `Save ${plural(changes.length, "change")}?`,
+    sub: running
+      ? "The algorithm is running. These take effect when it next starts — a "
+        + "position open right now finishes under the current values."
+      : "These take effect the next time an algorithm starts.",
+    body: `<div class="chg">${changes.map(c => `<div class="chg-r">
+        <span class="chg-k">${esc(c.label)}</span>
+        <span class="chg-v"><s>${esc(c.from)}</s> → <b>${esc(c.to)}</b></span>
+      </div>`).join("")}</div>`,
+    confirm: "Save",
+    onConfirm: saveStrategy,
+  });
+}
+
+async function saveStrategy() {
+  // Kept so the undo below has something to put back.
+  const before = {};
+  const all = S.strategy.groups.flatMap(g => g.params);
+  for (const k of Object.keys(S.stratEdits)) {
+    const p = all.find(x => x.key === k);
+    if (p) before[k] = p.value;
+  }
+  const n = Object.keys(S.stratEdits).length;
+  try {
+    S.strategy = await api("/api/strategy",
+      { method: "PUT", body: JSON.stringify({ values: S.stratEdits }) });
+    S.stratEdits = {};
+    renderStrategy();
+    refreshStatus();
+    offerUndo(`Saved ${plural(n, "change")}`, before);
+  } catch (e) { toast(e.message); }
+}
+
+/* Ten seconds to take it back. Nothing here is applied until an algorithm
+   restarts, so an undo inside that window is genuinely free — and a wrong
+   stop-loss noticed a second after saving should not need retyping. */
+let undoTimer = null;
+
+function offerUndo(message, previous) {
+  const el = $("#undo");
+  if (!el || !Object.keys(previous).length) { toast(message); return; }
+  let left = 10;
+  const paint = () => {
+    el.innerHTML = `<span class="ub-t">${esc(message)}</span>
+      <button class="btn ghost" id="ub-go">Undo (${left}s)</button>`;
+    $("#ub-go").onclick = async () => {
+      clearInterval(undoTimer);
+      el.hidden = true;
+      try {
+        S.strategy = await api("/api/strategy",
+          { method: "PUT", body: JSON.stringify({ values: previous }) });
+        renderStrategy();
+        toast("Reverted");
+      } catch (e) { toast(e.message); }
+    };
+  };
+  el.hidden = false;
+  paint();
+  clearInterval(undoTimer);
+  undoTimer = setInterval(() => {
+    left -= 1;
+    if (left <= 0) { clearInterval(undoTimer); el.hidden = true; return; }
+    paint();
+  }, 1000);
 }
 
 function wireStrategy() {
@@ -4668,17 +5603,6 @@ function wireStrategy() {
     renderStrategy();
   });
 
-  const discard = $("#st-discard");
-  if (discard) discard.onclick = () => { S.stratEdits = {}; renderStrategy(); };
-  const save = $("#st-save");
-  if (save) save.onclick = async () => {
-    save.disabled = true; save.textContent = "Committing…";
-    try {
-      S.strategy = await api("/api/strategy", { method: "PUT", body: JSON.stringify({ values: S.stratEdits }) });
-      S.stratEdits = {}; renderStrategy(); refreshStatus();
-      toast("Committed — applies on next start");
-    } catch (e) { toast(e.message); save.disabled = false; save.textContent = "Commit"; }
-  };
   const reset = $("#st-reset");
   if (reset) reset.onclick = async () => {
     if (!confirm("Restore every parameter to the original v11 values?")) return;
@@ -4729,12 +5653,24 @@ const AUDIT_LABELS = {
   session_started:     ["Session started", "up"],
   session_stopped:     ["Session stopped", "dim"],
   signed_out:          ["Signed out", "dim"],
+  strategy_changed:    ["Strategy parameters changed", "warn"],
+  strategy_reset:      ["Strategy reset to baseline", "warn"],
+  signed_in:           ["Signed in", "dim"],
+  sign_in_failed:      ["Sign-in refused", "warn"],
+  alerts_changed:      ["Alert rules changed", "warn"],
+  alert_sent:          ["Alert sent", "dim"],
+  report_scheduled:    ["Report scheduled", "dim"],
+  report_schedule_removed: ["Report schedule removed", "dim"],
 };
 
 function auditGroup(action) {
   if (action.startsWith("live_mode") || action.startsWith("paper_mode")) return "live";
-  if (action.startsWith("user_")) return "user";
+  if (action.startsWith("user_") || action === "signed_out") return "user";
   if (action.startsWith("algorithm_")) return "algorithm";
+  if (action.startsWith("strategy_")) return "strategy";
+  if (action.startsWith("session_")) return "session";
+  if (action.startsWith("alert") || action.startsWith("report_")) return "alerts";
+  if (action.startsWith("sign")) return "user";
   return "other";
 }
 
@@ -4756,17 +5692,80 @@ function renderAudit() {
         <div class="day-m mono">${esc((e.ts || "").replace("T", " "))}</div>
       </div></div>`;
   }).join("")
-    : `<div class="empty">${S.auditFilter
-        ? "Nothing of this kind has been recorded yet."
-        : "Nothing recorded yet. Changes to people, algorithms and live mode land here."}</div>`;
+    : (S.auditFilter
+        ? emptyState("shield", "Nothing of this kind yet",
+            "Try a different filter — the trail keeps everything, permanently.")
+        : emptyState("shield", "Nothing recorded yet",
+            "Changes to who can sign in, which algorithm runs where, and any "
+            + "request to trade real money are written here and never deleted."));
+}
+
+function auditQuery() {
+  // The kind filter is applied on the server when it maps to an action group,
+  // and on the client for the composite groups the API has no name for.
+  const p = new URLSearchParams();
+  if (S.auditActor) p.set("actor", S.auditActor);
+  if (S.auditFrom) p.set("start", S.auditFrom);
+  if (S.auditTo) p.set("end", S.auditTo);
+  p.set("limit", "1000");
+  return p.toString();
 }
 
 async function loadAudit() {
   try {
-    const d = await api("/api/audit");
+    const d = await api(`/api/audit?${auditQuery()}`);
     S.audit = d.entries || [];
+    const sel = $("#au-actor");
+    if (sel) {
+      const who = d.actors || [];
+      sel.innerHTML = `<option value="">Everyone</option>`
+        + who.map(a => `<option value="${esc(a)}" ${
+            a === S.auditActor ? "selected" : ""}>${esc(a)}</option>`).join("");
+    }
   } catch (e) { S.audit = []; }
+  setAuditDownloads();
   renderAudit();
+}
+
+function setAuditDownloads() {
+  const q = k => `${S.url}/api/audit/export?fmt=${k}&${auditQuery()}`
+    + `&token=${encodeURIComponent(S.token)}`;
+  const csv = $("#au-csv"), js = $("#au-json");
+  if (csv) csv.href = q("csv");
+  if (js) js.href = q("json");
+}
+
+(() => {
+  const bind = (sel, key) => {
+    const el = $(sel);
+    if (el) el.onchange = () => { S[key] = el.value; loadAudit(); };
+  };
+  bind("#au-actor", "auditActor");
+  bind("#au-from", "auditFrom");
+  bind("#au-to", "auditTo");
+})();
+
+/* The role/capability table. Read straight off the API rather than restated
+   here, because a matrix that disagrees with the guards is worse than none. */
+async function loadMatrix() {
+  const box = $("#u-matrix");
+  if (!box) return;
+  try {
+    const m = await api("/api/permissions");
+    const caps = m.capabilities || [];
+    box.innerHTML = `<div class="pmwrap"><table class="pm">
+      <thead><tr><th>Can…</th>${m.roles.map(r =>
+        `<th title="${esc(r.label)}">${esc(r.value.replace(/_/g, " "))}</th>`).join("")}</tr></thead>
+      <tbody>${caps.map(c => `<tr>
+        <td title="${esc(c.label)}">${esc(c.label)}</td>
+        ${m.roles.map(r => r.grants.includes(c.key)
+          ? `<td class="y" aria-label="yes">●</td>`
+          : `<td class="n" aria-label="no">·</td>`).join("")}
+      </tr>`).join("")}</tbody></table></div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="dim" style="font-size:11.5px;margin-top:10px">${
+      esc(e.message)}</div>`;
+  }
 }
 
 $$("#au-filter button").forEach(b => b.onclick = () => {
@@ -4850,7 +5849,673 @@ $("#u-create").onclick = async () => {
 };
 
 /* ---------------- admin: algorithm ---------------- */
+/* ================= risk =================
+   Everything an operator checks when the day is going badly, on one screen and
+   in the order the questions get asked: how close am I to being stopped, how
+   much is at risk right now, and what has today actually done to the book.
+==================================================== */
+function riskBar(label, used, limit, note, invert) {
+  const frac = limit > 0 ? Math.max(0, Math.min(1, used / limit)) : 0;
+  // Amber past 60%, red past 85% — the point of the bar is to be alarming
+  // before the limit is hit, not at the moment it is too late.
+  const tone = frac >= 0.85 ? "crit" : frac >= 0.6 ? "warn" : "ok";
+  return `<div class="rb">
+    <div class="rb-h"><span class="rb-k">${esc(label)}</span>
+      <span class="rb-v num ${invert && frac > 0 ? "down" : ""}">${esc(note)}</span></div>
+    <div class="rb-track"><span class="rb-fill ${tone}" style="width:${(frac * 100).toFixed(1)}%"></span></div>
+  </div>`;
+}
+
+function renderRisk() {
+  const d = S.risk, box = $("#rk-body");
+  if (!box) return;
+  if (!d) {
+    box.innerHTML = `<div class="card span-all">${emptyState("shield",
+      "No risk data yet", "Start a session and this fills in live.")}</div>`;
+    return;
+  }
+
+  const k = d.kill || {}, t = d.trades || {};
+  const pos = d.position;
+
+  box.innerHTML = `
+    <div class="card span-all">
+      <div class="card-h"><h2 class="card-t">Limits</h2>
+        <span class="dim mono" style="font-size:9.5px">${
+          d.running ? "LIVE" : "NOT RUNNING"}${d.paper ? " · PAPER" : " · REAL MONEY"}</span></div>
+      ${riskBar("Daily loss against the kill switch", k.used || 0, k.limit || 0,
+        `${money(k.used || 0, 0)} of ${money(k.limit || 0, 0)}`, true)}
+      ${riskBar("Trades taken", t.taken || 0, t.limit || 0,
+        `${t.taken || 0} of ${t.limit || 0}`)}
+      ${k.tripped ? `<div class="errbox" style="margin-top:12px">
+        The kill switch has tripped. No further entries today.</div>` : ""}
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2 class="card-t">Exposure now</h2></div>
+      <div class="mgrid">
+        ${metric("Notional", money(d.exposure, 0),
+          pos ? `${pos.qty} × ${money(pos.current, 2)}` : "flat")}
+        ${metric("Margin", money(d.margin, 0), pos ? "committed" : "none")}
+        ${metric("Unrealised", signed(d.unrealised || 0, 0),
+          pos ? esc(pos.symbol || "") : "no position")}
+        ${metric("Equity", money(d.equity, 0), "peak " + money(d.peak_equity, 0))}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2 class="card-t">Drawdown</h2></div>
+      <div class="mgrid">
+        ${metric("From peak", pct(d.drawdown_pct ?? 0, 2), "this session",
+          Math.min(100, Math.abs(d.drawdown_pct ?? 0) * 5),
+          Math.abs(d.drawdown_pct ?? 0) > 5 ? "var(--critical)" : "var(--au)")}
+        ${metric("Peak equity", money(d.peak_equity, 0), "session high")}
+      </div>
+    </div>
+
+    <div class="card span-all">
+      <div class="card-h"><h2 class="card-t">Intraday equity</h2>
+        <span class="dim mono" style="font-size:9.5px">${
+          plural((d.intraday || []).length, "minute mark")}</span></div>
+      <div class="chartwrap">${drawIntraday(d.intraday)}</div>
+    </div>
+
+    <div class="card span-all">
+      <div class="card-h"><h2 class="card-t">Recent trades — risk and reward</h2>
+        <span class="dim mono" style="font-size:9.5px">REALISED / RISKED</span></div>
+      ${(d.recent_trades || []).length ? `<div class="rrlist">${
+        d.recent_trades.map(x => `<div class="rr">
+          <span class="rr-s">${esc(x.symbol || "—")}</span>
+          <span class="rr-d dim">${esc(x.session_date || "")}</span>
+          <span class="rr-p num ${cls(x.net_pnl)}">${signed(x.net_pnl || 0, 0)}</span>
+          <span class="rr-r num">${x.rr == null ? "—" : x.rr.toFixed(2) + "R"}</span>
+          <span class="rr-w dim">${esc(x.reason || "")}</span>
+        </div>`).join("")}</div>`
+        : emptyState("trades", "No trades yet",
+            "Risk and reward per trade appears here once positions close.")}
+    </div>`;
+}
+
+/* The session's own equity line, minute by minute. Deliberately not the same
+   component as the daily curve: this one is a single day, has no drawdown
+   band, and is read for shape rather than for values. */
+function drawIntraday(marks) {
+  const pts = (marks || []).filter(m => m.equity != null);
+  if (pts.length < 2) {
+    return `<div class="chart-empty"><div class="ce-mark">◈</div>
+      <div class="ce-h">Nothing recorded yet today</div>
+      <div class="ce-s">A mark is written every minute while a session runs.</div></div>`;
+  }
+  const W = 900, H = 170, PAD = { t: 12, r: 58, b: 18, l: 8 };
+  const vals = pts.map(p => Number(p.equity));
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = (hi - lo) || Math.abs(hi) || 1;
+  lo -= span * 0.1; hi += span * 0.1;
+  const pw = W - PAD.l - PAD.r, ph = H - PAD.t - PAD.b;
+  const x = i => PAD.l + (i / (pts.length - 1)) * pw;
+  const y = v => PAD.t + ph - ((v - lo) / (hi - lo)) * ph;
+
+  const open = vals[0], last = vals[vals.length - 1];
+  const tone = last >= open ? C.profit : C.loss;
+  const line = vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join("");
+
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" role="img"
+    aria-label="Intraday equity, ${pts.length} minute marks, ${
+      last >= open ? "up" : "down"} on the day">
+    <line x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(open)}" y2="${y(open)}"
+      stroke="rgba(232,196,88,.3)" stroke-dasharray="3 4"/>
+    <text x="${W - PAD.r + 6}" y="${y(open) + 3.5}" fill="#8a8377" font-size="10"
+      font-family="ui-monospace,monospace">open</text>
+    <path d="${line}" stroke="${tone}" stroke-width="1.6" fill="none"/>
+    <circle cx="${x(pts.length - 1)}" cy="${y(last)}" r="3" fill="${tone}"/>
+  </svg>`;
+}
+
+function rkSlot() { return S.riskSlot ?? 0; }
+
+async function loadRisk() {
+  const lanes = ((S.fleet && S.fleet.slots) || []).filter(x => !x.empty);
+  const seg = $("#rk-slot");
+  if (seg) {
+    seg.style.display = lanes.length > 1 ? "" : "none";
+    seg.innerHTML = lanes.map(l =>
+      `<button data-rk="${l.slot}" class="${l.slot === rkSlot() ? "on" : ""}">${
+        esc(l.name)}</button>`).join("");
+    seg.querySelectorAll("[data-rk]").forEach(b => b.onclick = () => {
+      S.riskSlot = Number(b.dataset.rk); loadRisk();
+    });
+  }
+  try {
+    S.risk = await api(`/api/risk?slot=${rkSlot()}`);
+  } catch (e) { S.risk = null; }
+  renderRisk();
+}
+
+/* ================= session replay page ================= */
+async function loadReplayPage() {
+  const box = $("#rp-days");
+  if (!box) return;
+  try {
+    const d = await api("/api/replay/dates");
+    const days = d.dates || [];
+    $("#rp-count").textContent = plural(days.length, "SESSION").toUpperCase();
+    box.innerHTML = days.length ? days.map(x => `<div class="day">
+        <div style="min-width:0">
+          <div class="day-d">${esc(x.date)}</div>
+          <div class="day-m">${plural(x.events, "event")}</div>
+        </div>
+        <button class="btn ghost" data-rp="${esc(x.date)}"
+          style="width:auto;padding:7px 14px;font-size:10px">Replay</button>
+      </div>`).join("")
+      : emptyState("clock", "No sessions recorded yet",
+          "A day appears here once the algorithm has run and reported.");
+    box.querySelectorAll("[data-rp]").forEach(b =>
+      b.onclick = () => openReplay(b.dataset.rp));
+  } catch (e) {
+    box.innerHTML = emptyState("clock", "Could not load sessions", esc(e.message));
+  }
+}
+
+/* ================= alerts ================= */
+function renderAlerts() {
+  const d = S.alerts, box = $("#al-body");
+  if (!box) return;
+  if (!d) {
+    box.innerHTML = `<div class="card span-all">${emptyState("inbox",
+      "Alerts are unavailable", "The server did not return an alert configuration.")}</div>`;
+    return;
+  }
+  const cfg = d.config, ch = cfg.channels;
+  const editable = canConfigureAlerts();
+
+  const channelCard = (key, title, fields) => `
+    <div class="card">
+      <div class="card-h"><h2 class="card-t">${esc(title)}</h2>
+        <span class="pill ${ch[key].enabled ? "live" : "idle"}">${
+          ch[key].enabled ? "on" : "off"}</span></div>
+      <label class="sw"><span style="font-size:12.5px">Use this channel</span>
+        <span class="toggle ${ch[key].enabled ? "on" : ""}" data-alch="${key}"
+          role="switch" tabindex="0" aria-checked="${ch[key].enabled}"
+          aria-label="Enable ${esc(title)}"></span></label>
+      ${fields}
+      <button class="btn ghost" data-altest="${key}" style="margin-top:11px">
+        Send a test</button>
+      <div class="dim" id="al-res-${key}" style="font-size:11px;line-height:1.5;margin-top:8px"></div>
+    </div>`;
+
+  const f = (key, name, label, type, ph) => `
+    <label class="lbl" style="margin-top:10px">${esc(label)}</label>
+    <input class="field" type="${type || "text"}" data-alf="${key}.${name}"
+      value="${esc(ch[key][name] ?? "")}" placeholder="${esc(ph || "")}"
+      aria-label="${esc(label)}" ${editable ? "" : "disabled"}>`;
+
+  box.innerHTML = `
+    <div class="card span-all">
+      <div class="card-h"><h2 class="card-t">Alert rules</h2>
+        <span class="dim mono" style="font-size:9.5px" id="al-armed"></span></div>
+      <div class="muted" style="font-size:12px;line-height:1.6">
+        A rule that has fired stays quiet until the condition clears, so a
+        drawdown past your threshold sends one message rather than one a minute.
+      </div>
+      <div id="al-rules" style="margin-top:13px">
+        ${d.rules.map(r => {
+          const rc = cfg.rules[r.key] || {};
+          return `<div class="alr ${rc.enabled ? "on" : ""}">
+            <div class="alr-top">
+              <span class="toggle ${rc.enabled ? "on" : ""}" data-alr="${esc(r.key)}"
+                role="switch" tabindex="0" aria-checked="${!!rc.enabled}"
+                aria-label="${esc(r.label)}"></span>
+              <div style="min-width:0;flex:1">
+                <div class="alr-h">${esc(r.label)}</div>
+                <div class="alr-s">${esc(r.detail)}</div>
+              </div>
+              <span class="sev ${esc(r.severity === "critical" ? "critical"
+                : r.severity === "error" ? "error" : "info")}">${
+                esc(String(r.severity).toUpperCase().slice(0, 4))}</span>
+            </div>
+            ${rc.enabled ? `<div class="alr-cfg">
+              ${r.threshold ? `<label class="alr-th">${esc(r.threshold.label)}
+                <input class="field num" type="number" data-alth="${esc(r.key)}"
+                  value="${rc.threshold ?? r.threshold.default}"
+                  min="${r.threshold.min}" max="${r.threshold.max}"
+                  aria-label="${esc(r.threshold.label)}"
+                  style="width:96px;padding:6px 9px;text-align:right"></label>` : ""}
+              <div class="alr-ch">${d.channels.map(c => `
+                <button class="chip-t ${(rc.channels || []).includes(c) ? "on" : ""}"
+                  data-alrc="${esc(r.key)}|${c}" type="button">${esc(c)}</button>`).join("")}</div>
+            </div>` : ""}
+          </div>`;
+        }).join("")}
+      </div>
+    </div>
+
+    ${channelCard("email", "Email",
+      f("email", "to", "Send to", "email", "risk@yourfirm.com")
+      + f("email", "host", "SMTP host", "text", "smtp.gmail.com")
+      + f("email", "port", "Port", "number", "587")
+      + f("email", "username", "Username", "text")
+      + f("email", "password", "Password", "password",
+          ch.email.password_set ? "unchanged — type to replace" : ""))}
+
+    ${channelCard("webhook", "Webhook",
+      f("webhook", "url", "POST to", "url", "https://…"))}
+
+    ${channelCard("slack", "Slack",
+      f("slack", "url", "Incoming webhook URL", "url", "https://hooks.slack.com/…"))}
+
+    <div class="card span-all">
+      <div class="card-h"><h2 class="card-t">Scheduled reports</h2></div>
+      <div class="muted" style="font-size:12px;line-height:1.6">
+        A report built and sent on a schedule, with the same contents as the
+        Reports screen produces by hand.
+      </div>
+      <div id="al-sched" style="margin-top:13px"></div>
+      ${editable ? `<button class="btn ghost" id="al-addsched" style="margin-top:12px">
+        Schedule a report</button>` : ""}
+    </div>`;
+
+  const armed = d.rules.filter(r => (cfg.rules[r.key] || {}).enabled).length;
+  $("#al-armed").textContent = `${armed} OF ${d.rules.length} ARMED`;
+
+  wireAlerts();
+  renderSchedules();
+}
+
+function canConfigureAlerts() { return isSuperAdmin(); }
+
+function wireAlerts() {
+  if (!canConfigureAlerts()) {
+    $$("#al-body [data-alr],#al-body [data-alch],#al-body [data-alrc]")
+      .forEach(el => { el.style.opacity = ".45"; el.style.pointerEvents = "none"; });
+    return;
+  }
+  const cfg = S.alerts.config;
+
+  $$("[data-alr]").forEach(el => bindSwitch(el, () => {
+    const k = el.dataset.alr;
+    cfg.rules[k] = { ...(cfg.rules[k] || {}), enabled: !(cfg.rules[k] || {}).enabled };
+    saveAlerts();
+  }));
+  $$("[data-alch]").forEach(el => bindSwitch(el, () => {
+    const k = el.dataset.alch;
+    cfg.channels[k].enabled = !cfg.channels[k].enabled;
+    saveAlerts();
+  }));
+  $$("[data-alrc]").forEach(el => el.onclick = () => {
+    const [k, c] = el.dataset.alrc.split("|");
+    const list = new Set((cfg.rules[k] || {}).channels || []);
+    list.has(c) ? list.delete(c) : list.add(c);
+    cfg.rules[k] = { ...(cfg.rules[k] || {}), channels: [...list] };
+    saveAlerts();
+  });
+  $$("[data-alth]").forEach(el => el.onchange = () => {
+    const k = el.dataset.alth;
+    cfg.rules[k] = { ...(cfg.rules[k] || {}), threshold: Number(el.value) };
+    saveAlerts();
+  });
+  $$("[data-alf]").forEach(el => el.onchange = () => {
+    const [ch, field] = el.dataset.alf.split(".");
+    cfg.channels[ch][field] = el.type === "number" ? Number(el.value) : el.value;
+    saveAlerts(true);
+  });
+  $$("[data-altest]").forEach(el => el.onclick = async () => {
+    const c = el.dataset.altest, out = $(`#al-res-${c}`);
+    el.disabled = true;
+    out.textContent = "Sending…";
+    out.className = "dim";
+    try {
+      const r = await api("/api/alerts/test",
+        { method: "POST", body: JSON.stringify({ channel: c }) });
+      out.className = r.ok ? "up" : "down";
+      out.textContent = r.detail;
+    } catch (e) { out.className = "down"; out.textContent = e.message; }
+    finally { el.disabled = false; }
+  });
+  const add = $("#al-addsched");
+  if (add) add.onclick = () => editSchedule(null);
+}
+
+let alertSaveTimer = null;
+
+async function saveAlerts(debounce) {
+  // Typing an SMTP host should not fire a request per keystroke, but a toggle
+  // should feel immediate.
+  clearTimeout(alertSaveTimer);
+  const go = async () => {
+    try {
+      const r = await api("/api/alerts", {
+        method: "PUT",
+        body: JSON.stringify({ channels: S.alerts.config.channels,
+                               rules: S.alerts.config.rules }),
+      });
+      S.alerts.config = r.config;
+      renderAlerts();
+    } catch (e) { toast(e.message); }
+  };
+  if (debounce) alertSaveTimer = setTimeout(go, 600); else go();
+}
+
+async function loadAlerts() {
+  try { S.alerts = await api("/api/alerts"); }
+  catch (e) { S.alerts = null; }
+  try { S.schedules = (await api("/api/reports/schedules")).schedules || []; }
+  catch (e) { S.schedules = []; }
+  renderAlerts();
+}
+
+function renderSchedules() {
+  const box = $("#al-sched");
+  if (!box) return;
+  const rows = S.schedules || [];
+  const period = { day: "Every trading day", week: "Weekly", month: "Monthly" };
+  box.innerHTML = rows.length ? rows.map(r => `<div class="day">
+      <div style="min-width:0">
+        <div class="day-d">${esc(period[r.period] || r.period)} · ${
+          esc(String(r.fmt).toUpperCase())}${r.include_log ? " + log" : ""}</div>
+        <div class="day-m">${esc(r.recipients || "no recipient set")} · ${
+          esc((r.channels || []).join(", ") || "no channel")}${
+          r.enabled ? "" : " · paused"}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn ghost" data-sed="${esc(r.id)}"
+          style="width:auto;padding:6px 12px;font-size:10px">Edit</button>
+        <button class="btn danger" data-sdel="${esc(r.id)}"
+          style="width:auto;padding:6px 12px;font-size:10px">Remove</button>
+      </div></div>`).join("")
+    : `<div class="dim" style="font-size:11.5px">Nothing scheduled.</div>`;
+
+  box.querySelectorAll("[data-sed]").forEach(b => b.onclick = () =>
+    editSchedule(rows.find(r => r.id === b.dataset.sed)));
+  box.querySelectorAll("[data-sdel]").forEach(b => b.onclick = () => {
+    showConfirm({
+      title: "Remove this schedule?",
+      sub: "No further reports will be sent for it.",
+      confirm: "Remove", danger: true,
+      onConfirm: async () => {
+        try {
+          S.schedules = (await api(`/api/reports/schedules/${b.dataset.sdel}`,
+            { method: "DELETE" })).schedules;
+          renderSchedules();
+        } catch (e) { toast(e.message); }
+      },
+    });
+  });
+}
+
+function editSchedule(existing) {
+  const r = existing || { period: "day", fmt: "pdf", include_log: false,
+                          channels: ["email"], recipients: "", enabled: true };
+  showConfirm({
+    title: existing ? "Edit this schedule" : "Schedule a report",
+    sub: "Built and sent automatically, with the same contents the Reports screen produces.",
+    confirm: "Save",
+    body: `
+      <label class="lbl">How often</label>
+      <select class="field" id="sc-period" aria-label="How often">
+        ${[["day", "Every trading day, at the close"], ["week", "Weekly"],
+           ["month", "Monthly"]].map(([v, l]) =>
+          `<option value="${v}" ${r.period === v ? "selected" : ""}>${l}</option>`).join("")}
+      </select>
+      <label class="lbl" style="margin-top:11px">Format</label>
+      <select class="field" id="sc-fmt" aria-label="Format">
+        ${["pdf", "xlsx", "csv", "json"].map(v =>
+          `<option value="${v}" ${r.fmt === v ? "selected" : ""}>${v.toUpperCase()}</option>`).join("")}
+      </select>
+      <label class="sw" style="margin-top:11px">
+        <span style="font-size:12.5px">Include the minute-by-minute log</span>
+        <span class="toggle ${r.include_log ? "on" : ""}" id="sc-log" role="switch"
+          tabindex="0" aria-checked="${!!r.include_log}"
+          aria-label="Include the minute-by-minute log"></span></label>
+      <label class="lbl" style="margin-top:11px">Send to</label>
+      <input class="field" id="sc-to" value="${esc(r.recipients)}"
+        placeholder="risk@yourfirm.com, ops@yourfirm.com"
+        aria-label="Recipients">
+      <div class="dim" style="font-size:10.5px;line-height:1.6;margin-top:9px">
+        Delivered on whichever channels are switched on above.
+      </div>`,
+    onConfirm: async () => {
+      const body = {
+        id: r.id || null,
+        enabled: true,
+        period: $("#sc-period").value,
+        fmt: $("#sc-fmt").value,
+        include_log: $("#sc-log").classList.contains("on"),
+        channels: r.channels && r.channels.length ? r.channels : ["email"],
+        recipients: $("#sc-to").value.trim(),
+      };
+      try {
+        S.schedules = (await api("/api/reports/schedules",
+          { method: "PUT", body: JSON.stringify(body) })).schedules;
+        renderSchedules();
+        toast("Schedule saved");
+      } catch (e) { toast(e.message); }
+    },
+  });
+  // The toggle inside the dialog needs wiring after the markup lands.
+  const lg = $("#sc-log");
+  if (lg) bindSwitch(lg, () => {
+    const on = !lg.classList.contains("on");
+    lg.classList.toggle("on", on);
+    lg.setAttribute("aria-checked", String(on));
+  });
+}
+
+/* ================= empty states =================
+   One component, so "there is nothing here" always looks and reads the same
+   way wherever it happens. Icons are inline paths rather than an icon font:
+   the deploy blocks third-party assets, and eight paths weigh less than any
+   library would anyway.
+==================================================== */
+const ICONS = {
+  trades:  "M3 17l6-6 4 4 8-8M21 7h-5m5 0v5",
+  power:   "M12 3v9M18.4 6.6a9 9 0 11-12.8 0",
+  search:  "M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3",
+  clock:   "M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2",
+  file:    "M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8zM14 3v5h5",
+  book:    "M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2zM9 8h7M9 12h5",
+  feed:    "M4 11a9 9 0 019 9M4 4a16 16 0 0116 16M5 19h.01",
+  chart:   "M3 3v18h18M7 15V9m5 6V5m5 10v-4",
+  shield:  "M12 3l8 3v6c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V6z",
+  inbox:   "M4 13h4l2 3h4l2-3h4M4 13V7a2 2 0 012-2h12a2 2 0 012 2v6l-1.5 5a2 2 0 01-2 1.5H7.5a2 2 0 01-2-1.5z",
+};
+
+/**
+ * @param icon    key from ICONS
+ * @param head    what has happened, in a few words
+ * @param sub     why, or what would change it
+ * @param actions [{label, id, ghost}] — rendered as buttons, wired by the caller
+ */
+function emptyState(icon, head, sub, actions) {
+  const btns = (actions || []).filter(Boolean);
+  return `<div class="es">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[icon] || ICONS.inbox}"/></svg>
+    <div class="es-h">${esc(head)}</div>
+    ${sub ? `<div class="es-s">${sub}</div>` : ""}
+    ${btns.length ? `<div class="es-row">${btns.map(a =>
+      `<button class="btn ${a.ghost === false ? "" : "ghost"}" id="${esc(a.id)}"
+         type="button">${esc(a.label)}</button>`).join("")}</div>` : ""}
+  </div>`;
+}
+
+/* ================= python highlighting =================
+   Deliberately a lexer, not a parser. It walks the source once, character by
+   character, and the only thing it has to get right is where each token ends —
+   a regex-replace approach colours the word "class" inside a comment and the
+   `#` inside a string, which looks broken in exactly the places code is
+   hardest to read.
+
+   Everything is escaped as it is emitted, so source is never markup.
+==================================================== */
+const PY_KEYWORDS = new Set(
+  ("False None True and as assert async await break class continue def del elif "
+ + "else except finally for from global if import in is lambda nonlocal not or "
+ + "pass raise return try while with yield match case").split(" "));
+const PY_BUILTINS = new Set(
+  ("abs all any bool bytes dict enumerate float format getattr hasattr int isinstance "
+ + "len list map max min next open print range repr round set setattr sorted str sum "
+ + "super tuple type zip self cls Exception ValueError TypeError KeyError IndexError "
+ + "RuntimeError OSError").split(" "));
+
+function highlightPython(src) {
+  const out = [];
+  const push = (cls, text) => out.push(cls ? `<span class="${cls}">${esc(text)}</span>` : esc(text));
+  const n = src.length;
+  let i = 0;
+
+  while (i < n) {
+    const c = src[i];
+
+    if (c === "#") {                                   // comment to end of line
+      let j = i; while (j < n && src[j] !== "\n") j++;
+      push("tk-com", src.slice(i, j)); i = j; continue;
+    }
+
+    if (c === '"' || c === "'") {                      // string, triple or single
+      const triple = src.slice(i, i + 3);
+      const q = (triple === '"""' || triple === "''''".slice(0, 3) || triple === "'''")
+        ? triple : c;
+      let j = i + q.length;
+      while (j < n) {
+        if (src[j] === "\\") { j += 2; continue; }
+        if (src.startsWith(q, j)) { j += q.length; break; }
+        j++;
+      }
+      push("tk-str", src.slice(i, Math.min(j, n))); i = Math.min(j, n); continue;
+    }
+
+    if (c === "@" && (i === 0 || src[i - 1] === "\n")) {   // decorator
+      let j = i; while (j < n && /[\w.@]/.test(src[j])) j++;
+      push("tk-dec", src.slice(i, j)); i = j; continue;
+    }
+
+    if (/[0-9]/.test(c) && !/[\w.]/.test(src[i - 1] || "")) {
+      let j = i; while (j < n && /[0-9a-fA-FxXoObB_.eE+-]/.test(src[j])) {
+        // Stop at a sign that is arithmetic rather than an exponent.
+        if (/[+-]/.test(src[j]) && !/[eE]/.test(src[j - 1])) break;
+        j++;
+      }
+      push("tk-num", src.slice(i, j)); i = j; continue;
+    }
+
+    if (/[A-Za-z_]/.test(c)) {
+      let j = i; while (j < n && /[\w]/.test(src[j])) j++;
+      const word = src.slice(i, j);
+      const prev = src.slice(0, i).match(/(\w+)\s+$/);
+      if (prev && (prev[1] === "def" || prev[1] === "class")) push("tk-def", word);
+      else if (PY_KEYWORDS.has(word)) push("tk-kw", word);
+      else if (PY_BUILTINS.has(word)) push("tk-bi", word);
+      else push("", word);
+      i = j; continue;
+    }
+
+    push("", c); i++;
+  }
+  return out.join("");
+}
+
+/* Splits the highlighted source back into lines so a marker can shade one.
+   Done after highlighting rather than before, because a triple-quoted string
+   spans lines and colouring each line on its own would break it. */
+function highlightLines(src, marks) {
+  const byLine = new Map((marks || []).map(m => [m.line, m.level]));
+  return highlightPython(src).split("\n").map((html, idx) => {
+    const lvl = byLine.get(idx + 1);
+    return `<span class="ed-line${lvl ? " " + lvl : ""}">${html || " "}</span>`;
+  }).join("\n");
+}
+
+/* ---------------- the editor ---------------- */
+const ED = { marks: [] };
+
+function paintEditor() {
+  const ta = $("#a-source"), hl = $("#a-hl"), gut = $("#a-gutter");
+  if (!ta || !hl) return;
+  const src = ta.value;
+  hl.innerHTML = highlightLines(src, ED.marks);
+
+  const lines = src.split("\n").length;
+  const byLine = new Map(ED.marks.map(m => [m.line, m.level]));
+  gut.innerHTML = Array.from({ length: lines }, (_, k) => {
+    const lvl = byLine.get(k + 1);
+    return `<b class="${lvl || ""}">${k + 1}</b>`;
+  }).join("");
+
+  const stat = $("#a-edstat");
+  if (stat) {
+    stat.textContent = `${plural(lines, "line")} · ${
+      (new Blob ? src.length : src.length).toLocaleString("en-IN")} chars`;
+  }
+  syncEditorScroll();
+}
+
+function syncEditorScroll() {
+  const ta = $("#a-source"), hl = $("#a-hl"), gut = $("#a-gutter");
+  if (!ta || !hl) return;
+  // The painted layer has to track the textarea exactly or the colours drift
+  // off the characters they belong to.
+  hl.style.transform = `translate(${-ta.scrollLeft}px, ${-ta.scrollTop}px)`;
+  if (gut) gut.scrollTop = ta.scrollTop;
+}
+
+function setEditorMarks(report) {
+  const marks = [];
+  for (const c of (report && report.checks) || []) {
+    if (c.passed) continue;
+    if (c.line) {
+      marks.push({ line: c.line, level: c.fatal ? "bad" : "warn", text: c.detail || c.name });
+    }
+    // Risky-call findings carry their own "line N: ..." prefix.
+    for (const item of c.items || []) {
+      const m = /^line (\d+):\s*(.*)$/.exec(String(item));
+      if (m) marks.push({ line: Number(m[1]), level: c.fatal ? "bad" : "warn", text: m[2] });
+    }
+  }
+  ED.marks = marks;
+  const bar = $("#a-edmarks");
+  if (bar) {
+    bar.innerHTML = marks.length
+      ? marks.slice(0, 8).map(m =>
+          `<span class="ed-mark ${m.level}" data-goto="${m.line}"
+             title="${esc(m.text)}">L${m.line}</span>`).join("")
+      : "";
+    bar.querySelectorAll("[data-goto]").forEach(el =>
+      el.onclick = () => gotoLine(Number(el.dataset.goto)));
+  }
+  paintEditor();
+}
+
+function gotoLine(line) {
+  const ta = $("#a-source");
+  if (!ta) return;
+  const lines = ta.value.split("\n");
+  const at = lines.slice(0, line - 1).join("\n").length + (line > 1 ? 1 : 0);
+  ta.focus();
+  ta.setSelectionRange(at, at + (lines[line - 1] || "").length);
+  // Roughly centre it; there is no scrollIntoView for a textarea offset.
+  const lh = parseFloat(getComputedStyle(ta).lineHeight) || 19;
+  ta.scrollTop = Math.max(0, (line - 1) * lh - ta.clientHeight / 2);
+  syncEditorScroll();
+}
+
+(() => {
+  const ta = $("#a-source");
+  if (!ta) return;
+  ta.addEventListener("input", () => { ED.marks = []; paintEditor(); });
+  ta.addEventListener("scroll", syncEditorScroll, { passive: true });
+  // Tab indents rather than leaving the field. Shift+Tab still escapes, so
+  // the editor never becomes a keyboard trap.
+  ta.addEventListener("keydown", e => {
+    if (e.key !== "Tab" || e.shiftKey) return;
+    e.preventDefault();
+    const s = ta.selectionStart, t = ta.selectionEnd;
+    ta.value = ta.value.slice(0, s) + "    " + ta.value.slice(t);
+    ta.selectionStart = ta.selectionEnd = s + 4;
+    paintEditor();
+  });
+})();
+
 function renderReport(r) {
+  setEditorMarks(r);
   if (!r) { $("#a-report").innerHTML = ""; return; }
   const cls2 = r.ok ? "gold" : "down";
   $("#a-report").innerHTML = `
@@ -4988,7 +6653,7 @@ $("#a-file").onchange = e => {
   const f = e.target.files[0]; if (!f) return;
   const reader = new FileReader();
   reader.onload = () => {
-    $("#a-source").value = reader.result;
+    $("#a-source").value = reader.result; ED.marks = []; paintEditor();
     if (!$("#a-name").value.trim()) $("#a-name").value = f.name.replace(/\.py$/, "");
     toast(`Loaded ${f.name}`);
   };
@@ -4997,7 +6662,7 @@ $("#a-file").onchange = e => {
 $("#a-template").onclick = async () => {
   try {
     const t = await api("/api/algorithm/template");
-    $("#a-source").value = t.source;
+    $("#a-source").value = t.source; ED.marks = []; paintEditor();
     if (!$("#a-name").value.trim()) $("#a-name").value = "My algorithm";
     toast("Starter loaded — edit it, then check");
   } catch (e) { toast(e.message); }
@@ -5122,6 +6787,35 @@ function renderMarkdown(md) {
   return out.join("\n");
 }
 
+/* ================= confirmation dialog =================
+   window.confirm() cannot show a list, cannot be styled, and on a phone is a
+   system sheet that looks nothing like the app. Anything that needs the
+   operator to read *what* they are agreeing to goes through here instead.
+==================================================== */
+let cfmAction = null;
+
+function showConfirm({ title, sub, body, confirm, danger, onConfirm }) {
+  cfmAction = onConfirm;
+  $("#cfm-title").textContent = title;
+  $("#cfm-sub").textContent = sub || "";
+  $("#cfm-body").innerHTML = body || "";
+  const yes = $("#cfm-yes");
+  yes.textContent = confirm || "Confirm";
+  yes.className = "btn" + (danger ? " danger" : "");
+  $("#cfm").hidden = false;
+  yes.focus();
+}
+
+function closeConfirm() { cfmAction = null; $("#cfm").hidden = true; }
+
+$("#cfm-no").onclick = closeConfirm;
+$("#cfm-yes").onclick = () => {
+  const run = cfmAction;
+  closeConfirm();
+  if (run) run();
+};
+$("#cfm").onclick = e => { if (e.target === $("#cfm")) closeConfirm(); };
+
 let docText = "";
 
 function showDoc(title, markdown, sub) {
@@ -5164,7 +6858,7 @@ $("#a-upload").onclick = async () => {
     if (r.status === 422) { toast("Rejected — see the checks below"); return; }
     if (!r.ok) { toast(body.detail || "Upload failed"); return; }
     toast("Stored. Activate it when you are ready.");
-    $("#a-source").value = ""; $("#a-name").value = "";
+    $("#a-source").value = ""; $("#a-name").value = ""; ED.marks = []; paintEditor();
     loadAlgorithm();
   } catch (e) { toast(e.message); }
   finally { btn.disabled = false; btn.textContent = "Upload"; }

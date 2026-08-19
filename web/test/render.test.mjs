@@ -72,6 +72,13 @@ const doc = {
   // The real page toggles classes on body (live-money, stale), so the stub
   // needs one or renderDash throws before it draws anything.
   body: makeElement('body'),
+  // Density is set on documentElement so it applies before the first paint.
+  documentElement: {
+    _attrs: {},
+    setAttribute(k, v) { this._attrs[k] = String(v); },
+    getAttribute(k) { return this._attrs[k] ?? null; },
+    removeAttribute(k) { delete this._attrs[k]; },
+  },
   createElement: () => makeElement(),
   head: { appendChild() {} },
   querySelector(sel) {
@@ -130,6 +137,13 @@ if (!match) {
 }
 
 const context = vm.createContext(sandbox);
+
+// `const` declarations in the dashboard script do not become properties of the
+// sandbox global — only function declarations do — so anything declared that
+// way (S, TAPE, C, the formatting helpers) is reached by evaluating inside the
+// context rather than off the sandbox object. Defined here, next to the
+// context, so every block below can use it rather than only the later ones.
+const evaluate = (expr) => vm.runInContext(expr, context);
 try {
   vm.runInContext(match[1], context, { filename: 'dashboard.js' });
 } catch (err) {
@@ -233,15 +247,23 @@ console.log('\nTrade box');
   check('lock 1 target drawn', svg.includes('LOCK 1'));
   check('peak marked when above entry', svg.includes('PEAK'));
   check('loss zone shaded below the stop', svg.includes('opacity=".07"'));
+  // Asserted against the token the rest of the app uses, not a literal: the
+  // charts used to draw profit in #3ecf8e while every other green was
+  // #38e08f, which is one meaning wearing two colours.
   check('in profit the line uses the up colour',
-        svg.includes('stroke="#3ecf8e"'), 'expected the up colour at 150.2 over 142.5');
+        svg.includes(`stroke="${evaluate('C.profit')}"`),
+        'expected the up colour at 150.2 over 142.5');
+  check('and that colour is the one the palette defines',
+        evaluate('C.profit') === '#38e08f', evaluate('C.profit'));
 }
 {
   const series = Array.from({ length: 30 }, (_, i) => [
     Date.UTC(2026, 7, 4, 4, 22) + i * 5000, round(142.5 - i * 0.4),
   ]);
   const svg = sandbox.drawTradeBox(track(series), 130.6);
-  check('in loss the line uses the down colour', svg.includes('stroke="#f0505a"'));
+  check('in loss the line uses the down colour',
+        svg.includes(`stroke="${evaluate('C.loss')}"`), evaluate('C.loss'));
+  check('and matches the palette', evaluate('C.loss') === '#ff5566', evaluate('C.loss'));
   check('no NaN when underwater', !svg.includes('NaN'));
 }
 {
@@ -260,12 +282,6 @@ console.log('\nTrade box');
   check('off-scale level is omitted', !svg.includes('LOCK 2'));
   check('still renders the in-range levels', svg.includes('ENTRY'));
 }
-
-// `const` declarations in the dashboard script do not become properties of the
-// sandbox global — only function declarations do — so anything declared that
-// way (S, TAPE, the formatting helpers) is reached by evaluating inside the
-// context rather than off the sandbox object.
-const evaluate = (expr) => vm.runInContext(expr, context);
 
 console.log('\nFormatting');
 {
@@ -481,13 +497,49 @@ console.log('\nEquity curve');
     { session_date: '2026-08-07', close_equity: 24000, day_pnl: 1000 },
   ];
   const svg = sandbox.drawCurve(sessions);
-  check('renders an svg', svg.startsWith('<svg'));
+  check('renders an svg', svg.includes('<svg'));
   check('no NaN coordinates', !svg.includes('NaN'), svg.slice(0, 200));
   check('the window is labelled at both ends',
         svg.includes('2026-08-03') && svg.includes('2026-08-07'));
   check('the drawdown is shaded against the running peak',
         svg.includes('#ff5566'), 'expected a drawdown band');
   check('it is described for a screen reader', svg.includes('aria-label'));
+
+  // ---- interaction ----
+  check('every session has its own hit band',
+        (svg.match(/data-cv="\d+"/g) || []).length === sessions.length,
+        (svg.match(/data-cv="\d+"/g) || []).join(','));
+  check('each band carries what the tooltip needs',
+        svg.includes('data-p="1662"') && svg.includes('data-t=') &&
+        svg.includes('data-dd='), svg.slice(svg.indexOf('data-cv='), 400));
+  check('drawdown from peak is computed per point',
+        svg.includes('data-dd="-8.45"'),
+        (svg.match(/data-dd="[^"]*"/g) || []).join(' '));
+  check('a crosshair and a selection rectangle exist',
+        svg.includes('cv-cross') && svg.includes('cv-sel'));
+  check('the drag hint is shown', /Drag to zoom/.test(svg));
+  check('no reset button until something is zoomed', !svg.includes('cv-reset'));
+
+  // ---- zoom ----
+  const z = sandbox.drawCurve(sessions, [2, 4]);
+  check('a zoom slices the series',
+        (z.match(/data-cv="\d+"/g) || []).length === 3,
+        (z.match(/data-cv="\d+"/g) || []).join(','));
+  check('the zoomed window is labelled from its own ends',
+        z.includes('2026-08-05') && z.includes('2026-08-07') && !z.includes('2026-08-03'));
+  check('a zoom offers a way back', z.includes('cv-reset'));
+  check('the wrapper records the window it is showing',
+        z.includes('data-lo="2"') && z.includes('data-hi="4"'));
+  // The peak carries in from before the window, so a zoom into the middle of a
+  // drawdown still shows one.
+  check('drawdown survives zooming past its peak',
+        z.includes('data-dd="-8.45"'),
+        (z.match(/data-dd="[^"]*"/g) || []).join(' '));
+  check('a nonsense range is clamped rather than throwing',
+        sandbox.drawCurve(sessions, [99, 200]).includes('<svg') &&
+        sandbox.drawCurve(sessions, [-5, 1]).includes('<svg'));
+  check('a one-point zoom is widened to something drawable',
+        (sandbox.drawCurve(sessions, [3, 3]).match(/data-cv="\d+"/g) || []).length >= 2);
 
   check('one session is not a curve',
         sandbox.drawCurve([sessions[0]]).includes('chart-empty'));
@@ -604,6 +656,335 @@ console.log('\nAlgorithm diff');
   check('the diff modal is hidden until asked for',
         /<div id="dif" hidden>/.test(html));
   check('escape closes the diff', html.includes('difClose()'));
+}
+
+console.log('\nRisk panel');
+{
+  const bar = sandbox.riskBar;
+  check('a fresh session shows an empty bar',
+        bar('Loss', 0, 3000, '₹0 of ₹3,000').includes('width:0.0%'));
+  check('halfway is amber-free', bar('L', 1500, 3000, '').includes('rb-fill ok'));
+  check('past 60% it warns', bar('L', 1900, 3000, '').includes('rb-fill warn'));
+  check('past 85% it is critical', bar('L', 2600, 3000, '').includes('rb-fill crit'));
+  check('at the limit it is full and critical',
+        bar('L', 3000, 3000, '').includes('width:100.0%') &&
+        bar('L', 3000, 3000, '').includes('crit'));
+  check('past the limit it does not overflow the track',
+        bar('L', 9000, 3000, '').includes('width:100.0%'));
+  check('no limit set does not divide by zero',
+        !bar('L', 500, 0, '').includes('NaN'), bar('L', 500, 0, ''));
+
+  const intraday = sandbox.drawIntraday([
+    { ts: '2026-08-18T09:15:00', equity: 20000, day_pnl: 0 },
+    { ts: '2026-08-18T09:16:00', equity: 20140, day_pnl: 140 },
+    { ts: '2026-08-18T09:17:00', equity: 19900, day_pnl: -100 },
+  ]);
+  check('the intraday line renders', intraday.includes('<svg'));
+  check('no NaN in it', !intraday.includes('NaN'));
+  check('it marks where the day opened', intraday.includes('open'));
+  check('a down day draws in the loss colour',
+        intraday.includes(evaluate('C.loss')), evaluate('C.loss'));
+  check('one mark is not a line',
+        sandbox.drawIntraday([{ ts: 'x', equity: 1 }]).includes('chart-empty'));
+  check('no marks degrades cleanly', sandbox.drawIntraday([]).includes('chart-empty'));
+  check('a flat session does not divide by zero',
+        !sandbox.drawIntraday([
+          { ts: 'a', equity: 20000 }, { ts: 'b', equity: 20000 }]).includes('NaN'));
+
+  check('the risk page exists', html.includes('id="v-risk"'));
+  check('and is in the navigation', /id: "risk"/.test(html));
+  const mainPy4 = readFileSync(join(HERE, '..', '..', 'backend', 'app', 'main.py'), 'utf8');
+  check('the server assembles it in one call', /@app\.get\("\/api\/risk"\)/.test(mainPy4));
+  check('realised risk-reward is computed from what was actually risked',
+        /abs\(t\["net_pnl"\]\) \/ risk/.test(mainPy4));
+}
+
+console.log('\nRoles and capabilities');
+{
+  const usersPy = readFileSync(join(HERE, '..', '..', 'backend', 'app', 'users.py'), 'utf8');
+  for (const role of ['risk_manager', 'quant_dev', 'compliance']) {
+    check(`${role} exists`, usersPy.includes(`"${role}"`));
+    check(`${role} has a description`, new RegExp(`"${role}": "`).test(usersPy));
+  }
+  // The three constraints the roles exist to express.
+  const caps = src => {
+    const m = new RegExp(`"${src}": frozenset\\(\\{([\\s\\S]*?)\\}\\)`).exec(usersPy);
+    return m ? m[1] : '';
+  };
+  check('a risk manager can stop a session', caps('risk_manager').includes('"kill"'));
+  check('but cannot change the strategy',
+        !caps('risk_manager').includes('"tune_strategy"'), caps('risk_manager'));
+  check('nor upload code', !caps('risk_manager').includes('"upload_algorithm"'));
+  check('a quant can upload', caps('quant_dev').includes('"upload_algorithm"'));
+  check('but cannot arm real money',
+        !caps('quant_dev').includes('"arm_live"'), caps('quant_dev'));
+  check('compliance can read the audit trail', caps('compliance').includes('"view_audit"'));
+  check('and can change nothing at all',
+        !/"(operate|kill|tune_strategy|upload_algorithm|manage_users|arm_live)"/
+          .test(caps('compliance')), caps('compliance'));
+  check('only a super admin manages people',
+        !['viewer', 'compliance', 'quant_dev', 'operator', 'risk_manager']
+          .some(r => caps(r).includes('"manage_users"')));
+
+  const authPy = readFileSync(join(HERE, '..', '..', 'backend', 'app', 'auth.py'), 'utf8');
+  check('guards are keyed on capability, not rank',
+        /def require_capability/.test(authPy));
+  check('the refusal says what the role cannot do',
+        /cannot do this/.test(authPy));
+
+  check('the matrix is rendered from the API, not restated in the page',
+        html.includes('/api/permissions') && html.includes('id="u-matrix"'));
+}
+
+console.log('\nAlerts');
+{
+  const alertsPy = readFileSync(join(HERE, '..', '..', 'backend', 'app', 'alerts.py'), 'utf8');
+  for (const rule of ['kill_switch', 'error_rate', 'drawdown', 'bot_stopped',
+                      'trade', 'daily_summary']) {
+    check(`the ${rule} rule exists`, alertsPy.includes(`"${rule}"`));
+  }
+  for (const ch of ['email', 'webhook', 'slack']) {
+    check(`the ${ch} channel exists`, alertsPy.includes(`"${ch}"`));
+  }
+  check('a rule that has fired does not fire again until it clears',
+        /if rule in _active/.test(alertsPy) && /def clear/.test(alertsPy));
+  check('delivery never blocks the caller',
+        /threading\.Thread\(target=_run/.test(alertsPy));
+  check('a send has a timeout', /SEND_TIMEOUT_SECONDS/.test(alertsPy));
+  check('the SMTP password is never sent back to the browser',
+        /"password": ""/.test(alertsPy) && /password_set/.test(alertsPy));
+  check('an empty password on save means "leave it alone"',
+        /if not incoming\.get\("password"\)/.test(alertsPy));
+  check('a new session starts with every rule unfired',
+        /def reset_state/.test(alertsPy));
+  check('the test button reports why it failed, not just that it did',
+        /f"\{type\(exc\)\.__name__\}: \{exc\}"/.test(alertsPy));
+
+  const runnerPy = readFileSync(join(HERE, '..', '..', 'backend', 'app', 'runner.py'), 'utf8');
+  check('an unexpected stop raises one', /_alert\("bot_stopped"/.test(runnerPy));
+  check('so does a tripped kill switch', /_alert\("kill_switch"/.test(runnerPy));
+  check('and a drawdown past the threshold', /_alert\("drawdown"/.test(runnerPy));
+  check('alerting cannot break the output reader',
+        /def _alert\([\s\S]{0,320}except Exception:\s*\n\s*pass/.test(runnerPy));
+
+  check('the alerts page exists', html.includes('id="v-alerts"'));
+  check('report scheduling lives with it', html.includes('id="al-sched"'));
+}
+
+console.log('\nAudit trail — filters and export');
+{
+  const approvalsPy = readFileSync(
+    join(HERE, '..', '..', 'backend', 'app', 'approvals.py'), 'utf8');
+  check('entries carry the caller address', /ip\s+TEXT/.test(approvalsPy));
+  check('an existing trail gains the column rather than being rebuilt',
+        /ALTER TABLE audit ADD COLUMN ip TEXT/.test(approvalsPy));
+  check('the address comes from middleware, not from every call site',
+        /def set_request_ip/.test(approvalsPy));
+  check('filters compose', /def trail\(limit: int = 200, action: str = ""/.test(approvalsPy));
+  check('a group filter matches the whole group',
+        /action LIKE \? ESCAPE/.test(approvalsPy));
+  check('it can be exported', /def to_csv/.test(approvalsPy));
+  check('the export names the IP column', /"IP address"/.test(approvalsPy));
+  check('nothing deletes from the trail',
+        !/DELETE FROM audit/.test(approvalsPy), 'the trail must be append-only');
+
+  const mainPy5 = readFileSync(join(HERE, '..', '..', 'backend', 'app', 'main.py'), 'utf8');
+  check('the proxy header is only trusted for the first hop',
+        /forwarded\.split\(","\)\[0\]/.test(mainPy5));
+  check('the address is cleared after each request',
+        /finally:\s*\n\s*approvals\.set_request_ip\(None\)/.test(mainPy5));
+  check('signing in is audited', /"signed_in"/.test(mainPy5));
+  check('so is a refused sign-in', /"sign_in_failed"/.test(mainPy5));
+  check('the export honours the same filters',
+        /@app\.get\("\/api\/audit\/export"\)/.test(mainPy5));
+
+  check('the screen offers both formats',
+        html.includes('id="au-csv"') && html.includes('id="au-json"'));
+  check('and filters by operator and date',
+        html.includes('id="au-actor"') && html.includes('id="au-from"'));
+}
+
+console.log('\nKeyboard and density');
+{
+  check('digits navigate by position', /\^\[1-9\]\$/.test(html));
+  check('and follow what the role can see', /visibleViews\(\)\[Number\(e\.key\) - 1\]/.test(html));
+  check('S and X are guarded by the same confirmation as the buttons',
+        /if \(key === "s" \|\| key === "x"\)[\s\S]{0,600}confirmAction\(/.test(html));
+  check('and refuse outright without the role',
+        /if \(key === "s" \|\| key === "x"\) \{\s*\n\s*if \(!canOperate\(\)\) return;/.test(html));
+  check('there is a shortcut list', /function showShortcuts/.test(html));
+  check('and a hint to find it', html.includes('id="kbhint"'));
+
+  check('density has three states', /const DENSITY = \["comfortable", "default", "compact"\]/.test(html));
+  check('it is stored per browser', /localStorage\.setItem\("mc_density"/.test(html));
+  check('and applied before the first paint, on documentElement',
+        /document\.documentElement\.setAttribute\("data-density"/.test(html));
+  for (const mode of ['compact', 'comfortable']) {
+    check(`${mode} is defined`, new RegExp(`html\\[data-density="${mode}"\\]`).test(html));
+  }
+  check('card padding is a token, not a literal',
+        /\.card\{[^}]*padding:var\(--card-pad\)/.test(html));
+
+  evaluate('applyDensity("compact")');
+  check('choosing compact sets the attribute',
+        evaluate('document.documentElement.getAttribute("data-density")') === 'compact');
+  evaluate('applyDensity("default")');
+  check('default clears it rather than setting a third value',
+        evaluate('document.documentElement.getAttribute("data-density")') === null);
+  evaluate('applyDensity("nonsense")');
+  check('an unknown mode falls back to default',
+        evaluate('document.documentElement.getAttribute("data-density")') === null);
+}
+
+console.log('\nEmpty states');
+{
+  const es = sandbox.emptyState;
+  const out = es('trades', 'No trades in this period',
+                 'The algorithm found no qualifying setups.',
+                 [{ label: 'Open the log →', id: 'x1' }]);
+  check('it draws an icon', out.includes('<svg') && out.includes('<path d='));
+  check('it says what happened', out.includes('No trades in this period'));
+  check('it says why', out.includes('no qualifying setups'));
+  check('it offers the next step', out.includes('id="x1"') && out.includes('Open the log'));
+  check('with no action it still renders',
+        es('clock', 'Nothing yet', 'Come back later').includes('es-h'));
+  check('an unknown icon falls back rather than drawing nothing',
+        es('not-a-real-icon', 'x', '').includes('<path d="M'));
+  check('the heading is escaped',
+        !es('trades', '<img src=x>', '').includes('<img src=x'));
+
+  // These ids are object properties in the source; emptyState turns them into
+  // attributes at render time.
+  check('the trade box offline state is actionable',
+        html.includes('id: "tb-ctrl"') && html.includes('Go to Control →'));
+  check('and offers a start to whoever may start it',
+        /canOperate\(\) \? \{ label: "Start now", id: "tb-start"/.test(html));
+  check('the trades empty state points at the session log',
+        html.includes('id: "te-feed"'));
+}
+
+console.log('\nPython highlighting');
+{
+  const hl = sandbox.highlightPython;
+  const strip = s => s.replace(/<[^>]+>/g, '')
+    .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+
+  // The one property that matters more than any colour: what goes in comes
+  // out. A highlighter that eats a character silently corrupts an upload.
+  const samples = [
+    'def main():\n    return 1',
+    '# a comment with "quotes" and \'apostrophes\'',
+    'x = "a string with # not a comment"',
+    "s = 'it\\'s escaped'",
+    'doc = """triple\nquoted\nspanning lines"""',
+    '@decorator\nclass Book:\n    pass',
+    'v = 1_000_000 + 0x1f - 2e-3',
+    'if a and not b or c in d: pass',
+    'print(f"{x:>7.2f}ms")',
+    'a = b - -c',
+    '',
+    '\n\n\n',
+  ];
+  for (const src of samples) {
+    check(`round-trips: ${JSON.stringify(src.slice(0, 34))}`,
+          strip(hl(src)) === src, JSON.stringify(strip(hl(src))));
+  }
+
+  check('keywords are coloured', hl('return x').includes('tk-kw'));
+  check('a def name is coloured differently from the keyword',
+        hl('def compute():').includes('tk-def'));
+  check('numbers are coloured', hl('x = 42').includes('tk-num'));
+  check('comments are coloured', hl('# note').includes('tk-com'));
+
+  // These four are the ones a regex-based highlighter gets wrong.
+  check('a keyword inside a comment is not coloured as code',
+        !hl('# class def return').includes('tk-kw'));
+  check('a hash inside a string does not start a comment',
+        !hl('x = "# not a comment"').includes('tk-com'));
+  check('a quote inside a comment does not open a string',
+        !hl('# it\'s fine').includes('tk-str'));
+  check('a keyword inside a string stays a string',
+        !hl('x = "return"').includes('tk-kw'));
+  check('a word containing a keyword is not split',
+        !hl('classification = 1').includes('tk-kw'),
+        hl('classification = 1'));
+  check('an unterminated string does not run off the end',
+        strip(hl('x = "never closed')) === 'x = "never closed');
+  check('a triple-quoted docstring is one token',
+        (hl('"""a\nb"""').match(/tk-str/g) || []).length === 1);
+
+  // Source is data. It must never become markup.
+  const evil = 'x = "<img src=x onerror=alert(1)>"  # </span><script>bad()</script>';
+  check('markup in the source is escaped',
+        !hl(evil).includes('<img src=x') && !hl(evil).includes('<script>'),
+        hl(evil).slice(0, 120));
+  check('and still round-trips', strip(hl(evil)) === evil);
+
+  // Line splitting has to survive multi-line tokens.
+  const marked = sandbox.highlightLines('a = 1\nb = 2\nc = 3', [{ line: 2, level: 'bad' }]);
+  check('each line is wrapped', (marked.match(/class="ed-line/g) || []).length === 3);
+  check('the marked line is shaded', marked.includes('ed-line bad'));
+  check('the others are not',
+        (marked.match(/ed-line bad/g) || []).length === 1);
+  const spanning = sandbox.highlightLines('x = """a\nb"""\ny = 1', []);
+  check('a docstring spanning lines still splits into lines',
+        (spanning.match(/class="ed-line/g) || []).length === 3);
+  check('an empty line keeps its height',
+        sandbox.highlightLines('a\n\nb', []).includes('> </span>'));
+
+  check('the editor is a textarea, so selection and undo still work',
+        html.includes('class="ed-ta mono" id="a-source"'));
+  check('it has a gutter', html.includes('id="a-gutter"'));
+  check('validation findings can carry a line number',
+        readFileSync(join(HERE, '..', '..', 'backend', 'app', 'algorithms.py'), 'utf8')
+          .includes('line=exc.lineno'));
+}
+
+console.log('\nStrategy save flow');
+{
+  evaluate(`S.strategy = { bot_running: false, groups: [{ name: 'Risk', params: [
+      { key: 'SL_PCT', label: 'Stop loss', type: 'pct', value: 0.10 },
+      { key: 'MAX_TRADES_PER_DAY', label: 'Max trades', type: 'int', value: 3 },
+      { key: 'CHOP_FILTER', label: 'Chop filter', type: 'bool', value: true } ] }] };
+    S.stratEdits = { SL_PCT: 0.12 };`);
+  let ch = sandbox.pendingChanges();
+  check('a change is described from and to',
+        ch.length === 1 && ch[0].from === '10.0%' && ch[0].to === '12.0%',
+        JSON.stringify(ch));
+  check('it uses the human label, not the key', ch[0].label === 'Stop loss');
+
+  evaluate(`S.stratEdits = { MAX_TRADES_PER_DAY: 5, CHOP_FILTER: false };`);
+  ch = sandbox.pendingChanges();
+  check('an integer is not shown as a percentage',
+        ch.find(c => c.key === 'MAX_TRADES_PER_DAY').to === '5', JSON.stringify(ch));
+  check('a boolean reads on/off',
+        ch.find(c => c.key === 'CHOP_FILTER').from === 'on' &&
+        ch.find(c => c.key === 'CHOP_FILTER').to === 'off');
+
+  evaluate(`S.stratEdits = { SL_PCT: 0.10 };`);
+  check('setting a value back to what it was is not a change',
+        sandbox.pendingChanges().length === 0);
+
+  check('the save bar floats rather than sitting at the end of the page',
+        /\.savebar\{position:fixed/.test(html));
+  check('saving goes through a confirmation, not straight to the API',
+        /\$\("#st-save"\)\.onclick = confirmStrategySave/.test(html));
+  check('the confirmation lists the changes',
+        /class="chg-r"/.test(html) && /<s>\$\{esc\(c\.from\)\}<\/s>/.test(html));
+  check('there is an undo window', /function offerUndo/.test(html) &&
+        /Undo \(\$\{left\}s\)/.test(html));
+  check('the undo puts the previous values back',
+        /body: JSON\.stringify\(\{ values: previous \}\)/.test(html));
+  check('a running algorithm is called out in the confirmation',
+        /position open right now finishes under the current values/.test(html));
+
+  const mainPy3 = readFileSync(join(HERE, '..', '..', 'backend', 'app', 'main.py'), 'utf8');
+  check('the change is written to the audit trail',
+        /"strategy_changed"/.test(mainPy3));
+  check('the audit records what each value was, not just what it became',
+        /before = strategy_config\.effective\(\)/.test(mainPy3) &&
+        /"from": before\.get\(k\), "to": v/.test(mainPy3));
 }
 
 console.log('\nMode signalling');
@@ -1106,10 +1487,24 @@ console.log('\nBrand');
         !html.includes('#35d6a0'), 'old accent still present');
   check('compass mark is inline in the login', html.includes('class="mark"'));
   check('desktop rail exists', html.includes('id="rail"'));
-  check('rail is hidden until 1000px',
-        /@media \(min-width:1000px\)[\s\S]{0,900}#rail\{display:flex/.test(html));
-  check('bottom nav is hidden on desktop',
-        /@media \(min-width:1000px\)[\s\S]{0,400}nav\{display:none/.test(html));
+  // Three bands, not two. The rail used to collapse to the phone layout at
+  // 1000px, so a 1280×800 laptop — the machine this actually runs on — got
+  // bottom navigation.
+  check('the rail appears at 1024px',
+        /@media \(min-width:1024px\)[\s\S]{0,1200}#rail\{display:flex/.test(html));
+  check('bottom nav is hidden once the rail is up',
+        /@media \(min-width:1024px\)[\s\S]{0,600}nav\{display:none/.test(html));
+  check('there is an icons-only band for laptop widths',
+        /@media \(min-width:1024px\) and \(max-width:1279\.98px\)/.test(html));
+  check('that band narrows the rail rather than hiding it',
+        /@media \(min-width:1024px\) and \(max-width:1279\.98px\)\{\s*:root\{--rail:62px\}/
+          .test(html));
+  check('and hides only the labels',
+        /\.rail-nav button span\.lbl\{display:none\}/.test(html));
+  check('the label survives as a tooltip and to a screen reader',
+        /title="\$\{esc\(v\.label\)\}" aria-label="\$\{esc\(v\.label\)\}"/.test(html));
+  check('nothing still targets the old breakpoint',
+        !html.includes('min-width:1000px'), '1000px breakpoint left behind');
   check('deck reflows into columns on wide screens',
         html.includes('grid-template-columns:repeat(auto-fit,minmax(330px,1fr))'));
 

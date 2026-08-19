@@ -47,6 +47,24 @@ def _strip_ansi(text: str) -> str:
     return ANSI_RE.sub("", text)
 
 
+def _alert(rule: str, subject: str, body: str, data: dict,
+           repeatable: bool = False) -> None:
+    """Alerting must never be able to break the output reader."""
+    try:
+        from . import alerts
+        alerts.fire(rule, subject, body, data, repeatable=repeatable)
+    except Exception:
+        pass
+
+
+def _threshold(rule: str):
+    try:
+        from . import alerts
+        return (alerts.config()["rules"].get(rule) or {}).get("threshold")
+    except Exception:
+        return None
+
+
 class BotSupervisor:
     """Owns one bot process and fans its output out to listeners.
 
@@ -64,6 +82,9 @@ class BotSupervisor:
         self.started_at: Optional[datetime] = None
         self.stop_reason: Optional[str] = None
         self.last_error: Optional[str] = None
+        # When this lane last had a process, so a stopped card can say whether
+        # it ran this morning or has been dark for a week.
+        self.last_run_at: Optional[str] = None
         self.restarts: int = 0
         self.session_date: str = db.today_str()
 
@@ -228,6 +249,14 @@ class BotSupervisor:
                 return {"ok": False, "reason": str(exc), "state": self.state}
 
             self.started_at = datetime.now()
+            self.last_run_at = self.started_at.isoformat(timespec="seconds")
+            # A new session starts with every rule unfired, so yesterday's
+            # breach does not suppress today's.
+            try:
+                from . import alerts
+                alerts.reset_state()
+            except Exception:
+                pass
             self.state = "running"
             self.run_id = db.start_run(self.session_date, self.proc.pid, trigger,
                                        slot=self.slot)
@@ -404,9 +433,49 @@ class BotSupervisor:
         except Exception:
             pass
 
+        self._alerts_for(kind, payload, event)
+
         from .push import notify_event  # local import avoids a cycle at import time
         try:
             notify_event(kind, payload, event)
+        except Exception:
+            pass
+
+    def _alerts_for(self, kind: str, payload: dict, event: dict) -> None:
+        """Turn events into alerts. Isolated so a bad rule cannot break parsing."""
+        try:
+            snap = self.snapshot or {}
+            if kind == "exit" and payload.get("ledger"):
+                led = payload["ledger"]
+                net = led.get("NetPnL")
+                _alert("trade",
+                       f"{self.name}: closed {led.get('Symbol', '')} for {net}",
+                       f"{led.get('Symbol')} · {led.get('Qty')} @ {led.get('AvgEntry')} "
+                       f"→ {led.get('ExitFill')} · net {net} · {led.get('Reason', '')}",
+                       {"slot": self.slot, "ledger": led}, repeatable=True)
+
+            if snap.get("killed"):
+                _alert("kill_switch", f"{self.name}: kill switch triggered",
+                       f"The daily loss limit was reached. Day P&L "
+                       f"{snap.get('day_pnl')} against a limit of "
+                       f"{snap.get('kill_limit')}. No further entries today.",
+                       {"slot": self.slot, "day_pnl": snap.get("day_pnl")})
+
+            dd = snap.get("drawdown_pct")
+            limit = _threshold("drawdown")
+            if dd is not None and limit and abs(float(dd)) >= float(limit):
+                _alert("drawdown", f"{self.name}: drawdown {float(dd):.2f}%",
+                       f"Equity is {float(dd):.2f}% below its peak of "
+                       f"{snap.get('peak_equity')}, past the {limit}% you set.",
+                       {"slot": self.slot, "drawdown_pct": dd})
+
+            if kind == "eod" and payload.get("report"):
+                r = payload["report"]
+                _alert("daily_summary", f"{self.name}: {r.get('Date')} close",
+                       f"Day P&L {r.get('DayPnL')} over {r.get('Trades')} trade(s). "
+                       f"Equity {r.get('OpenEquity')} → {r.get('CloseEquity')}, "
+                       f"charges {r.get('Charges')}.",
+                       {"slot": self.slot, "report": r}, repeatable=True)
         except Exception:
             pass
 
@@ -433,6 +502,14 @@ class BotSupervisor:
             "supervisor", message,
             level=level, exit_code=code, manual=was_manual, clean=clean,
         )
+
+        if not clean and not was_manual:
+            _alert("bot_stopped",
+                   f"{self.name} stopped unexpectedly",
+                   f"The process exited with code {code} without being asked to. "
+                   f"Session {self.session_date}."
+                   + (f"\n\nLast error: {self.last_error}" if self.last_error else ""),
+                   {"slot": self.slot, "exit_code": code})
 
         if code == 2:
             self.state = "error"
@@ -728,6 +805,9 @@ def fleet_status() -> dict:
                 "uptime_seconds": int((datetime.now() - s.started_at).total_seconds())
                                   if s.started_at and s.running else 0,
                 "last_error": s.last_error,
+                # "Stopped" on its own gives no sense of whether this lane ran
+                # today and finished or has been dark for a week.
+                "last_run": s.last_run_at,
                 "restarts": s.restarts,
                 "day_pnl": (s.snapshot or {}).get("day_pnl"),
                 "equity": (s.snapshot or {}).get("equity"),

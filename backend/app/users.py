@@ -3,14 +3,23 @@
 One super admin is bootstrapped from `.env` so there is always a way in even
 if the database is empty. Everyone else is created from the app.
 
-Roles, narrowest first:
+Roles are sets of capabilities, not a ladder. That distinction is the whole
+point of the newer three: a risk manager must be able to hit the kill switch
+without being able to edit the strategy, and a quant needs to upload code
+without being able to point it at real money. Neither of those is expressible
+as "more powerful than an operator" — they are sideways, not upward.
 
-    viewer      read the dashboard, trades and reports
-    operator    the above, plus start/stop and editing strategy parameters
-    super_admin the above, plus managing users and replacing the algorithm
+    viewer        read the dashboard, trades and reports
+    compliance    the above, plus the audit trail; read-only, permanently
+    quant_dev     the above, plus uploading and assigning algorithms — but
+                  never switching to real money
+    operator      view, start/stop, and tune strategy parameters
+    risk_manager  view everything and stop anything, including the kill
+                  switch; cannot change strategy or upload code
+    super_admin   everything, including people and real money
 
-The split matters because "can look at the P&L" and "can replace the code that
-trades my money" should not be the same permission.
+`has_at_least` survives for the two guards that genuinely are a ladder
+(operate, manage users); everything else asks for the capability it needs.
 """
 from __future__ import annotations
 
@@ -21,17 +30,87 @@ from typing import Literal, Optional
 
 from . import db
 
-Role = Literal["super_admin", "operator", "viewer"]
+Role = Literal["super_admin", "risk_manager", "operator", "quant_dev",
+               "compliance", "viewer"]
 
-ROLES: tuple[Role, ...] = ("super_admin", "operator", "viewer")
+ROLES: tuple[Role, ...] = ("super_admin", "risk_manager", "operator",
+                           "quant_dev", "compliance", "viewer")
 
-ROLE_RANK: dict[str, int] = {"viewer": 0, "operator": 1, "super_admin": 2}
+# Kept for the two checks that really are a ladder. A role absent from here
+# ranks as a viewer for those, and is gated by capability everywhere else.
+ROLE_RANK: dict[str, int] = {
+    "viewer": 0, "compliance": 0, "quant_dev": 0,
+    "operator": 1, "risk_manager": 1,
+    "super_admin": 2,
+}
 
 ROLE_LABEL: dict[str, str] = {
     "viewer": "Viewer — read only",
-    "operator": "Operator — can run the bot and tune the strategy",
-    "super_admin": "Super admin — full control, users and algorithm",
+    "compliance": "Compliance — read-only, including the audit trail",
+    "quant_dev": "Quant developer — upload and assign algorithms, paper only",
+    "operator": "Operator — run the bot and tune the strategy",
+    "risk_manager": "Risk manager — stop anything, change nothing",
+    "super_admin": "Super admin — full control, people and real money",
 }
+
+# ---------------------------------------------------------------- capabilities
+
+CAPABILITIES: dict[str, str] = {
+    "view": "See the dashboard, trades and reports",
+    "export": "Download reports",
+    "view_audit": "Read the audit trail",
+    "operate": "Start and stop a session",
+    "kill": "Stop a running session immediately",
+    "tune_strategy": "Change strategy parameters",
+    "upload_algorithm": "Upload and validate algorithm code",
+    "activate_algorithm": "Assign an algorithm to a slot",
+    "manage_users": "Create, change and remove operators",
+    "arm_live": "Request or approve trading with real money",
+    "configure_alerts": "Change alert rules and destinations",
+}
+
+ROLE_CAPS: dict[str, frozenset[str]] = {
+    "viewer": frozenset({"view", "export"}),
+    # Read-only by design: compliance that can change what it audits is not
+    # compliance.
+    "compliance": frozenset({"view", "export", "view_audit"}),
+    "quant_dev": frozenset({
+        "view", "export", "view_audit",
+        "upload_algorithm", "activate_algorithm", "tune_strategy",
+    }),
+    "operator": frozenset({"view", "export", "operate", "kill", "tune_strategy"}),
+    # Can always stop, can never change what runs.
+    "risk_manager": frozenset({"view", "export", "view_audit", "operate", "kill"}),
+    "super_admin": frozenset(CAPABILITIES),
+}
+
+
+def capabilities(role: Optional[str]) -> frozenset[str]:
+    return ROLE_CAPS.get(role or "", frozenset())
+
+
+def can(role: Optional[str], capability: str) -> bool:
+    return capability in capabilities(role)
+
+
+def permission_matrix() -> dict:
+    """Every role against every capability — rendered on the Admin page.
+
+    Written out rather than described in prose because "what exactly can a
+    quant do" is a question that gets asked in procurement, and a table
+    generated from the same constants the guards use cannot drift from them.
+    """
+    return {
+        "capabilities": [{"key": k, "label": v} for k, v in CAPABILITIES.items()],
+        "roles": [
+            {
+                "value": r,
+                "label": ROLE_LABEL[r],
+                "grants": sorted(ROLE_CAPS.get(r, frozenset())),
+            }
+            for r in ROLES
+        ],
+    }
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{2,32}$")
 MIN_PASSWORD_LENGTH = 8
