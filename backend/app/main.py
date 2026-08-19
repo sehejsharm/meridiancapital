@@ -11,6 +11,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from pathlib import Path
@@ -521,6 +522,50 @@ async def status(_: str = Depends(require_token)):
     }
 
 
+# Four levels, ordered. The event stream carries five log levels, but only
+# these distinctions change what an operator should do about a line.
+_SEVERITY_ORDER = {"critical": 0, "error": 1, "warning": 2, "info": 3}
+
+# A critical is something that has stopped the algorithm trading or put capital
+# at risk. An error is a failure it recovered from. Everything a broker rejects
+# is at least an error; only these end the session's ability to work.
+_CRITICAL_SIGNS = (
+    "KILL SWITCH TRIGGERED", "DAILY LOSS LIMIT", "BREACHED",
+    "MARGIN SHORTFALL", "AUTHENTICATION FAILED", "LOGIN REJECTED",
+    "SESSION EXPIRED", "TRACEBACK", "FATAL",
+)
+
+_NUMBERS = re.compile(r"[-+]?\d[\d,]*\.?\d*")
+
+
+def _severity(row: dict) -> str:
+    """CRITICAL / ERROR / WARNING / INFO for one event row."""
+    kind = (row.get("kind") or "").lower()
+    level = (row.get("level") or "").lower()
+    text = (row.get("message") or "").upper()
+
+    if kind == "fatal" or level == "critical":
+        return "critical"
+    if any(sign in text for sign in _CRITICAL_SIGNS):
+        return "critical"
+    if level == "error" or kind == "error":
+        return "error"
+    if level == "warn":
+        return "warning"
+    return "info"
+
+
+def _fault_key(row: dict) -> str:
+    """What makes two fault lines "the same problem".
+
+    Numbers are stripped: a rate-limit message carrying a different retry
+    count, or a kill-switch line carrying the running loss, is one recurring
+    problem rather than a hundred distinct ones.
+    """
+    text = row.get("message") or row.get("kind") or ""
+    return f"{row.get('kind', '')}|{_NUMBERS.sub('#', text)[:160]}"
+
+
 def _diagnostics() -> dict:
     """Everything needed to answer "is the algorithm actually alive and well?".
 
@@ -559,21 +604,40 @@ def _diagnostics() -> dict:
     )
 
     # The same broker error repeating 90 times is one problem, not ninety, and
-    # listing each copy pushes the other faults off the panel.
+    # listing each copy pushes the other faults off the panel. Numbers that
+    # differ between otherwise identical lines are normalised out first, so
+    # "Daily kill: Rs 0 / Rs 3,000" and "Daily kill: Rs 120 / Rs 3,000" group
+    # as the one recurring message they are.
     faults: list[dict] = []
     seen: dict[str, dict] = {}
+    total_grouped = 0
     for row in raw_faults:
-        key = (row["message"] or row["kind"] or "")[:120]
+        key = _fault_key(row)
         if key in seen:
             entry = seen[key]
             entry["count"] += 1
             entry["first_ts"] = row["ts"]         # rows arrive newest first
             continue
-        entry = {**row, "count": 1, "first_ts": row["ts"]}
+        entry = {
+            **row,
+            "count": 1,
+            "first_ts": row["ts"],
+            "severity": _severity(row),
+        }
         seen[key] = entry
-        faults.append(entry)
-        if len(faults) >= 12:
-            break
+        total_grouped += 1
+        if len(faults) < 12:
+            faults.append(entry)
+
+    # Most severe first, then most recent — a critical from an hour ago matters
+    # more than a warning from a minute ago.
+    faults.sort(key=lambda f: (_SEVERITY_ORDER.get(f["severity"], 9),
+                               f["ts"] or ""), reverse=False)
+    faults.sort(key=lambda f: _SEVERITY_ORDER.get(f["severity"], 9))
+
+    by_severity: dict[str, int] = {}
+    for entry in seen.values():
+        by_severity[entry["severity"]] = by_severity.get(entry["severity"], 0) + 1
 
     counts = db.query(
         """SELECT level, COUNT(*) AS n FROM events
@@ -581,8 +645,15 @@ def _diagnostics() -> dict:
         (today,),
     )
     by_level = {r["level"]: r["n"] for r in counts}
-    errors_today = by_level.get("error", 0) + by_level.get("critical", 0)
+    # Raw line counts. Shown as the smaller "of N lines" figure — a panel
+    # reading "372 errors" when it is one broker complaint repeating is not
+    # information, it is alarm.
+    errors_raw = by_level.get("error", 0) + by_level.get("critical", 0)
+    warnings_raw = by_level.get("warn", 0)
     events_today = sum(by_level.values())
+
+    errors_today = by_severity.get("critical", 0) + by_severity.get("error", 0)
+    warnings_today = by_severity.get("warning", 0)
 
     # A running child that has gone quiet for longer than two status intervals is
     # not obviously healthy, and saying so is the whole point of this endpoint.
@@ -625,8 +696,14 @@ def _diagnostics() -> dict:
         "inside_window": st.get("inside_window"),
         "schedule": st.get("schedule"),
         "schedule_next": next_runs(),
+        # Distinct problems, not raw lines. The raw figures are alongside so
+        # "one thing, 372 times" stays visible without being the headline.
         "errors_today": errors_today,
-        "warnings_today": by_level.get("warn", 0),
+        "warnings_today": warnings_today,
+        "errors_raw": errors_raw,
+        "warnings_raw": warnings_raw,
+        "distinct_issues": total_grouped,
+        "by_severity": by_severity,
         # Everything the bot said, so the deck can show activity without
         # implying that activity is failure.
         "events_today": events_today,

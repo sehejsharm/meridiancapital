@@ -36,7 +36,7 @@ function makeElement(id = '') {
   const el = {
     id,
     _html: '',
-    textContent: '',
+    _text: '',
     value: '',
     disabled: false,
     dataset: {},
@@ -56,6 +56,13 @@ function makeElement(id = '') {
   Object.defineProperty(el, 'innerHTML', {
     get() { return this._html; },
     set(v) { this._html = String(v); },
+  });
+  // A real element stringifies whatever it is assigned; the stub used to keep
+  // the raw value, so a number written to textContent read back as a number
+  // and tests passed or failed on a type the browser would never produce.
+  Object.defineProperty(el, 'textContent', {
+    get() { return this._text; },
+    set(v) { this._text = v == null ? '' : String(v); },
   });
   return el;
 }
@@ -93,6 +100,10 @@ const sandbox = {
   WebSocket: function () { this.close = () => {}; },
   confirm: () => false,
   alert: () => {},
+  // The page listens on window for resize (tape overflow) as well as on
+  // document; sandbox doubles as window, so it needs the same surface.
+  addEventListener() {},
+  removeEventListener() {},
   encodeURIComponent,
   URLSearchParams,
   Intl,
@@ -593,6 +604,182 @@ console.log('\nAlgorithm diff');
   check('the diff modal is hidden until asked for',
         /<div id="dif" hidden>/.test(html));
   check('escape closes the diff', html.includes('difClose()'));
+}
+
+console.log('\nMode signalling');
+{
+  check('paper mode is stated, not implied by a thin rule',
+        html.includes('PAPER TRADING — NO REAL MONEY AT RISK'));
+  check('live mode names what is at risk',
+        html.includes('LIVE — REAL CAPITAL AT RISK'));
+  check('both banners are real elements, so they are announced',
+        /<div class="modebar paper" role="status">/.test(html) &&
+        /<div class="modebar live" role="alert">/.test(html));
+  check('real capital rings the whole shell, not just the top edge',
+        html.includes('class="shellring"') &&
+        /body\.live-money \.shellring\{display:block\}/.test(html));
+  check('the mode badge is its own component, not a status pill',
+        html.includes('class="modechip paper"') && /\.modechip\{/.test(html));
+  check('the badge is bigger and heavier than a pill',
+        /\.modechip\{[^}]*font-weight:800/.test(html));
+  check('live and loss are different colours',
+        /--live:#e0142a/.test(html) && /--down:#ff5566/.test(html));
+
+  evaluate('S.snap = { paper: true }; S.status = {}; S.fleet = null; renderDash();');
+  check('paper mode marks the body', evaluate('document.body.classList.contains("paper-mode")'));
+  check('and clears the live class', !evaluate('document.body.classList.contains("live-money")'));
+  check('the badge reads PAPER',
+        evaluate('document.querySelector("#h-mode").textContent') === 'PAPER');
+  evaluate('S.snap = { paper: false }; renderDash();');
+  check('live mode marks the body', evaluate('document.body.classList.contains("live-money")'));
+  check('the badge reads LIVE',
+        evaluate('document.querySelector("#h-mode").textContent') === 'LIVE');
+  check('the badge explains itself on hover',
+        /real capital/i.test(evaluate('document.querySelector("#h-mode").title')));
+}
+
+console.log('\nMarket tape overflow');
+{
+  check('the tape has a wrapper that can show an edge fade',
+        html.includes('class="tapewrap" id="d-tapewrap"'));
+  check('the fade only appears when something is off-screen',
+        /\.tapewrap\.more::after\{opacity:1\}/.test(html));
+  check('overflow is recomputed on scroll and resize',
+        /addEventListener\("scroll", markTapeOverflow/.test(html) &&
+        /addEventListener\("resize", markTapeOverflow/.test(html));
+
+  // Priority order is the whole point: the cells that go are the ones nobody
+  // trades on. Spot, day move and today's P&L must never carry a priority.
+  const tapeFn = html.slice(html.indexOf('function tapeTick'),
+                            html.indexOf('function markTapeOverflow'));
+  for (const keep of ['Day', 'P&L today']) {
+    const m = tapeFn.match(new RegExp(`cell\\("${keep}"[^\\n]*`));
+    check(`${keep} is never dropped`, !!m && !/,\s*[123]\)/.test(m[0]), m && m[0]);
+  }
+  check('the link pill is the first thing to go',
+        /data-pri="3"[^>]*><span class="tp-k">Link/.test(html.replace(/\s+/g, ' ')));
+  check('three breakpoints drop three tiers',
+        (html.match(/\.tp-i\[data-pri="[123]"\]\{display:none\}/g) || []).length === 3);
+
+  const el = { scrollWidth: 1600, clientWidth: 1200, scrollLeft: 0 };
+  // markTapeOverflow reads the live DOM, so the arithmetic is asserted directly.
+  check('more content to the right means the fade shows',
+        el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+  check('scrolled to the end means it hides',
+        !(el.scrollWidth - el.clientWidth - 400 > 4));
+}
+
+console.log('\nIssue severity');
+{
+  const d = {
+    running: true, heartbeat: 'live', errors_today: 2, warnings_today: 1,
+    errors_raw: 372, warnings_raw: 17, distinct_issues: 3,
+    by_severity: { critical: 1, error: 1, warning: 1 },
+    faults: [
+      { ts: '2026-08-18T10:02:00', severity: 'warning', count: 10,
+        message: 'Daily kill: Rs 0 / Rs 3,000' },
+      { ts: '2026-08-18T10:05:00', severity: 'critical', count: 1,
+        message: 'KILL SWITCH TRIGGERED — trading halted' },
+      { ts: '2026-08-18T10:03:00', severity: 'error', count: 340,
+        message: 'Access denied because of exceeding access rate' },
+      { ts: '2026-08-18T09:40:00', severity: 'warning', count: 2,
+        message: 'Something else worth knowing' },
+    ],
+  };
+  const out = sandbox.renderFaults(d);
+  check('the headline counts distinct problems, not log lines',
+        out.includes('3 distinct issues') && !out.includes('372 distinct'), out.slice(0, 160));
+  check('repeats are collapsed and counted',
+        out.includes('repeated 10×') && out.includes('repeated 340×'));
+  check('每 severity gets a badge'.replace('每', 'each'),
+        out.includes('sev critical') && out.includes('sev error') &&
+        out.includes('sev warning'));
+  check('a critical is shown before a warning',
+        out.indexOf('KILL SWITCH') < out.indexOf('Daily kill'), 'ordering');
+  check('the first few are visible without opening anything',
+        out.indexOf('KILL SWITCH') < out.indexOf('<details'), out.slice(0, 200));
+  check('the rest fold away', out.includes('faults-more') && out.includes('1 more'));
+  check('severity chips summarise the mix',
+        out.includes('1 CRIT') && out.includes('1 ERR') && out.includes('1 WARN'));
+  check('nothing wrong renders nothing', sandbox.renderFaults({ faults: [] }) === '');
+  check('fault text is escaped',
+        !sandbox.renderFaults({ faults: [{ message: '<img src=x>', severity: 'error' }] })
+          .includes('<img src=x'));
+
+  // The raw line counts stay on screen, as the small print under the figure
+  // rather than as the figure itself.
+  check('the raw total is still reported somewhere',
+        html.includes('d.errors_raw') && html.includes('lines'));
+  check('it is a sub-line, not the headline number',
+        /statSub\("Errors today"/.test(html));
+
+  // Classification is the server's job; both halves have to agree on the words.
+  const mainPy2 = readFileSync(join(HERE, '..', '..', 'backend', 'app', 'main.py'), 'utf8');
+  for (const level of ['critical', 'error', 'warning', 'info']) {
+    check(`the server can emit ${level}`, new RegExp(`"${level}"`).test(mainPy2));
+    check(`the app knows how to draw ${level}`,
+          new RegExp(`\\b${level}:\\s*\\[`).test(html) || level === 'info');
+  }
+  check('a kill switch counts as critical, not just an error',
+        /KILL SWITCH TRIGGERED/.test(mainPy2));
+  check('identical messages differing only in numbers group together',
+        /_NUMBERS\.sub\(['"]#['"]/.test(mainPy2));
+}
+
+console.log('\nExit message');
+{
+  const runner = readFileSync(join(HERE, '..', '..', 'backend', 'app', 'runner.py'), 'utf8');
+  check('a clean exit is never called unexpected',
+        !/exited \(code \{code\}\)"\s*\n\s*\+ \("" if was_manual else " unexpectedly"\)/.test(runner));
+  check('code 0 reads as a clean stop',
+        /Bot process (stopped|finished and stopped) cleanly/.test(runner));
+  check('a real crash names the code',
+        /Bot process exited unexpectedly \(code \{code\}\)/.test(runner));
+  check('SIGTERM counts as clean too',
+        /clean = code in \(0, -15, 143\)/.test(runner));
+}
+
+console.log('\nSession counters');
+{
+  const strat = readFileSync(
+    join(HERE, '..', '..', 'backend', 'app', 'bot', 'strategy.py'), 'utf8');
+  check('the algorithm no longer prints one label for two numbers',
+        !/Sessions run/.test(strat), 'a "Sessions run" label survived');
+  check('finished sessions are labelled as finished',
+        /Sessions done/.test(strat));
+  check('the one in progress is labelled separately',
+        /This session : #/.test(strat));
+  check('the snapshot carries both numbers',
+        /sessions_done=/.test(strat) && /session_number=/.test(strat));
+
+  check('the deck says which one it is showing',
+        html.includes('>Sessions done<'));
+  evaluate(`S.snap = { paper: true, sessions_done: 4, session_number: 5 };
+            S.status = { running: true }; S.fleet = null; renderDash();`);
+  check('the deck shows finished sessions',
+        evaluate('document.querySelector("#d-sess").textContent') === '4',
+        evaluate('document.querySelector("#d-sess").textContent'));
+  check('and names the live one underneath',
+        evaluate('document.querySelector("#d-sess-sub").textContent') === '#5 live now',
+        evaluate('document.querySelector("#d-sess-sub").textContent'));
+  evaluate(`S.status = { running: false }; renderDash();`);
+  check('nothing running means no live-session line',
+        evaluate('document.querySelector("#d-sess-sub").textContent') === '');
+  evaluate(`S.snap = { paper: true, sessions_run: 7 }; renderDash();`);
+  check('an older algorithm emitting only sessions_run still renders',
+        evaluate('document.querySelector("#d-sess").textContent') === '7');
+}
+
+console.log('\nLoading states');
+{
+  check('a skeleton component exists', /\.sk\{/.test(html) && /@keyframes shimmer/.test(html));
+  check('it respects reduced motion',
+        /prefers-reduced-motion:reduce\)\{ \.sk\{animation:none/.test(html));
+  check('the trading-mode card is never an empty bordered box',
+        /<div class="card span-all" id="c-mode">\s*<div class="card-h">/.test(html),
+        'c-mode renders empty again — it reads as an unlabelled input');
+  check('a failed mode fetch says so rather than shimmering forever',
+        /Could not read the trading mode/.test(html));
 }
 
 console.log('\nReport log toggle');

@@ -1884,6 +1884,8 @@ class LiveBroker:
              total_return_pct=round(self.book.total_return() * 100, 2),
              seed_capital=self.book.data.get("seed_capital", SEED_CAPITAL),
              sessions_run=self.book.data.get("total_days", 0),
+             sessions_done=self.book.data.get("total_days", 0),
+             session_number=self.book.data.get("total_days", 0) + 1,
              latency=LAT.all_stats(),
              lot_size=self.lot_size,
              paper=PAPER_MODE,
@@ -2269,7 +2271,8 @@ class LiveBroker:
         print(Fore.CYAN + Style.BRIGHT + "\n  7. EQUITY BOOK (compounding, no infusion)")
         b = self.book.data
         print(f"    Seeded       : Rs {b.get('seed_capital',SEED_CAPITAL):,.2f} on {b.get('seeded_on')}")
-        print(f"    Sessions run : {b.get('total_days',0)+1}")
+        print(f"    Sessions done: {b.get('total_days',0)}")
+        print(f"    This session : #{b.get('total_days',0)+1} (in progress)")
         print(f"    Current      : Rs {eq:,.2f}")
         print(f"    Total return : {self.book.total_return()*100:+.2f}%")
         hist = b.get("history", [])[-5:]
@@ -2317,7 +2320,8 @@ class LiveBroker:
              equity_book={
                  "seed_capital": b.get("seed_capital", SEED_CAPITAL),
                  "seeded_on": b.get("seeded_on"),
-                 "sessions": b.get("total_days", 0) + 1,
+                 "sessions_done": b.get("total_days", 0),
+                 "session_number": b.get("total_days", 0) + 1,
                  "current": round(eq, 2),
                  "peak": round(b.get("peak_equity", eq), 2),
                  "total_return_pct": round(self.book.total_return() * 100, 2),
@@ -2542,7 +2546,7 @@ def main():
         print(f"  Real account   : Rs {real_bal:,.2f}   (reference only, never traded)")
     print(f"  Seeded         : Rs {book.data.get('seed_capital',SEED_CAPITAL):,.2f}"
           + f" on {book.data.get('seeded_on')}")
-    print(f"  Sessions run   : {book.data.get('total_days',0)}")
+    print(f"  Sessions done  : {book.data.get('total_days',0)}")
     print(f"  Total return   : {book.total_return()*100:+.2f}%")
     print(f"\n  Stop loss      : -{SL_PCT*100:.0f}%")
     print(f"  Breakeven      : +{BE_TRIGGER_PCT*100:.0f}% -> SL to +{BE_FLOOR_PCT*100:.0f}%")
@@ -2569,6 +2573,8 @@ def main():
          seed_capital=book.data.get("seed_capital", SEED_CAPITAL),
          seeded_on=book.data.get("seeded_on"),
          sessions_run=book.data.get("total_days", 0),
+         sessions_done=book.data.get("total_days", 0),
+         session_number=book.data.get("total_days", 0) + 1,
          total_return_pct=round(book.total_return() * 100, 2),
          ladder={"sl": SL_PCT, "be_trigger": BE_TRIGGER_PCT, "be_floor": BE_FLOOR_PCT,
                  "lock1_trigger": LOCK1_TRIGGER, "lock1_floor": LOCK1_FLOOR,

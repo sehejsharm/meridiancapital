@@ -45,6 +45,25 @@
   --up-bg:rgba(56,224,143,.12); --down-bg:rgba(255,85,102,.12);
   --up-glow:rgba(56,224,143,.45); --down-glow:rgba(255,85,102,.45);
 
+  /* Semantic aliases. --up/--down say which way a number moved; these say what
+     a thing *means*, which is what most of the interface is actually
+     expressing. A red border on the app shell is not a loss, it is real money
+     at risk, and the two should not have to share a variable.
+
+     Profit/loss/flat map onto the existing pair so a P&L figure and a healthy
+     status stay exactly the same green — one palette, two vocabularies. */
+  --profit:var(--up); --loss:var(--down); --flat:var(--dim);
+  --profit-bg:var(--up-bg); --loss-bg:var(--down-bg);
+  --warning:#e8c458;                      /* amber: worth knowing, not acting */
+  --critical:#e0142a;                     /* a harder red than a losing trade */
+  --critical-text:#ff8a95;                /* the same, legible as body text */
+  --critical-bg:rgba(224,20,42,.14);
+  --info:#5aa9e6;
+  --accent:var(--au);
+  /* Real capital at risk. Deliberately not --loss: it is a mode, not a result. */
+  --live:#e0142a; --live-bg:rgba(224,20,42,.1); --live-line:rgba(224,20,42,.55);
+  --paper:#6f8ba8; --paper-bg:rgba(111,139,168,.1);
+
   --mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
   --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
@@ -477,6 +496,18 @@ header{position:sticky;top:0;z-index:40;padding:calc(var(--safe-t) + 12px) 15px 
 .pill.err{background:var(--down-bg);color:var(--down);border-color:rgba(240,80,90,.35)}
 .pill.paper{background:var(--au-bg);color:var(--au);border-color:var(--line-2)}
 .pill.real{background:var(--down-bg);color:var(--down);border-color:rgba(240,80,90,.45)}
+
+/* The mode is the single most consequential fact on the screen. It was a chip
+   the same size and weight as the connection indicator sitting next to it. */
+.modechip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;
+  border-radius:7px;font-family:var(--mono);font-size:11px;font-weight:800;
+  letter-spacing:1.6px;border:1.5px solid transparent;white-space:nowrap}
+.modechip.paper{background:var(--paper-bg);color:#a9c3d8;
+  border-color:rgba(111,139,168,.45)}
+.modechip.real{background:var(--critical-bg);color:#ff97a1;
+  border-color:var(--live-line);box-shadow:0 0 18px -6px rgba(224,20,42,.8);
+  animation:alarm 2s ease-in-out infinite}
+.modechip.real::before{content:"●";font-size:9px}
 .dot{width:5px;height:5px;border-radius:99px;background:currentColor}
 .dot.beat{animation:beat 2s ease-in-out infinite}
 @keyframes beat{0%,100%{opacity:1}50%{opacity:.25}}
@@ -552,16 +583,58 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .sx-v{font-size:13.5px;margin-top:4px;font-family:var(--mono);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
 .faults{margin-top:13px;border-top:1px solid var(--line);padding-top:11px}
-.faults summary{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;
-  color:var(--down);cursor:pointer;font-family:var(--mono)}
-.fault{display:flex;gap:10px;margin-top:8px;font-family:var(--mono);font-size:11px;
-  line-height:1.5}
+.faults-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.faults-n{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;
+  font-family:var(--mono);color:var(--muted)}
+.faults-n.critical{color:var(--critical)}
+.faults-n.error{color:var(--loss)}
+.faults-n.warning{color:var(--warning)}
+.faults-more{margin-top:8px}
+.faults-more summary{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;
+  color:var(--dim);cursor:pointer;font-family:var(--mono)}
+.faults-more summary:hover{color:var(--muted)}
+.fault{display:flex;gap:9px;margin-top:8px;font-family:var(--mono);font-size:11px;
+  line-height:1.5;align-items:flex-start}
 .fault-t{color:var(--faint);flex-shrink:0}
-/* Red means act now. A warning is amber, not another shade of alarm. */
-.fault-m{color:var(--down);word-break:break-word}
-.fault.warn .fault-m{color:var(--au)}
+.fault-m{color:var(--muted);word-break:break-word;min-width:0}
+/* The badge carries the severity so the message text does not have to shout. */
+.sev{flex-shrink:0;font-size:9px;letter-spacing:1px;font-family:var(--mono);
+  padding:2px 6px;border-radius:4px;line-height:1.4;border:1px solid transparent}
+.sev.critical{color:#fff;background:var(--critical);border-color:var(--critical)}
+.sev.error{color:var(--loss);background:var(--loss-bg);border-color:rgba(255,85,102,.4)}
+.sev.warning{color:var(--warning);background:rgba(232,196,88,.12);
+  border-color:rgba(232,196,88,.35)}
+.sev.info{color:var(--dim);background:var(--surface-2);border-color:var(--line)}
+.fault.critical .fault-m{color:var(--critical-text)}
+.fault.error .fault-m{color:var(--loss)}
+.fault.warning .fault-m{color:var(--warning)}
 .fault-n{background:rgba(255,255,255,.08);border-radius:4px;padding:0 5px;
-  font-size:10px;color:var(--muted)}
+  font-size:10px;color:var(--muted);white-space:nowrap}
+.sx-sub{font-size:9px;color:var(--faint);font-family:var(--mono);margin-top:2px;
+  min-height:11px}
+
+/* ---- skeletons ----
+   A card that is bordered, padded and empty reads as a broken input, not as
+   "loading" — which is exactly how the trading-mode card on Control was being
+   read. Anything that arrives over the network shows its shape first. */
+.sk{background:linear-gradient(90deg,var(--surface-2) 8%,var(--raised) 34%,
+    var(--surface-2) 60%);
+  background-size:220% 100%;border-radius:6px;
+  animation:shimmer 1.5s linear infinite}
+@keyframes shimmer{to{background-position:-220% 0}}
+@media (prefers-reduced-motion:reduce){ .sk{animation:none;background:var(--surface-2)} }
+.sk-line{height:11px}
+.sk-line.tall{height:15px}
+.sk-fig{height:30px;width:44%;border-radius:7px}
+.sk-block{height:120px;border-radius:8px}
+.sk-chart{height:230px;border-radius:8px}
+.sk-row{display:flex;gap:11px;align-items:center;margin-top:11px}
+.sk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:11px;
+  margin-top:12px}
+.sk-cell{height:52px;border-radius:8px}
+/* Skeletons are decoration; a screen reader should hear the status, not the
+   shimmer. Anything using them announces itself with aria-busy instead. */
+.sk{pointer-events:none}
 .span-all{grid-column:1/-1}
 
 /* ================= hero ================= */
@@ -593,6 +666,8 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .hf-k{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);
   font-family:var(--mono)}
 .hf-v{font-size:15px;margin-top:5px;font-family:var(--mono)}
+.hf-sub{font-size:9.5px;letter-spacing:.8px;color:var(--au);font-family:var(--mono);
+  margin-top:2px;min-height:12px}
 
 /* ================= metrics ================= */
 .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
@@ -757,32 +832,64 @@ main{padding:15px 15px 22px;position:relative;z-index:1}
 .sx-v.alarm{animation:alarmPulse 2s ease-in-out infinite}
 @keyframes alarmPulse{0%,100%{opacity:1}50%{opacity:.55}}
 
-/* Paper mode is safe, but forgetting which mode you are in is not. A thin
-   amber rule sits above everything while trading is simulated. */
-body.paper-mode::before{content:"";position:fixed;top:0;left:0;right:0;height:2px;
-  z-index:299;background:linear-gradient(90deg,transparent,var(--au),transparent);
-  opacity:.75;pointer-events:none}
+/* ---- which mode am I in ----
+   Both modes get a named banner, not one loud one and one thin rule. A 2px
+   amber line said "something", and something is not the same as "none of this
+   is real" — an operator glancing at a screen has to be able to answer the
+   question without reading anything.
 
-/* ---- real-money banner ----
-   Always on screen while PAPER_MODE is false, above every other layer. The
-   cost of not noticing is real orders. */
-body.live-money::after{content:"● LIVE MONEY — ORDERS ARE REAL";
-  position:fixed;top:0;left:0;right:0;z-index:300;
+   Paper is stated calmly in slate blue: correct, unalarming, unmistakable.
+   Live is red, and takes the whole shell with it. */
+.modebar{position:fixed;top:0;left:0;right:0;z-index:300;
+  font-family:var(--mono);font-weight:800;letter-spacing:2.2px;
+  text-align:center;padding:5px 8px;pointer-events:none;font-size:10.5px;
+  padding-top:calc(5px + var(--safe-t));display:none}
+body.paper-mode .modebar.paper{display:block;
+  background:linear-gradient(90deg,#20303f,#2f4b63,#20303f);color:#cfe0ee;
+  border-bottom:1px solid rgba(111,139,168,.4)}
+body.live-money .modebar.live{display:block;
   background:linear-gradient(90deg,#7a0d18,#c2202f,#7a0d18);color:#fff;
-  font-family:var(--mono);font-size:10.5px;font-weight:800;letter-spacing:2.2px;
-  text-align:center;padding:4px 8px;pointer-events:none;
-  padding-top:calc(4px + var(--safe-t))}
-body.live-money{padding-top:22px}
-@media (min-width:1000px){ body.live-money main{padding-top:44px} }
+  animation:liveThrob 2.4s ease-in-out infinite}
+@keyframes liveThrob{0%,100%{filter:brightness(1)}50%{filter:brightness(1.28)}}
+@media (prefers-reduced-motion:reduce){ body.live-money .modebar.live{animation:none} }
+body.paper-mode,body.live-money{padding-top:23px}
+@media (min-width:1000px){
+  body.paper-mode main,body.live-money main{padding-top:44px}
+}
+
+/* Real capital gets a ring around the whole shell. A banner at the top edge
+   is out of view the moment anyone scrolls a long trade list; this is not. */
+.shellring{position:fixed;inset:0;z-index:298;pointer-events:none;display:none;
+  border:2px solid var(--live-line);
+  box-shadow:inset 0 0 60px -30px rgba(224,20,42,.75)}
+body.live-money .shellring{display:block}
+body.live-money{--surface:#0d0a0b;--surface-2:#151013;}
+body.live-money .rail,body.live-money #mob-nav{background:#150c0e}
 
 /* ---- live tape ---- */
+/* The tape scrolls rather than wrapping, but a hidden scrollbar meant a
+   narrow laptop just looked like it was clipping the right-hand cells with no
+   hint that anything was there. Two things fix that: the lowest-value cells
+   drop out before it gets tight, and while there is still something off-screen
+   the right edge fades so it reads as "more", not "cut off". */
+.tapewrap{position:relative;margin-bottom:13px}
+.tapewrap::after{content:"";position:absolute;top:1px;right:1px;bottom:1px;width:42px;
+  border-radius:0 var(--r) var(--r) 0;pointer-events:none;opacity:0;
+  transition:opacity .18s var(--ease);
+  background:linear-gradient(90deg,transparent,var(--surface) 78%)}
+.tapewrap.more::after{opacity:1}
 .tape{display:flex;gap:0;align-items:stretch;overflow-x:auto;scrollbar-width:none;
   border:1px solid var(--line);border-radius:var(--r);background:
   linear-gradient(90deg,rgba(232,196,88,.07),transparent 40%),var(--surface);
-  margin-bottom:13px;box-shadow:0 8px 26px -20px rgba(0,0,0,1)}
+  box-shadow:0 8px 26px -20px rgba(0,0,0,1);scroll-snap-type:x proximity}
 .tape::-webkit-scrollbar{display:none}
 .tp-i{padding:9px 15px;border-right:1px solid var(--line);white-space:nowrap;
-  display:flex;flex-direction:column;gap:3px;flex:0 0 auto}
+  display:flex;flex-direction:column;gap:3px;flex:0 0 auto;scroll-snap-align:start}
+/* Priority order, least useful first: the link pill duplicates the header dot,
+   and a non-expiry day is the least interesting cell on the bar. */
+@media (max-width:1180px){ .tp-i[data-pri="3"]{display:none} }
+@media (max-width:1040px){ .tp-i[data-pri="2"]{display:none} }
+@media (max-width:880px){ .tp-i[data-pri="1"]{display:none} }
 .tp-i:last-child{border-right:none}
 .tp-i.lead{flex-direction:row;align-items:center;gap:9px;
   background:linear-gradient(90deg,var(--au-bg),transparent)}
@@ -1144,6 +1251,11 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 </style>
 </head>
 <body>
+<!-- Mode signalling. Rendered as real elements rather than pseudo-content so a
+     screen reader announces them; the CSS decides which one is visible. -->
+<div class="modebar paper" role="status">PAPER TRADING — NO REAL MONEY AT RISK</div>
+<div class="modebar live" role="alert">● LIVE — REAL CAPITAL AT RISK</div>
+<div class="shellring" aria-hidden="true"></div>
 
 <!-- ======================= LOGIN ======================= -->
 <div id="gate">
@@ -1418,7 +1530,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
       <span class="pill idle" id="h-state"><span class="dot"></span><span id="h-state-t">—</span></span>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
-      <span class="pill paper" id="h-mode">paper</span>
+      <span class="modechip paper" id="h-mode">PAPER</span>
       <span class="clock num" id="h-clock">--:--:--</span>
     </div>
   </div>
@@ -1430,7 +1542,10 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
     <h1 class="sr-only">Deck</h1>
     <!-- Always-on tape. Ticks every second so the page is visibly alive even
          when the algorithm is flat and nothing else on screen is moving. -->
-    <div class="tape" id="d-tape"></div>
+    <div class="tapewrap" id="d-tapewrap">
+      <div class="tape" id="d-tape" tabindex="0" role="group"
+           aria-label="Live market tape"></div>
+    </div>
 
     <div class="deck">
       <div class="span-all" id="d-sys"></div>
@@ -1449,7 +1564,9 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
           <div class="hf-i"><div class="hf-k">Since seed</div><div class="hf-v num" id="d-total">—</div></div>
           <div class="hf-i"><div class="hf-k">Peak</div><div class="hf-v num" id="d-peak">—</div></div>
           <div class="hf-i"><div class="hf-k">Drawdown</div><div class="hf-v num" id="d-dd">—</div></div>
-          <div class="hf-i"><div class="hf-k">Sessions</div><div class="hf-v num" id="d-sess">—</div></div>
+          <div class="hf-i"><div class="hf-k">Sessions done</div>
+            <div class="hf-v num" id="d-sess">—</div>
+            <div class="hf-sub" id="d-sess-sub"></div></div>
         </div>
       </div>
 
@@ -1793,7 +1910,15 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
   <section class="view" id="v-ctrl">
     <h1 class="sr-only">Control</h1>
     <div class="deck">
-      <div class="card span-all" id="c-mode"></div>
+      <!-- Rendered empty until /api/live-mode answers, which left a bordered,
+           padded, captionless box sitting at the top of the page that read as
+           an unlabelled text field. It now says what it is from the first
+           paint and only swaps its contents. -->
+      <div class="card span-all" id="c-mode">
+        <div class="card-h"><h2 class="card-t">Trading mode</h2></div>
+        <div class="sk sk-line" style="width:52%"></div>
+        <div class="sk sk-line" style="width:88%;margin-top:9px"></div>
+      </div>
       <div class="card">
         <div class="card-h"><h2 class="card-t">Session control</h2></div>
         <div id="c-slots" style="margin-bottom:12px"></div>
@@ -1857,7 +1982,7 @@ nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;
 /* Bump on every UI change. Shown on the login screen and under Control →
    System, so "is the browser serving me a stale build?" is answerable in one
    glance instead of a guess. */
-const BUILD = "2026.08.18-obsidian.9";
+const BUILD = "2026.08.19-obsidian.10";
 
 /* The dashboard is a static file with nowhere of its own to keep state, so it
    has to be told which trading server to talk to. Rather than ask for that
@@ -2588,6 +2713,10 @@ function renderSys() {
   const stat = (k, v, c) =>
     `<div class="sx"><div class="sx-k">${esc(k)}</div>
        <div class="sx-v num ${c || ""}">${esc(v)}</div></div>`;
+  const statSub = (k, v, c, sub) =>
+    `<div class="sx"><div class="sx-k">${esc(k)}</div>
+       <div class="sx-v num ${c || ""}">${esc(v)}</div>
+       <div class="sx-sub">${esc(sub || "")}</div></div>`;
 
   box.innerHTML = `
     <div class="sys ${tone}">
@@ -2603,22 +2732,81 @@ function renderSys() {
         ${stat("Heartbeat", d.running ? (d.heartbeat === "live" ? "healthy" : d.heartbeat) : "stopped",
                d.heartbeat === "live" ? "up" : d.heartbeat === "stale" ? "down" : "muted")}
         ${stat("Uptime", d.running ? dur(d.uptime_seconds) : "—")}
-        ${stat("Errors today", d.errors_today ?? 0,
-               d.errors_today ? "down alarm" : "muted")}
-        ${stat("Warnings", d.warnings_today ?? 0, d.warnings_today ? "warn" : "muted")}
+        ${statSub("Errors today", d.errors_today ?? 0,
+               d.errors_today ? "down alarm" : "muted",
+               (d.errors_raw ?? 0) > (d.errors_today ?? 0)
+                 ? `${d.errors_raw.toLocaleString("en-IN")} lines` : "")}
+        ${statSub("Warnings", d.warnings_today ?? 0,
+               d.warnings_today ? "warn" : "muted",
+               (d.warnings_raw ?? 0) > (d.warnings_today ?? 0)
+                 ? `${d.warnings_raw.toLocaleString("en-IN")} lines` : "")}
         ${stat("Events", d.events_today ?? "—", "muted")}
         ${stat("Market feed", d.has_market_data ? "receiving" : "none",
                d.has_market_data ? "up" : "muted")}
       </div>
-      ${(d.faults || []).length ? `
-        <details class="faults">
-          <summary>${plural(d.faults.length, "issue")} — open to read</summary>
-          ${d.faults.map(f => `<div class="fault ${esc(f.level || "error")}">
-            <span class="fault-t">${esc(String(f.ts || "").slice(11, 19))}</span>
-            <span class="fault-m">${esc(f.message || f.kind)}${
-              f.count > 1 ? ` <span class="fault-n">×${f.count}</span>` : ""}</span></div>`).join("")}
-        </details>` : ""}
+      ${renderFaults(d)}
     </div>`;
+}
+
+/* ================= the issues panel =================
+   Two things were wrong with the old one. The header counted raw log lines,
+   so a single broker complaint retrying all afternoon read as "372 errors" —
+   a number that makes a healthy system look like a disaster and a real
+   disaster look like Tuesday. And every fault rendered the same shade of red
+   whether it had halted trading or was a retry that succeeded.
+
+   Now the count is distinct problems, the raw total is the small print, and
+   each row carries the severity that decides whether you act on it.
+==================================================== */
+const SEVERITY = {
+  critical: ["CRIT", "Trading is affected — act now"],
+  error:    ["ERR",  "Something failed"],
+  warning:  ["WARN", "Worth knowing"],
+  info:     ["INFO", ""],
+};
+const SEVERITY_RANK = { critical: 0, error: 1, warning: 2, info: 3 };
+
+function renderFaults(d) {
+  // Sorted here as well as on the server. Only three rows are visible without
+  // opening anything, so which three is not a detail to leave to whatever
+  // order the rows happened to arrive in.
+  const faults = [...(d.faults || [])].sort((a, b) => {
+    const s = (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9);
+    return s || String(b.ts || "").localeCompare(String(a.ts || ""));
+  });
+  if (!faults.length) return "";
+
+  const distinct = d.distinct_issues ?? faults.length;
+  const bs = d.by_severity || {};
+  const worst = bs.critical ? "critical" : bs.error ? "error" : "warning";
+  // The first three are shown without opening anything; a problem you have to
+  // click to discover is a problem you find out about later than you should.
+  const lead = faults.slice(0, 3), rest = faults.slice(3);
+
+  const row = f => {
+    const sev = f.severity || "error";
+    const [tag, hint] = SEVERITY[sev] || SEVERITY.error;
+    return `<div class="fault ${esc(sev)}">
+      <span class="sev ${esc(sev)}" title="${esc(hint)}">${tag}</span>
+      <span class="fault-t">${esc(String(f.ts || "").slice(11, 19))}</span>
+      <span class="fault-m">${esc(f.message || f.kind)}${
+        f.count > 1 ? ` <span class="fault-n">repeated ${f.count}×</span>` : ""}</span></div>`;
+  };
+
+  const chips = ["critical", "error", "warning"]
+    .filter(k => bs[k])
+    .map(k => `<span class="sev ${k}">${bs[k]} ${SEVERITY[k][0]}</span>`).join(" ");
+
+  return `<div class="faults">
+    <div class="faults-h">
+      <span class="faults-n ${esc(worst)}">${plural(distinct, "distinct issue")}</span>
+      ${chips}
+    </div>
+    ${lead.map(row).join("")}
+    ${rest.length ? `<details class="faults-more">
+      <summary>${plural(rest.length, "more")}</summary>
+      ${rest.map(row).join("")}</details>` : ""}
+  </div>`;
 }
 
 /* ================= live tape =================
@@ -2651,8 +2839,10 @@ function tapeTick() {
   const dirCls = TAPE.dir > 0 ? "up" : TAPE.dir < 0 ? "down" : "";
   const clock = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata" });
 
-  const cell = (k, v, c) =>
-    `<div class="tp-i"><span class="tp-k">${esc(k)}</span>
+  // pri: 0 never drops, 3 drops first. Spot, day move and today's P&L are the
+  // three an operator actually scans; everything else earns its place.
+  const cell = (k, v, c, pri) =>
+    `<div class="tp-i"${pri ? ` data-pri="${pri}"` : ""}><span class="tp-k">${esc(k)}</span>
        <span class="tp-v num ${c || ""}">${esc(v)}</span></div>`;
 
   el.innerHTML = `
@@ -2663,24 +2853,42 @@ function tapeTick() {
       <span class="tp-arrow ${dirCls}">${TAPE.dir > 0 ? "▲" : TAPE.dir < 0 ? "▼" : "·"}</span>
     </div>
     ${cell("Day", (move >= 0 ? "+" : "") + move.toFixed(1) + " pts", cls(move))}
-    ${cell("VWAP", m.vwap ? Number(m.vwap).toFixed(1) : "—")}
-    ${cell("ADX", m.adx ? Number(m.adx).toFixed(1) : "—")}
-    ${cell("Vol", m.garch ? Number(m.garch).toFixed(1) + "%" : "—")}
+    ${cell("P&L today", signed(S.snap.day_pnl ?? 0, 0), cls(S.snap.day_pnl ?? 0))}
+    ${cell("VWAP", m.vwap ? Number(m.vwap).toFixed(1) : "—", "", 2)}
+    ${cell("ADX", m.adx ? Number(m.adx).toFixed(1) : "—", "", 2)}
+    ${cell("Vol", m.garch ? Number(m.garch).toFixed(1) + "%" : "—", "", 1)}
     ${(() => {
       const x = (S.diag && S.diag.expiry) || null;
-      if (!x) return cell("Expiry", "—");
-      if (!x.is_expiry) {
-        return cell("Expiry", `NONE · ${x.days_to_next}d`, "muted");
-      }
+      // An expiry today changes what the algorithm will do, so it stays;
+      // "none, 4 days away" is the first thing that can go.
+      if (!x) return cell("Expiry", "—", "muted", 3);
+      if (!x.is_expiry) return cell("Expiry", `NONE · ${x.days_to_next}d`, "muted", 3);
       return `<div class="tp-i expiry"><span class="tp-k">Expiry</span>
         <span class="tp-v num warn">${esc(x.label)}<span class="dot beat"></span></span></div>`;
     })()}
-    ${cell("P&L today", signed(S.snap.day_pnl ?? 0, 0), cls(S.snap.day_pnl ?? 0))}
-    ${cell("IST", clock)}
-    <div class="tp-i"><span class="tp-k">Link</span>
+    ${cell("IST", clock, "", 1)}
+    <div class="tp-i" data-pri="3"><span class="tp-k">Link</span>
       <span class="linkpill ${esc(S.link || "live")}" id="linkpill">
         <span class="dot beat"></span>${esc(S.link || "live")}</span></div>`;
+
+  markTapeOverflow();
 }
+
+/* Shows the fade only while something is actually off-screen, and hides it
+   again once the tape is scrolled to the end — a permanent fade reads as a
+   decoration and stops meaning anything. */
+function markTapeOverflow() {
+  const el = $("#d-tape"), wrap = $("#d-tapewrap");
+  if (!el || !wrap) return;
+  const more = el.scrollWidth - el.clientWidth - el.scrollLeft > 4;
+  wrap.classList.toggle("more", more);
+}
+
+(() => {
+  const el = $("#d-tape");
+  if (el) el.addEventListener("scroll", markTapeOverflow, { passive: true });
+  window.addEventListener("resize", markTapeOverflow, { passive: true });
+})();
 
 /* ---------------- fleet ---------------- */
 async function loadFleet() {
@@ -2865,8 +3073,10 @@ function renderDash() {
   document.body.classList.toggle("live-money", !paper);
   document.body.classList.toggle("paper-mode", !!paper);
   const hm = $("#h-mode");
-  hm.className = "pill " + (paper ? "paper" : "real");
-  hm.textContent = paper ? "paper" : "live money";
+  hm.className = "modechip " + (paper ? "paper" : "real");
+  hm.textContent = paper ? "PAPER" : "LIVE";
+  hm.title = paper ? "Simulated fills. Nothing reaches the broker."
+                   : "Every order is placed against real capital.";
   $("#r-mode").textContent = paper ? "PAPER" : "LIVE";
 
   // A slot that is running but has never emitted a status event has no numbers
@@ -2923,7 +3133,16 @@ def emit(kind, message="", level="info", **payload):
   $("#d-peak").textContent = money(s.peak_equity, 0);
   $("#d-dd").textContent = pct(s.drawdown_pct ?? 0, 1);
   $("#d-dd").className = "hf-v num " + ((s.drawdown_pct ?? 0) < 0 ? "down" : "muted");
-  $("#d-sess").textContent = s.sessions_run ?? "—";
+  // The deck and the algorithm's own banner disagreed — 4 against 5 — because
+  // one counted finished sessions and the other counted the one in progress
+  // too. Both are right; only one of them was labelled.
+  const done = s.sessions_done ?? s.sessions_run;
+  $("#d-sess").textContent = done ?? "—";
+  const sessSub = $("#d-sess-sub");
+  if (sessSub) {
+    const n = s.session_number;
+    sessSub.textContent = (running && n) ? `#${n} live now` : "";
+  }
   drawSpark();
 
   const box = $("#d-posbox");
@@ -4961,7 +5180,20 @@ const row = (k, v) => `<div class="row"><span class="row-k">${esc(k)}</span><spa
 ==================================================== */
 async function loadMode() {
   try { S.mode = await api("/api/live-mode"); renderMode(); }
-  catch (e) { /* viewers cannot see this; the card simply stays empty */ }
+  catch (e) {
+    // Leaving the skeleton shimmering forever is a lie about what is
+    // happening. The mode still shows in the header and the banner, which
+    // come from the status poll, so say that rather than nothing.
+    const box = $("#c-mode");
+    if (box) box.innerHTML = `
+      <div class="card-h"><h2 class="card-t">Trading mode</h2></div>
+      <div class="empty">${esc(e.message === "unauthorized"
+        ? "Your role cannot see or change the trading mode."
+        : "Could not read the trading mode from the server.")}
+        <div class="dim" style="font-size:11px;margin-top:6px">
+          The banner at the top of the screen still shows which mode is live.
+        </div></div>`;
+  }
 }
 
 function renderMode() {

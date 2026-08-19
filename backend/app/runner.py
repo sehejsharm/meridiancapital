@@ -418,12 +418,20 @@ class BotSupervisor:
         if self.run_id:
             db.end_run(self.run_id, self.stop_reason or ("exit" if code == 0 else "crash"), code)
 
-        level = "info" if code in (0, -15, 143) else "error"
+        # A clean exit is a clean exit whether or not anybody pressed Stop, and
+        # "exited (code 0) unexpectedly" told operators their algorithm had
+        # crashed when it had done exactly what it was supposed to. SIGTERM
+        # (-15/143) is how the supervisor asks it to stop, so that is clean too.
+        clean = code in (0, -15, 143)
+        level = "info" if clean else "error"
+        if clean:
+            message = ("Bot process stopped cleanly" if was_manual
+                       else "Bot process finished and stopped cleanly")
+        else:
+            message = f"Bot process exited unexpectedly (code {code})"
         self._emit_local(
-            "supervisor",
-            f"Bot process exited (code {code})"
-            + ("" if was_manual else " unexpectedly"),
-            level=level, exit_code=code, manual=was_manual,
+            "supervisor", message,
+            level=level, exit_code=code, manual=was_manual, clean=clean,
         )
 
         if code == 2:

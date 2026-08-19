@@ -626,6 +626,100 @@ def _eod_maps(payload: dict) -> bool:
     return row["session_date"] is not None and row["close_equity"] is not None
 
 
+def test_severity() -> None:
+    """CRITICAL / ERROR / WARNING / INFO, and what counts as one problem.
+
+    The panel used to report raw log lines: one broker complaint retrying all
+    afternoon read as "372 errors", which makes a working system look broken
+    and hides the one line that actually mattered.
+    """
+    print("\nIssue severity")
+    from app.main import _fault_key, _severity
+
+    cases = [
+        ({"level": "error", "kind": "log",
+          "message": "KILL SWITCH TRIGGERED — trading halted"}, "critical"),
+        ({"level": "info", "kind": "fatal", "message": "Broker login rejected"}, "critical"),
+        ({"level": "error", "kind": "log", "message": "Traceback (most recent call last)"},
+         "critical"),
+        ({"level": "error", "kind": "log",
+          "message": "Access denied because of exceeding access rate"}, "error"),
+        ({"level": "warn", "kind": "log", "message": "Daily kill: Rs 0 / Rs 3,000"},
+         "warning"),
+        ({"level": "info", "kind": "log", "message": "Scanning 24500CE"}, "info"),
+    ]
+    for row, want in cases:
+        got = _severity(row)
+        check(f"{row['message'][:38]!r} -> {want}", got == want, f"got {got}")
+
+    check("a kill-switch mention that has not fired is not critical",
+          _severity({"level": "warn", "kind": "log",
+                     "message": "Daily kill: Rs 120 / Rs 3,000"}) == "warning")
+
+    # Grouping. Two lines that differ only in a number are one problem.
+    a = _fault_key({"kind": "log", "message": "Daily kill: Rs 0 / Rs 3,000"})
+    b = _fault_key({"kind": "log", "message": "Daily kill: Rs 1,240 / Rs 3,000"})
+    check("the same message with different numbers groups together", a == b, f"{a} vs {b}")
+    c = _fault_key({"kind": "log", "message": "Order rejected: insufficient margin"})
+    check("genuinely different messages stay apart", a != c)
+    d = _fault_key({"kind": "order", "message": "Daily kill: Rs 0 / Rs 3,000"})
+    check("the same text from a different event kind stays apart", a != d)
+
+    # End to end through the endpoint.
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    today = db.today_str()
+    for i in range(30):
+        db.insert_event(f"{today}T10:{i:02d}:00", today, "log",
+                        f"Access denied because of exceeding access rate (retry {i})",
+                        "error", None)
+    db.insert_event(f"{today}T10:31:00", today, "log",
+                    "KILL SWITCH TRIGGERED — trading halted", "error", None)
+    with TestClient(app) as client:
+        d = client.get("/api/diagnostics",
+                       headers={"X-API-Token": "test-token-123"}).json()
+    check("the raw line count is still reported", d["errors_raw"] >= 31, str(d["errors_raw"]))
+    check("but the headline counts distinct problems",
+          d["errors_today"] == 2, f"{d['errors_today']} (raw {d['errors_raw']})")
+    check("the kill switch is classified critical",
+          d["by_severity"].get("critical") == 1, str(d["by_severity"]))
+    check("the retry storm is one error", d["by_severity"].get("error") == 1,
+          str(d["by_severity"]))
+    check("the critical is listed first",
+          d["faults"][0]["severity"] == "critical", str(d["faults"][0]))
+    check("the repeat count is carried",
+          any(f["count"] == 30 for f in d["faults"]),
+          str([(f["message"][:30], f["count"]) for f in d["faults"]]))
+    check("every fault carries a severity",
+          all("severity" in f for f in d["faults"]))
+
+    # Diagnostics only ever looks at today, so anything seeded here would show
+    # up in the API tests that run later and assert on a clean day.
+    db.execute("DELETE FROM events WHERE session_date = ? AND kind = 'log' "
+               "AND (message LIKE 'Access denied%' OR message LIKE 'KILL SWITCH%')",
+               (today,))
+
+
+def test_exit_message() -> None:
+    """Code 0 is a clean exit. Saying otherwise sent people hunting a crash."""
+    print("\nProcess exit messages")
+    import inspect
+
+    from app.runner import BotSupervisor
+
+    src = inspect.getsource(BotSupervisor._on_exit)
+    check("a clean code no longer reads as unexpected",
+          'else " unexpectedly"' not in src, "the old suffix survived")
+    check("code 0 says it stopped cleanly", "stopped cleanly" in src)
+    check("a crash names the code",
+          "exited unexpectedly (code {code})" in src)
+    check("SIGTERM is treated as clean",
+          "code in (0, -15, 143)" in src)
+    check("the event still carries the code for anything parsing it",
+          "exit_code=code" in src)
+
+
 def test_news() -> None:
     """Parsing and failure behaviour, without touching the network."""
     print("\nNews feed")
@@ -1050,6 +1144,8 @@ def main() -> int:
     test_live_mode_approval()
     test_expiry()
     test_log_severity()
+    test_severity()
+    test_exit_message()
     test_starter_and_brief()
     test_news()
     test_api()
