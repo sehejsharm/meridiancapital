@@ -81,9 +81,22 @@ Paid/self-hosted variants: [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
 ```bash
 cp .env.example .env
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # API_TOKEN
-nano .env                                                        # + ANGEL_* values
+nano .env                       # ADMIN_PASSWORD (required) + ANGEL_* values
 docker compose -f deploy/docker-compose.yml up -d --build
 curl http://localhost:8000/api/health
+```
+
+`ADMIN_PASSWORD` is what you type into the app, and it is the one value with no
+usable default — leave it blank and no account is created, so the dashboard
+answers every sign-in with *"No password is configured on the server"*. The
+health check above reports `"login_available": true` once it is set.
+
+Locked out, or never set it? Create or reset an account against the database
+directly — no restart, and it works even if `.env` is gone:
+
+```bash
+cd backend && python3 setup_login.py --user Sehej   # prompts for the passcode
+cd backend && python3 setup_login.py --list         # who can sign in
 ```
 
 Give it an HTTPS address so the dashboard can reach it — `tailscale funnel

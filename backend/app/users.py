@@ -297,6 +297,34 @@ def record_login(username: str) -> None:
 # ---------------------------------------------------------------- bootstrap
 
 
+def env_password_hash() -> Optional[str]:
+    """The super admin's password from `.env`, as a stored hash.
+
+    Two spellings, because a deployment platform's secret store is not always
+    somewhere you want a plaintext password to sit:
+
+      ADMIN_PASSWORD       the password itself, hashed here at boot
+      ADMIN_PASSWORD_HASH  a hash computed in advance, used as-is
+
+    The hash wins when both are set, since supplying one is the deliberate act.
+    A malformed hash is ignored rather than stored: writing it verbatim would
+    create an account no password on earth can open, and the operator would see
+    only "incorrect passcode" with no hint as to why.
+    """
+    from .auth import hash_password, is_password_hash
+
+    pre = (os.getenv("ADMIN_PASSWORD_HASH") or "").strip()
+    if pre:
+        if is_password_hash(pre):
+            return pre
+        # Falls through to ADMIN_PASSWORD, so a typo in one variable does not
+        # take the whole login with it.
+    plain = (os.getenv("ADMIN_PASSWORD") or "").strip()
+    if plain and len(plain) >= MIN_PASSWORD_LENGTH:
+        return hash_password(plain)
+    return None
+
+
 def bootstrap() -> Optional[str]:
     """Make sure the env-configured super admin exists and is usable.
 
@@ -304,22 +332,22 @@ def bootstrap() -> Optional[str]:
     updated to match — that is the recovery path when a password is forgotten,
     since `.env` is reachable over SSH and the database is not.
     """
-    from .auth import hash_password, verify_password
+    from .auth import verify_password
 
     init()
 
     env_user = (os.getenv("ADMIN_USER") or "Sehej").strip()
-    env_pass = (os.getenv("ADMIN_PASSWORD") or "").strip()
-    if not env_pass:
-        return None
-
     try:
         name = validate_username(env_user)
     except UserError:
         return None
-    if len(env_pass) < MIN_PASSWORD_LENGTH:
-        # Too short to accept as a new account, but an existing one still works.
-        existing = get(env_user)
+
+    desired = env_password_hash()
+    if desired is None:
+        # Nothing usable in `.env` — a password too short to accept, or none at
+        # all. An account created earlier still signs in; it just cannot be
+        # reset from here.
+        existing = get(name)
         return existing["username"] if existing else None
 
     existing = get(name)
@@ -327,14 +355,23 @@ def bootstrap() -> Optional[str]:
         db.execute(
             """INSERT INTO users (username, password_hash, role, created_at, created_by)
                VALUES (?,?,?,?,?)""",
-            (name, hash_password(env_pass), "super_admin", _now(), "bootstrap"),
+            (name, desired, "super_admin", _now(), "bootstrap"),
         )
         return name
 
     changed = False
-    if not verify_password(env_pass, existing["password_hash"]):
+    # A fresh scrypt hash of the same password differs every time (new salt),
+    # so the plaintext is compared by verification and a pre-computed hash by
+    # identity. Either way the stored row only moves when `.env` really changed.
+    plain = (os.getenv("ADMIN_PASSWORD") or "").strip()
+    pre = (os.getenv("ADMIN_PASSWORD_HASH") or "").strip()
+    if pre and desired == pre:
+        stale = existing["password_hash"] != desired
+    else:
+        stale = not verify_password(plain, existing["password_hash"])
+    if stale:
         db.execute("UPDATE users SET password_hash = ? WHERE id = ?",
-                   (hash_password(env_pass), existing["id"]))
+                   (desired, existing["id"]))
         changed = True
     if existing["role"] != "super_admin":
         db.execute("UPDATE users SET role = 'super_admin' WHERE id = ?", (existing["id"],))

@@ -215,6 +215,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
 def init(db_path: Path) -> None:
     global _DB_PATH
+    # Connections are cached per thread and never consulted `_DB_PATH` again
+    # after the first open, so pointing init() at a second file used to change
+    # nothing — every later query still went to the first one. The server calls
+    # init() once and never noticed; tests that switch databases did.
+    stale = getattr(_local, "conn", None)
+    if stale is not None and _DB_PATH is not None and Path(db_path) != _DB_PATH:
+        try:
+            stale.close()
+        except Exception:
+            pass
+        _local.conn = None
     _DB_PATH = Path(db_path)
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with connect() as conn:

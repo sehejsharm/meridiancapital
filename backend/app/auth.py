@@ -47,6 +47,22 @@ def hash_password(password: str, salt: Optional[bytes] = None) -> str:
     )
 
 
+def is_password_hash(stored: str) -> bool:
+    """True if this looks like something `verify_password` could check.
+
+    Used to tell a pre-computed hash in `.env` apart from a plaintext password
+    someone pasted into the wrong variable — storing the latter verbatim would
+    produce an account whose password is unguessable even by its owner.
+    """
+    try:
+        scheme, salt_b64, hash_b64 = (stored or "").split("$", 2)
+        if scheme != "scrypt":
+            return False
+        return len(base64.b64decode(salt_b64)) > 0 and len(base64.b64decode(hash_b64)) > 0
+    except Exception:
+        return False
+
+
 def verify_password(password: str, stored: str) -> bool:
     try:
         scheme, salt_b64, hash_b64 = stored.split("$", 2)
@@ -72,7 +88,12 @@ def login_configured() -> bool:
     try:
         return users.count() > 0
     except Exception:
-        return bool((os.getenv("ADMIN_PASSWORD") or "").strip())
+        # The database is unreadable, so fall back to whether `.env` carries
+        # something bootstrap could turn into an account. Either form counts —
+        # checking only the plaintext one reported "no login configured" on a
+        # server that was configured, just with a pre-computed hash.
+        return bool((os.getenv("ADMIN_PASSWORD") or "").strip()
+                    or (os.getenv("ADMIN_PASSWORD_HASH") or "").strip())
 
 
 # ---------------------------------------------------------------- sessions

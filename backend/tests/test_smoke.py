@@ -722,6 +722,123 @@ def test_exit_message() -> None:
           "exit_code=code" in src)
 
 
+def test_login_bootstrap() -> None:
+    """The account in `.env` has to become an account you can actually sign in with.
+
+    `.env.example` has always offered ADMIN_PASSWORD_HASH as the alternative to
+    writing the plaintext down, and nothing read it. A server configured that
+    way had no accounts at all, so every sign-in came back "No password is
+    configured on the server" — configured exactly as documented, and unusable.
+    """
+    print("\nLogin bootstrap")
+    import os as _os
+    import tempfile as _tf
+    from app import auth, users
+
+    saved = {k: _os.environ.get(k) for k in
+             ("ADMIN_USER", "ADMIN_PASSWORD", "ADMIN_PASSWORD_HASH")}
+    main_db = db._DB_PATH  # restored below; each case gets its own file
+
+    def _fresh() -> None:
+        db.init(Path(_tf.mkdtemp(prefix="meridian-login-")) / "t.db")
+        users.init()
+
+    def _env(**kw: Optional[str]) -> None:
+        for k in saved:
+            _os.environ.pop(k, None)
+        for k, v in kw.items():
+            if v is not None:
+                _os.environ[k] = v
+
+    try:
+        # ---- a pre-computed hash, the documented alternative ----
+        _fresh()
+        digest = auth.hash_password("hash-configured-pw")
+        _env(ADMIN_USER="Sehej", ADMIN_PASSWORD_HASH=digest)
+        check("a pre-computed hash bootstraps an account",
+              users.bootstrap() == "Sehej", str(users.bootstrap()))
+        check("and the server reports login as available", auth.login_configured())
+        session = auth.attempt_login("Sehej", "hash-configured-pw")
+        check("and the passcode behind that hash signs in", session is not None)
+        check("as a super admin",
+              bool(session) and session["role"] == "super_admin")
+        check("while a wrong passcode still does not",
+              auth.attempt_login("Sehej", "hash-configured-pw!") is None)
+        check("the hash is stored exactly as given, not re-hashed",
+              users.get("Sehej")["password_hash"] == digest)
+
+        # ---- the plaintext form still works, and is stable across restarts ----
+        _fresh()
+        _env(ADMIN_USER="Sehej", ADMIN_PASSWORD="plaintext-configured-pw")
+        users.bootstrap()
+        first = users.get("Sehej")["password_hash"]
+        check("a plaintext password bootstraps an account",
+              auth.attempt_login("Sehej", "plaintext-configured-pw") is not None)
+        users.bootstrap()          # a restart
+        check("and a restart does not rewrite the stored hash",
+              users.get("Sehej")["password_hash"] == first)
+
+        # ---- changing .env is the documented password reset ----
+        _env(ADMIN_USER="Sehej", ADMIN_PASSWORD="rotated-password-99")
+        users.bootstrap()
+        check("changing the password in .env resets it",
+              auth.attempt_login("Sehej", "rotated-password-99") is not None)
+        check("and the old one stops working",
+              auth.attempt_login("Sehej", "plaintext-configured-pw") is None)
+
+        # ---- a typo in one variable must not take the login with it ----
+        _fresh()
+        _env(ADMIN_USER="Sehej", ADMIN_PASSWORD="fallback-password-99",
+             ADMIN_PASSWORD_HASH="clearly-not-a-hash")
+        check("a malformed hash falls back to the plaintext password",
+              users.bootstrap() == "Sehej")
+        check("and that password signs in",
+              auth.attempt_login("Sehej", "fallback-password-99") is not None)
+        check("a malformed hash is never stored verbatim",
+              users.get("Sehej")["password_hash"] != "clearly-not-a-hash")
+
+        # ---- the hash wins when both are set, since supplying it is deliberate ----
+        _fresh()
+        _env(ADMIN_USER="Sehej", ADMIN_PASSWORD="the-plaintext-one",
+             ADMIN_PASSWORD_HASH=auth.hash_password("the-hashed-one"))
+        users.bootstrap()
+        check("a valid hash takes precedence over the plaintext",
+              auth.attempt_login("Sehej", "the-hashed-one") is not None)
+        check("and the plaintext is not also accepted",
+              auth.attempt_login("Sehej", "the-plaintext-one") is None)
+
+        # ---- nothing configured is the state that produced the 503 ----
+        _fresh()
+        _env()
+        check("with neither set, nothing is bootstrapped", users.bootstrap() is None)
+        check("and the server knows no login is configured",
+              not auth.login_configured())
+
+        # ---- a password too short to accept leaves an existing account alone ----
+        _fresh()
+        _env(ADMIN_USER="Sehej", ADMIN_PASSWORD="working-password-99")
+        users.bootstrap()
+        _env(ADMIN_USER="Sehej", ADMIN_PASSWORD="short")
+        check("a too-short password does not create an account",
+              users.bootstrap() == "Sehej")
+        check("and does not break the account that exists",
+              auth.attempt_login("Sehej", "working-password-99") is not None)
+
+        # ---- hash format checking ----
+        check("a real hash is recognised as one",
+              auth.is_password_hash(auth.hash_password("x")))
+        for junk in ("", "plaintext", "scrypt$", "bcrypt$a$b", "scrypt$!!$!!"):
+            check(f"{junk!r} is not mistaken for a hash",
+                  not auth.is_password_hash(junk))
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                _os.environ.pop(k, None)
+            else:
+                _os.environ[k] = v
+        db.init(main_db)
+
+
 def test_roles() -> None:
     """Roles are sets of permissions, not a ladder.
 
@@ -1314,6 +1431,7 @@ def main() -> int:
     test_log_severity()
     test_severity()
     test_exit_message()
+    test_login_bootstrap()
     test_roles()
     test_alerts()
     test_audit_filters()
