@@ -1,0 +1,41 @@
+# Caddy terminates TLS and proxies to the API on loopback.
+# Certificates are obtained and renewed automatically from Let's Encrypt.
+#
+# Replace api.meridiancapital.example with the hostname you point at this VM.
+# A DuckDNS subdomain works exactly as well as a domain you own.
+
+api.meridiancapital.example {
+	encode zstd gzip
+
+	# Only the dashboard origin may call the API from a browser. The API also
+	# sets its own CORS headers; this is the outer fence.
+	@blocked {
+		not header Origin https://meridian.vercel.app
+		not header Origin https://api.meridiancapital.example
+		header Origin *
+	}
+	respond @blocked 403
+
+	# WebSocket upgrade for the live feed.
+	reverse_proxy 127.0.0.1:8080 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/meridian.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+		format console
+	}
+}

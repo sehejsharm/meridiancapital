@@ -1,0 +1,45 @@
+[Unit]
+Description=Meridian Capital — trading control plane API
+Documentation=https://github.com/sehejsharm/meridiancapital
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=meridian
+Group=meridian
+WorkingDirectory=/opt/meridian/backend
+EnvironmentFile=/etc/meridian/meridian.env
+ExecStart=/opt/meridian/backend/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 8080 \
+    --proxy-headers --forwarded-allow-ips="127.0.0.1" \
+    --log-level info
+Restart=always
+RestartSec=5
+
+# The engine runs in its own session as a detached child. KillMode=process stops
+# only uvicorn on restart, so redeploying the API never kills a process that is
+# holding a live position. The scheduler re-adopts the engine on the next start.
+KillMode=process
+TimeoutStopSec=20
+
+# Hardening. The service needs to write only its own data directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+ReadWritePaths=/var/lib/meridian
+StateDirectory=meridian
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meridian-api
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Palette roles, keyed to the Meridian mark: gold on near-black.
+   Dark is the identity, so it is the default; light mode is fully supported and
+   swaps the gold for a darker step that passes as text on a pale surface. */
+:root {
+  color-scheme: dark;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --plane: #0a0a0a;
+  --surface-1: #141412;
+  --surface-2: #1e1e1b;
+  --text-primary: #f5f3ee;
+  --text-secondary: #b5b2a6;
+  --text-muted: #86837a;
+  --hairline: rgba(212, 175, 55, 0.16);
+  --gridline: #24241f;
+  --baseline: #38372f;
+
+  --brand: #d4af37;
+  --brand-bright: #e8c766;
+  --brand-dim: rgba(212, 175, 55, 0.12);
+  --logo-plate: #0a0a0a;
+
+  --series-1: #d4af37;
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  --profit: #2fbf4f;
+  --loss: #e66767;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:where(:not([data-theme="dark"])) {
+    color-scheme: light;
+    --plane: #f7f6f2;
+    --surface-1: #fdfcfa;
+    --surface-2: #f0eee7;
+    --text-primary: #14130f;
+    --text-secondary: #4f4d45;
+    --text-muted: #837f74;
+    --hairline: rgba(20, 19, 15, 0.12);
+    --gridline: #e3e0d6;
+    --baseline: #c2beb0;
+
+    --brand: #8a6d1f;
+    --brand-bright: #6f5615;
+    --brand-dim: rgba(138, 109, 31, 0.1);
+    --logo-plate: #14130f;
+
+    --series-1: #8a6d1f;
+    --profit: #046b04;
+    --loss: #b02f2f;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --plane: #f7f6f2;
+  --surface-1: #fdfcfa;
+  --surface-2: #f0eee7;
+  --text-primary: #14130f;
+  --text-secondary: #4f4d45;
+  --text-muted: #837f74;
+  --hairline: rgba(20, 19, 15, 0.12);
+  --gridline: #e3e0d6;
+  --baseline: #c2beb0;
+
+  --brand: #8a6d1f;
+  --brand-bright: #6f5615;
+  --brand-dim: rgba(138, 109, 31, 0.1);
+  --logo-plate: #14130f;
+
+  --series-1: #8a6d1f;
+  --profit: #046b04;
+  --loss: #b02f2f;
+}
+
+body {
+  background: var(--plane);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Faint survey grid, echoing the plate the mark sits on. */
+.plane-grid {
+  background-image:
+    linear-gradient(var(--gridline) 1px, transparent 1px),
+    linear-gradient(90deg, var(--gridline) 1px, transparent 1px);
+  background-size: 56px 56px;
+  background-position: center;
+  opacity: 0.5;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.rule-gold {
+  background: linear-gradient(90deg, var(--brand) 0%, transparent 70%);
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+.live-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+}
+
+::selection {
+  background: var(--brand);
+  color: var(--plane);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
