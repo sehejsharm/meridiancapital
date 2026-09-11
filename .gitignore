@@ -1,0 +1,47 @@
+# ── secrets: never commit ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ── runtime data ───────────────────────────────────────────────────────
+var/
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+*.log
+gk50k_*.csv
+gk50k_*.json
+gk50k_*.log
+
+# ── python ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# ── node / next ────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+.turbo/
+npm-debug.log*
+yarn-error.log*
+
+# ── editors / os ───────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

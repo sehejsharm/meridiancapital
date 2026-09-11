@@ -1,0 +1,10 @@
+# API control plane
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+
+# Trading engine
+pandas==2.2.3
+pyotp==2.9.0
+smartapi-python==1.5.5
+websocket-client==1.8.0
