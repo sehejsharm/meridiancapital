@@ -257,3 +257,81 @@ def test_audit_log_records_control_actions(client, auth):
 def test_snapshot_endpoint_is_shaped_for_the_dashboard(client, auth):
     body = client.get("/api/snapshot", headers=auth).json()
     assert set(body) == {"snapshot", "status"}
+
+
+# ── strategy tuning ──────────────────────────────────────────────────────────
+def test_tuning_requires_a_token(client):
+    assert client.get("/api/tuning").status_code == 401
+
+
+def test_tuning_returns_schema_and_defaults(client, auth):
+    body = client.get("/api/tuning", headers=auth).json()
+    assert body["overrides"] == {} and body["changed"] == []
+    keys = {p["key"] for p in body["params"]}
+    assert {"STOP_FRAC", "TARGET_PTS", "ENTRY_START"} <= keys
+    assert body["effective"]["STOP_FRAC"] == body["defaults"]["STOP_FRAC"]
+
+
+def test_tuning_never_exposes_non_strategy_internals(client, auth):
+    keys = {p["key"] for p in client.get("/api/tuning", headers=auth).json()["params"]}
+    for internal in ("INDEX_TOKEN", "LOT_SIZE", "RATE_LIMITS", "DB_PATH", "NTP_SERVERS"):
+        assert internal not in keys
+
+
+def test_a_safer_change_saves_without_the_phrase(client, auth):
+    r = client.post("/api/tuning", json={"values": {"STOP_FRAC": 0.30}}, headers=auth)
+    assert r.status_code == 200
+    assert r.json()["overrides"]["STOP_FRAC"] == 0.30
+    assert r.json()["changed"] == ["STOP_FRAC"]
+
+
+def test_a_riskier_change_is_refused_without_the_phrase(client, auth):
+    r = client.post("/api/tuning", json={"values": {"STOP_FRAC": 0.70}}, headers=auth)
+    assert r.status_code == 400 and "RETUNE" in r.json()["detail"]
+    assert client.get("/api/tuning", headers=auth).json()["overrides"] == {}
+
+
+def test_a_riskier_change_saves_with_the_phrase(client, auth):
+    r = client.post(
+        "/api/tuning", json={"values": {"STOP_FRAC": 0.70}, "confirm": "RETUNE"}, headers=auth
+    )
+    assert r.status_code == 200 and r.json()["overrides"]["STOP_FRAC"] == 0.70
+
+
+def test_an_out_of_bounds_value_is_refused(client, auth):
+    r = client.post("/api/tuning", json={"values": {"MAX_LOTS": 500}}, headers=auth)
+    assert r.status_code == 400 and "between" in r.json()["detail"]
+
+
+def test_an_incoherent_combination_is_refused(client, auth):
+    r = client.post(
+        "/api/tuning",
+        json={"values": {"ENTRY_START": "14:00", "ENTRY_CUTOFF": "11:00"}, "confirm": "RETUNE"},
+        headers=auth,
+    )
+    assert r.status_code == 400
+
+
+def test_a_value_returned_to_its_default_stops_being_an_override(client, auth):
+    client.post("/api/tuning", json={"values": {"STOP_FRAC": 0.30}}, headers=auth)
+    defaults = client.get("/api/tuning", headers=auth).json()["defaults"]
+    r = client.post("/api/tuning", json={"values": {"STOP_FRAC": defaults["STOP_FRAC"]}}, headers=auth)
+    assert r.json()["overrides"] == {} and r.json()["changed"] == []
+
+
+def test_reset_clears_every_override(client, auth):
+    client.post("/api/tuning", json={"values": {"STOP_FRAC": 0.30}}, headers=auth)
+    r = client.post("/api/tuning/reset", headers=auth)
+    assert r.status_code == 200 and r.json()["overrides"] == {}
+
+
+def test_saving_while_the_engine_runs_is_staged_not_live(client, auth):
+    client.post("/api/control/engine/start", headers=auth)
+    r = client.post("/api/tuning", json={"values": {"STOP_FRAC": 0.30}}, headers=auth)
+    assert r.json()["pending_restart"] is True
+
+
+def test_a_tuning_change_is_audited(client, auth):
+    client.post("/api/tuning", json={"values": {"TARGET_PTS": 80}}, headers=auth)
+    actions = [a["action"] for a in client.get("/api/audit", headers=auth).json()["entries"]]
+    assert "tuning.save" in actions

@@ -423,4 +423,5 @@ def _event_row(r: sqlite3.Row) -> dict:
 K_SNAPSHOT = "engine:snapshot"
 K_MODE = "settings:mode"  # "paper" | "live"
 K_SCHEDULE = "settings:schedule_enabled"  # bool
+K_TUNING = "settings:tuning"  # dashboard overrides of the strategy parameters
 K_SUPERVISOR = "supervisor:state"

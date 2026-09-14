@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.deps import build_context, ctx
-from app.routers import auth, control, data, ws
+from app.routers import auth, control, data, tuning, ws
 from engine.clock import now_ist
 from engine.config import BANNER, BUILD_VERSION
 
@@ -80,6 +80,7 @@ async def security_headers(request: Request, call_next):
 app.include_router(auth.router)
 app.include_router(data.router)
 app.include_router(control.router)
+app.include_router(tuning.router)
 app.include_router(ws.router)
 
 

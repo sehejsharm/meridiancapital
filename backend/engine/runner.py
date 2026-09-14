@@ -32,7 +32,8 @@ from engine.strategy import (
     target_strike,
 )
 from engine.telemetry import Telemetry
-from shared.db import Database
+from engine import tuning
+from shared.db import K_TUNING, Database
 
 ENGINE_VERSION = "1.0.0"
 
@@ -47,6 +48,7 @@ class Engine:
         self.dry_run = self.mode != "live"
         self.db = Database(C.DB_PATH)
         self.tm = Telemetry(self.db)
+        self.tuning = self.load_tuning()
         self.started_at = time.time()
         self.stop_requested = False
         self.stop_reason = ""
@@ -62,6 +64,39 @@ class Engine:
         self.table_day = ""
         self.reported = False
         self.eod_pending = False
+
+    def load_tuning(self) -> dict:
+        """Apply the dashboard's parameter overrides onto engine.config.
+
+        Read exactly once, here, before any strategy value is touched. They are
+        deliberately not re-read mid-session: the stop ladder and the sizing of
+        a position that is already open must not move under it. A stored set
+        that no longer validates is discarded loudly rather than half-applied —
+        the backtested defaults are always a safe thing to fall back to.
+        """
+        try:
+            stored = self.db.kv_get(K_TUNING, None) or {}
+        except Exception as exc:  # a broken settings row must not stop trading
+            self.tm.log(f"could not read tuning overrides ({exc}); using defaults", "error")
+            return {}
+        if not stored:
+            return {}
+        try:
+            clean = tuning.validate(stored)
+        except tuning.TuningError as exc:
+            self.tm.log(
+                f"stored tuning rejected ({exc}) — running backtested defaults instead", "error"
+            )
+            return {}
+        changed = tuning.apply(clean)
+        if changed:
+            detail = ", ".join(f"{k}={getattr(C, k)}" for k in sorted(changed))
+            self.tm.log(
+                f"{len(changed)} strategy parameter(s) overridden from the dashboard: {detail}",
+                "warn",
+                {"tuning": {k: clean.get(k) for k in changed}},
+            )
+        return clean
 
     # ── lifecycle ────────────────────────────────────────────────────────────
     def install_signals(self) -> None:
@@ -152,7 +187,12 @@ class Engine:
             f"–{C.ENTRY_CUTOFF[0]:02d}:{C.ENTRY_CUTOFF[1]:02d}, "
             f"flat by {C.FORCE_CLOSE[0]:02d}:{C.FORCE_CLOSE[1]:02d}",
         ]
-        self.tm.log("rulebook active", "info", {"rules": rules})
+        if self.tuning:
+            rules.append(
+                f"NOTE: {len(self.tuning)} parameter(s) overridden from the dashboard — "
+                f"this is no longer the backtested configuration"
+            )
+        self.tm.log("rulebook active", "info", {"rules": rules, "tuned": bool(self.tuning)})
 
     def check_clock(self, initial: bool = False) -> None:
         drift = ntp_offset()

@@ -184,7 +184,9 @@ def test_exit_falls_back_to_an_estimate_when_angel_is_silent(engine):
     assert engine.exit_position("STOP", spot=24900.0)
     trade = engine.db.trades()[0]
     assert trade["pnl_source"] == "estimate"
-    assert trade["net"] == pytest.approx((190.0 - 140.0) * 50 - trade["charges"], abs=1)
+    assert trade["net"] == pytest.approx(
+        (190.0 - 140.0) * 2 * C.LOT_SIZE - trade["charges"], abs=1
+    )
 
 
 def test_failed_exit_keeps_the_position_open(engine):
@@ -296,7 +298,7 @@ def test_snapshot_reports_a_live_position_with_its_stop(engine):
     assert pos["gain_pct"] == pytest.approx(0.50)
     assert pos["stop_price"] == pytest.approx(115.0)  # locked +15% after the trail kicks in
     assert pos["stop_state"].startswith("LOCKED")
-    assert pos["unrealised"] == pytest.approx(50.0 * 50)
+    assert pos["unrealised"] == pytest.approx(50.0 * 2 * C.LOT_SIZE)  # 50/unit on 2 lots
 
 
 def test_snapshot_flags_a_break_above_the_channel(engine):

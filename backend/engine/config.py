@@ -17,7 +17,7 @@ BANNER = f"गणेश कवच  ·  {BUILD_NAME}  ·  {BUILD_VERSION}"
 
 # ── instrument ────────────────────────────────────────────────────────────────
 INDEX_TOKEN, INDEX_EXCH, INDEX_TSYM = "99926000", "NSE", "Nifty 50"
-LOT_SIZE, STRIKE_STEP = 25, 50
+LOT_SIZE, STRIKE_STEP = 75, 50
 STRIKE_OFFSET = -1  # one strike (50 pts) in the money — the Rs50k-validated strike
 DONCHIAN_LB = 90
 ENTRY_START, ENTRY_CUTOFF, FORCE_CLOSE = (10, 15), (14, 0), (15, 10)
@@ -25,7 +25,10 @@ MIN_DTE, MAX_DTE = 2, 6
 
 MARKET_OPEN, MARKET_CLOSE = (9, 15), (15, 30)
 
-PRODUCT_TYPE = "INTRADAY"
+# Angel product code for NFO option buying. CARRYFORWARD (NRML) is what most Angel
+# accounts accept for option buying without extra entitlement; switch to "INTRADAY"
+# (MIS) only if orders come back rejected with a product/margin error.
+PRODUCT_TYPE = "CARRYFORWARD"
 ORDER_RETRIES = 2  # re-attempt a failed entry/exit this many times before giving up
 
 # ── data-integrity guards ─────────────────────────────────────────────────────

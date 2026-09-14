@@ -235,3 +235,31 @@ export interface LiveState {
   status: SystemStatus | null;
   events: EventRow[];
 }
+
+export type TuningKind = "int" | "float" | "pct" | "money" | "time";
+
+export interface TuningParam {
+  key: string;
+  group: string;
+  label: string;
+  kind: TuningKind;
+  default: number | string;
+  min: number;
+  max: number;
+  step: number;
+  help: string;
+  riskier_up: boolean;
+}
+
+export interface TuningPayload {
+  params: TuningParam[];
+  groups: string[];
+  defaults: Record<string, number | string>;
+  overrides: Record<string, number | string>;
+  effective: Record<string, number | string>;
+  changed: string[];
+  riskier: string[];
+  engine_running: boolean;
+  pending_restart: boolean;
+  confirm_phrase: string;
+}

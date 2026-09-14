@@ -9,29 +9,16 @@ from __future__ import annotations
 import math
 from datetime import date
 
-from engine.config import (
-    BE_TRIGGER,
-    DEPLOY_FRACTION,
-    DONCHIAN_LB,
-    LOT_SIZE,
-    MAX_DTE,
-    MAX_LOTS,
-    MIN_DTE,
-    PER_TRADE_EQUITY_CAP,
-    PER_TRADE_RISK_RS,
-    STOP_FRAC,
-    STRIKE_OFFSET,
-    STRIKE_STEP,
-    TRAIL_FRAC,
-)
+from engine import config as C
 
 
-def donchian(closes, lookback: int = DONCHIAN_LB):
+def donchian(closes, lookback: int | None = None):
     """Donchian breakout signal. Returns (view, channel_high, channel_low).
 
     view is "C" on an upside break, "P" on a downside break, "" otherwise.
     The channel deliberately excludes the current bar.
     """
+    lookback = C.DONCHIAN_LB if lookback is None else lookback
     if closes is None or len(closes) < lookback + 2:
         return "", None, None
     cur = float(closes.iloc[-1])
@@ -44,23 +31,30 @@ def donchian(closes, lookback: int = DONCHIAN_LB):
     return "", hi, lo
 
 
-def target_strike(spot: float, right: str, offset: int = STRIKE_OFFSET, step: int = STRIKE_STEP) -> int:
+def target_strike(
+    spot: float, right: str, offset: int | None = None, step: int | None = None
+) -> int:
     """One strike in the money from spot (ITM50 for the validated build)."""
+    offset = C.STRIKE_OFFSET if offset is None else offset
+    step = C.STRIKE_STEP if step is None else step
     atm = int(math.floor(spot / step + 0.5) * step)
     return atm + offset * step if right == "CE" else atm - offset * step
 
 
 def effective_stop(
     peak_gain: float,
-    base: float = STOP_FRAC,
-    be: float = BE_TRIGGER,
-    trail: float = TRAIL_FRAC,
+    base: float | None = None,
+    be: float | None = None,
+    trail: float | None = None,
 ) -> float:
     """Stop distance below entry as a fraction of premium.
 
     Positive = below entry, 0 = break-even, negative = locked-in profit. The
     ladder only ever tightens.
     """
+    base = C.STOP_FRAC if base is None else base
+    be = C.BE_TRIGGER if be is None else be
+    trail = C.TRAIL_FRAC if trail is None else trail
     if peak_gain >= trail:
         return -(peak_gain - trail)
     if peak_gain >= be:
@@ -79,14 +73,20 @@ def stop_label(es: float) -> str:
 def size_position(
     equity: float,
     premium: float,
-    lot: int = LOT_SIZE,
-    fraction: float = DEPLOY_FRACTION,
-    max_lots: int = MAX_LOTS,
-    equity_cap: float = PER_TRADE_EQUITY_CAP,
-    risk_rs: float = PER_TRADE_RISK_RS,
-    stop_frac: float = STOP_FRAC,
+    lot: int | None = None,
+    fraction: float | None = None,
+    max_lots: int | None = None,
+    equity_cap: float | None = None,
+    risk_rs: float | None = None,
+    stop_frac: float | None = None,
 ) -> int:
     """Lots to buy, clamped by deploy fraction, equity cap, rupee risk and lot cap."""
+    lot = C.LOT_SIZE if lot is None else lot
+    fraction = C.DEPLOY_FRACTION if fraction is None else fraction
+    max_lots = C.MAX_LOTS if max_lots is None else max_lots
+    equity_cap = C.PER_TRADE_EQUITY_CAP if equity_cap is None else equity_cap
+    risk_rs = C.PER_TRADE_RISK_RS if risk_rs is None else risk_rs
+    stop_frac = C.STOP_FRAC if stop_frac is None else stop_frac
     if premium <= 0 or equity <= 0:
         return 0
     if not (math.isfinite(premium) and math.isfinite(equity)):
@@ -122,9 +122,9 @@ def round_trip_charges(entry: float, exit_: float, qty: int) -> float:
 def pick_contract(table: dict, spot: float, right: str, today: date):
     """Nearest qualifying contract: target strike first, then +/- one step."""
     k0 = target_strike(spot, right)
-    exps = sorted({e for (e, _, _) in table if MIN_DTE <= (e - today).days <= MAX_DTE})
+    exps = sorted({e for (e, _, _) in table if C.MIN_DTE <= (e - today).days <= C.MAX_DTE})
     for exp in exps:
-        for k in (k0, k0 + STRIKE_STEP, k0 - STRIKE_STEP):
+        for k in (k0, k0 + C.STRIKE_STEP, k0 - C.STRIKE_STEP):
             hit = table.get((exp, k, right))
             if hit:
                 return hit[0], hit[1], exp, k
