@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS events (
     level   TEXT NOT NULL,
     source  TEXT NOT NULL DEFAULT 'engine',
     message TEXT NOT NULL,
-    extra   TEXT
+    extra   TEXT,
+    algo_id TEXT NOT NULL DEFAULT 'gk50k'
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 
@@ -62,7 +63,8 @@ CREATE TABLE IF NOT EXISTS trades (
     reason      TEXT,
     hold_min    REAL,
     equity      REAL,
-    pnl_source  TEXT
+    pnl_source  TEXT,
+    algo_id TEXT NOT NULL DEFAULT 'gk50k'
 );
 CREATE INDEX IF NOT EXISTS idx_trades_session ON trades(session_date);
 
@@ -73,7 +75,8 @@ CREATE TABLE IF NOT EXISTS equity_samples (
     equity          REAL NOT NULL,
     realised_today  REAL,
     peak_equity     REAL,
-    day_pl          REAL
+    day_pl          REAL,
+    algo_id TEXT NOT NULL DEFAULT 'gk50k'
 );
 CREATE INDEX IF NOT EXISTS idx_equity_ts ON equity_samples(ts);
 
@@ -86,7 +89,8 @@ CREATE TABLE IF NOT EXISTS commands (
     status      TEXT NOT NULL DEFAULT 'pending',
     claimed_ts  TEXT,
     done_ts     TEXT,
-    result      TEXT
+    result      TEXT,
+    algo_id TEXT NOT NULL DEFAULT 'gk50k'
 );
 CREATE INDEX IF NOT EXISTS idx_commands_status ON commands(status);
 
@@ -98,13 +102,40 @@ CREATE TABLE IF NOT EXISTS engine_runs (
     mode        TEXT,
     trigger     TEXT,
     exit_code   INTEGER,
-    reason      TEXT
+    reason      TEXT,
+    algo_id TEXT NOT NULL DEFAULT 'gk50k'
 );
 
 CREATE TABLE IF NOT EXISTS holidays (
     day     TEXT PRIMARY KEY,
     label   TEXT
 );
+
+CREATE TABLE IF NOT EXISTS algos (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    kind            TEXT NOT NULL DEFAULT 'uploaded',
+    mode            TEXT NOT NULL DEFAULT 'paper',
+    active_version  INTEGER,
+    enabled         INTEGER NOT NULL DEFAULT 0,
+    created_ts      TEXT NOT NULL,
+    notes           TEXT
+);
+
+CREATE TABLE IF NOT EXISTS algo_versions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    algo_id         TEXT NOT NULL,
+    version         INTEGER NOT NULL,
+    created_ts      TEXT NOT NULL,
+    uploaded_by     TEXT,
+    source          TEXT NOT NULL,
+    sha256          TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    gate_report     TEXT,
+    paper_sessions  INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(algo_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_versions_algo ON algo_versions(algo_id);
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,6 +159,32 @@ def _connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS will not add
+# a column to a table that already exists, so a database created before
+# multi-algo needs them applied by hand. Existing rows take the DEFAULT, which
+# attaches all prior history to the built-in build.
+_ADDED_COLUMNS = (
+    ("events", "algo_id", "TEXT NOT NULL DEFAULT 'gk50k'"),
+    ("trades", "algo_id", "TEXT NOT NULL DEFAULT 'gk50k'"),
+    ("equity_samples", "algo_id", "TEXT NOT NULL DEFAULT 'gk50k'"),
+    ("commands", "algo_id", "TEXT NOT NULL DEFAULT 'gk50k'"),
+    ("engine_runs", "algo_id", "TEXT NOT NULL DEFAULT 'gk50k'"),
+)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, column, decl in _ADDED_COLUMNS:
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if not cols:  # table absent entirely; the schema script owns it
+            continue
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+    for table in ("events", "trades", "equity_samples", "commands"):
+        conn.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{table}_algo ON {table}(algo_id)"
+        )
+
+
 class Database:
     """Per-call connections keep this safe across threads and processes."""
 
@@ -143,6 +200,7 @@ class Database:
                 return
             with _connect(self.path) as conn:
                 conn.executescript(_SCHEMA)
+                _migrate(conn)
             _initialised.add(key)
 
     @contextmanager
@@ -396,6 +454,89 @@ class Database:
             c.execute("DELETE FROM holidays WHERE day=?", (day,))
 
     # ── audit ────────────────────────────────────────────────────────────────
+    # ── algo registry ────────────────────────────────────────────────────────
+    def algos(self) -> list[dict]:
+        with self.conn() as c:
+            return [dict(r) for r in c.execute("SELECT * FROM algos ORDER BY created_ts")]
+
+    def algo(self, algo_id: str) -> dict | None:
+        with self.conn() as c:
+            r = c.execute("SELECT * FROM algos WHERE id=?", (algo_id,)).fetchone()
+            return dict(r) if r else None
+
+    def upsert_algo(self, algo_id: str, name: str, kind: str = "uploaded", notes: str = "") -> None:
+        with self.conn() as c:
+            c.execute(
+                """INSERT INTO algos(id, name, kind, created_ts, notes) VALUES(?,?,?,?,?)
+                   ON CONFLICT(id) DO UPDATE SET name=excluded.name, notes=excluded.notes""",
+                (algo_id, name, kind, now_ist().isoformat(timespec="seconds"), notes),
+            )
+
+    def set_algo_fields(self, algo_id: str, **fields: Any) -> None:
+        allowed = {"name", "mode", "active_version", "enabled", "notes"}
+        cols = {k: v for k, v in fields.items() if k in allowed}
+        if not cols:
+            return
+        sets = ", ".join(f"{k}=?" for k in cols)
+        with self.conn() as c:
+            c.execute(f"UPDATE algos SET {sets} WHERE id=?", (*cols.values(), algo_id))
+
+    def delete_algo(self, algo_id: str) -> None:
+        with self.conn() as c:
+            c.execute("DELETE FROM algo_versions WHERE algo_id=?", (algo_id,))
+            c.execute("DELETE FROM algos WHERE id=?", (algo_id,))
+
+    # ── algo versions ────────────────────────────────────────────────────────
+    def add_version(self, algo_id: str, source: str, sha256: str, uploaded_by: str) -> int:
+        with self.conn() as c:
+            nxt = c.execute(
+                "SELECT COALESCE(MAX(version), 0) + 1 FROM algo_versions WHERE algo_id=?",
+                (algo_id,),
+            ).fetchone()[0]
+            cur = c.execute(
+                """INSERT INTO algo_versions(algo_id, version, created_ts, uploaded_by, source, sha256)
+                   VALUES(?,?,?,?,?,?)""",
+                (algo_id, nxt, now_ist().isoformat(timespec="seconds"), uploaded_by, source, sha256),
+            )
+            return int(cur.lastrowid)
+
+    def versions(self, algo_id: str, limit: int = 50) -> list[dict]:
+        """Version metadata without the source blob, which is large and rarely needed."""
+        with self.conn() as c:
+            return [
+                dict(r)
+                for r in c.execute(
+                    """SELECT id, algo_id, version, created_ts, uploaded_by, sha256,
+                              status, gate_report, paper_sessions
+                       FROM algo_versions WHERE algo_id=? ORDER BY version DESC LIMIT ?""",
+                    (algo_id, limit),
+                )
+            ]
+
+    def version(self, version_id: int) -> dict | None:
+        with self.conn() as c:
+            r = c.execute("SELECT * FROM algo_versions WHERE id=?", (version_id,)).fetchone()
+            return dict(r) if r else None
+
+    def set_version_status(self, version_id: int, status: str, gate_report: Any = None) -> None:
+        with self.conn() as c:
+            if gate_report is None:
+                c.execute("UPDATE algo_versions SET status=? WHERE id=?", (status, version_id))
+            else:
+                c.execute(
+                    "UPDATE algo_versions SET status=?, gate_report=? WHERE id=?",
+                    (status, json.dumps(gate_report, default=str), version_id),
+                )
+
+    def bump_paper_sessions(self, version_id: int) -> int:
+        with self.conn() as c:
+            c.execute(
+                "UPDATE algo_versions SET paper_sessions = paper_sessions + 1 WHERE id=?",
+                (version_id,),
+            )
+            r = c.execute("SELECT paper_sessions FROM algo_versions WHERE id=?", (version_id,)).fetchone()
+            return int(r[0]) if r else 0
+
     def audit(self, actor: str, action: str, detail: str = "", ip: str = "") -> None:
         with self.conn() as c:
             c.execute(
