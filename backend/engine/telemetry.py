@@ -11,13 +11,14 @@ import sys
 import time
 
 from engine.clock import now_ist
-from shared.db import K_SNAPSHOT, Database
+from shared.db import Database, snapshot_key
 
 LEVELS = ("debug", "info", "ok", "warn", "error", "critical")
 
 
 class Telemetry:
-    def __init__(self, db: Database, source: str = "engine"):
+    def __init__(self, db: Database, source: str = "engine", algo_id: str = "gk50k"):
+        self.algo_id = algo_id
         self.db = db
         self.source = source
         self._last_snapshot = 0.0
@@ -29,7 +30,7 @@ class Telemetry:
         line = f"[{now_ist():%Y-%m-%d %H:%M:%S}] {level.upper():<8} {message}"
         print(line, flush=True, file=sys.stderr if level in ("error", "critical") else sys.stdout)
         try:
-            self.db.add_event(level, message, extra, self.source)
+            self.db.add_event(level, message, extra, self.source, algo_id=self.algo_id)
         except Exception:
             # A logging failure must never take the trading loop down.
             self.dropped += 1
@@ -39,7 +40,7 @@ class Telemetry:
             return
         self._last_snapshot = time.time()
         try:
-            self.db.kv_set(K_SNAPSHOT, payload)
+            self.db.kv_set(snapshot_key(self.algo_id), payload)
         except Exception:
             self.dropped += 1
 

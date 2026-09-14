@@ -23,13 +23,10 @@ from engine.clock import ge, is_market_hours, lt, now_ist, ntp_offset
 from engine.state import State
 from engine.strategy import (
     donchian,
-    effective_stop,
     money,
     pick_contract,
     round_trip_charges,
-    size_position,
     stop_label,
-    target_strike,
 )
 from engine.telemetry import Telemetry
 from engine import tuning
@@ -43,12 +40,14 @@ class Shutdown(Exception):
 
 
 class Engine:
-    def __init__(self, mode: str = "paper"):
+    def __init__(self, mode: str = "paper", algo_id: str = "gk50k", strategy_path: str | None = None):
         self.mode = "live" if mode == "live" else "paper"
         self.dry_run = self.mode != "live"
+        self.algo_id = algo_id
         self.db = Database(C.DB_PATH)
-        self.tm = Telemetry(self.db)
+        self.tm = Telemetry(self.db, algo_id=algo_id)
         self.tuning = self.load_tuning()
+        self.strat = self.load_strategy(strategy_path)
         self.started_at = time.time()
         self.stop_requested = False
         self.stop_reason = ""
@@ -98,6 +97,38 @@ class Engine:
             )
         return clean
 
+    def load_strategy(self, strategy_path: str | None):
+        """Bind the decision functions this engine will trade on.
+
+        With no path this is the built-in build and the engine uses its own
+        compiled-in strategy. With a path it is an operator-supplied module
+        that has already passed the acceptance gate; it is screened and
+        verified again here, because the file on disk is what actually runs
+        and the gate ran against the database copy.
+        """
+        if not strategy_path:
+            from engine import builtin_gk50k
+
+            return builtin_gk50k
+
+        from pathlib import Path
+
+        from engine.contract import ContractError, load_and_verify
+        from engine.sandbox import scan
+
+        source = Path(strategy_path).read_text(encoding="utf-8")
+        result = scan(source)
+        if not result.ok:
+            raise RuntimeError(
+                "strategy failed static screening at launch: " + "; ".join(result.errors[:3])
+            )
+        try:
+            loaded = load_and_verify(source, f"meridian_{self.algo_id}")
+        except ContractError as exc:
+            raise RuntimeError(f"strategy does not satisfy the contract: {exc}") from exc
+        self.tm.log(f"running operator-supplied strategy '{loaded.name}'", "warn")
+        return loaded
+
     # ── lifecycle ────────────────────────────────────────────────────────────
     def install_signals(self) -> None:
         def handler(signum, _frame):
@@ -125,7 +156,7 @@ class Engine:
         self.equity = equity
         self.tm.log(f"live capital pulled from Angel One: {money(equity)}", "ok")
 
-        self.st = State.load()
+        self.st = State.load(self.algo_id)
         today = now_ist().strftime("%Y-%m-%d")
         resuming = bool(self.st.position) and self.st.session_date == today
 
@@ -156,7 +187,7 @@ class Engine:
                 session_date=today, week_id=wk, start_equity=equity,
                 week_start_equity=equity, peak_equity=equity,
             )
-            self.st.save()
+            self.st.save(self.algo_id)
 
         self.check_clock(initial=True)
         self.reconcile_broker_position()
@@ -206,7 +237,7 @@ class Engine:
                     f"Entry/exit windows would be wrong."
                 )
             self.st.halted = True
-            self.st.save()
+            self.st.save(self.algo_id)
             self.tm.log(
                 f"CLOCK DRIFT {drift:+.1f}s exceeds {C.HALT_CLOCK_DRIFT_SEC:.0f}s — halting new entries.",
                 "critical",
@@ -230,7 +261,7 @@ class Engine:
                     "warn",
                 )
                 self.st.position = {}
-                self.st.save()
+                self.st.save(self.algo_id)
             return
         known = {self.st.position.get("tsym")} if self.st.position else set()
         orphans = [p for p in live if str(p.get("tradingsymbol")) not in known]
@@ -245,7 +276,7 @@ class Engine:
 
     # ── remote control ───────────────────────────────────────────────────────
     def process_commands(self) -> None:
-        for cmd in self.db.claim_commands():
+        for cmd in self.db.claim_commands(algo_id=self.algo_id):
             action = str(cmd.get("action", "")).lower()
             payload = cmd.get("payload") or {}
             try:
@@ -259,14 +290,14 @@ class Engine:
     def handle_command(self, action: str, payload: dict) -> str:
         if action == "halt":
             self.st.halted = True
-            self.st.save()
+            self.st.save(self.algo_id)
             return "new entries halted for the day"
         if action == "resume":
             self.st.halted = False
             self.st.locked_profit = False
             if payload.get("week"):
                 self.st.week_halted = False
-            self.st.save()
+            self.st.save(self.algo_id)
             return "entries re-armed"
         if action == "flatten":
             if not self.pos:
@@ -310,7 +341,7 @@ class Engine:
             week_start_equity=prev_week_start, peak_equity=max(self.equity, 0.0),
             realised_week=prev_week_real,
         )
-        self.st.save()
+        self.st.save(self.algo_id)
         self.pos = None
         self.reported = False
         self.tm.log(
@@ -322,11 +353,14 @@ class Engine:
     def todays_realised(self) -> tuple[int, float]:
         # Keyed on the engine's own session date, not the wall clock, so a query
         # landing either side of a rollover still reads one coherent session.
-        rows = self.db.trades(limit=100, session_date=self.st.session_date)
+        rows = self.db.trades(
+            limit=100, session_date=self.st.session_date, algo_id=self.algo_id
+        )
         closed = [r for r in rows if r.get("exit_ts")]
         return len(closed), float(sum(r.get("net") or 0.0 for r in closed))
 
     def record_trade(self, row: dict) -> None:
+        row = {**row, "algo_id": self.algo_id}
         self.db.add_trade(row)
         try:
             new = not C.TRADE_LOG.exists()
@@ -388,7 +422,7 @@ class Engine:
             p = self.pos
             fv = ((live_prem - p["entry"]) / p["entry"]) if live_prem else None
             peak = max(p.get("peak", fv if fv is not None else 0.0), fv if fv is not None else -9.0)
-            es = effective_stop(peak)
+            es = self.strat.effective_stop(peak)
             qty = p["lots"] * C.LOT_SIZE
             idx_move = ((spot - p["spot"]) * (1 if p["view"] == "C" else -1)) if spot else None
             position = {
@@ -442,7 +476,7 @@ class Engine:
                 "bars_loaded": int(len(bars)) if bars is not None else 0,
                 "divergence_pts": abs(bar_close - spot) if (bar_close is not None and spot) else None,
                 "divergence_limit": C.MAX_FEED_DIVERGENCE_PTS,
-                "next_strike": target_strike(spot, "CE" if view == "C" else "PE") if spot and view else None,
+                "next_strike": self.strat.target_strike(spot, "CE" if view == "C" else "PE") if spot and view else None,
             },
             "position": position,
             "guards": {
@@ -492,7 +526,7 @@ class Engine:
                 "critical",
             )
             self.st.position = p
-            self.st.save()
+            self.st.save(self.algo_id)
             return False
 
         realised_before = self.st.realised_today or 0.0
@@ -547,7 +581,7 @@ class Engine:
             self.st.halted = True
         self.pos = None
         self.st.position = {}
-        self.st.save()
+        self.st.save(self.algo_id)
         return True
 
     def try_entry(self, t, spot, view, hi, lo, bars) -> None:
@@ -585,7 +619,7 @@ class Engine:
         if prem is None or prem > C.MAX_PREMIUM:
             self.tm.log(f"signal {view} but {strike} unpriced or premium {prem} above cap", "warn")
             return
-        lots = size_position(self.equity, prem)
+        lots = self.strat.size_position(self.equity, prem)
         if lots < 1:
             self.tm.log(
                 f"signal {view} but premium {prem:.2f} too large to size safely — skipped", "warn"
@@ -621,7 +655,7 @@ class Engine:
         }
         self.st.trades_today += 1
         self.st.position = self.pos
-        self.st.save()
+        self.st.save(self.algo_id)
         self.tm.log(
             f"ENTER BUY {self.pos['right']} {strike} (ITM) x{lots} lots ({qty}) @ {entry_px:.2f}  "
             f"spot {spot:.0f}  exp {expiry}  channel [{lo:.0f}..{hi:.0f}]",
@@ -658,7 +692,13 @@ class Engine:
                 market_open = is_market_hours(t)
                 spot = self.br.ltp(C.INDEX_EXCH, C.INDEX_TSYM, C.INDEX_TOKEN) if market_open else None
                 bars = self.br.one_min_bars() if market_open else None
-                view, hi, lo = donchian(bars["close"]) if bars is not None else ("", None, None)
+                if bars is None:
+                    view, hi, lo = "", None, None
+                else:
+                    # The contract answers in CE/PE; the loop works in C/P.
+                    right = self.strat.signal(bars["close"])
+                    view = {"CE": "C", "PE": "P"}.get(right, "")
+                    _v, hi, lo = donchian(bars["close"])
 
                 n_today, pnl_log = self.todays_realised()
                 angel_realised = self.br.realised_pnl()
@@ -690,6 +730,7 @@ class Engine:
                         self.st.session_date, self.equity, self.st.realised_today,
                         self.st.peak_equity,
                         self.equity - self.st.start_equity if self.st.start_equity else 0.0,
+                        algo_id=self.algo_id,
                     )
 
                 if market_open and ge(t, C.FORCE_CLOSE) and not self.reported and not self.pos:
@@ -708,7 +749,7 @@ class Engine:
                         idx_move = (
                             (spot - p["spot"]) * (1 if p["view"] == "C" else -1) if spot else 0
                         )
-                        es = effective_stop(p["peak"])
+                        es = self.strat.effective_stop(p["peak"])
                         why = (
                             "TARGET" if idx_move >= C.TARGET_PTS
                             else "STOP" if fv <= -es
@@ -716,7 +757,7 @@ class Engine:
                             else None
                         )
                         self.st.position = p
-                        self.st.save()
+                        self.st.save(self.algo_id)
                         if why:
                             self.exit_position(why, spot=spot, live_prem=live_prem)
                     time.sleep(C.POLL_IN_TRADE)
@@ -729,12 +770,12 @@ class Engine:
                 )
                 if dd <= -C.MAX_DRAWDOWN_STOP and not self.st.halted:
                     self.st.halted = True
-                    self.st.save()
+                    self.st.save(self.algo_id)
                     self.tm.log(f"MAX DRAWDOWN {100 * dd:.1f}% breached. Halting all new entries.", "critical")
 
                 if (self.st.realised_week or 0.0) <= -C.WEEKLY_LOSS_LIMIT_RS and not self.st.week_halted:
                     self.st.week_halted = True
-                    self.st.save()
+                    self.st.save(self.algo_id)
                     self.tm.log(
                         f"WEEKLY KILL — realised {money(self.st.realised_week)} this week. "
                         f"Done for the week.",
@@ -748,14 +789,14 @@ class Engine:
                     if not self.st.halted:
                         self.tm.log(f"DAILY KILL — realised {money(pnl_today)} today. Done for the day.", "critical")
                         self.st.halted = True
-                        self.st.save()
+                        self.st.save(self.algo_id)
                     time.sleep(C.POLL_SECONDS)
                     continue
 
                 if C.DAILY_PROFIT_LOCK_RS and pnl_today >= C.DAILY_PROFIT_LOCK_RS and not self.st.locked_profit:
                     self.st.locked_profit = True
                     self.st.halted = True
-                    self.st.save()
+                    self.st.save(self.algo_id)
                     self.tm.log(f"PROFIT LOCK — up {money(pnl_today)} today. Banking it, done for the day.", "ok")
                     time.sleep(C.POLL_SECONDS)
                     continue
@@ -812,9 +853,19 @@ def main(argv: list[str] | None = None) -> int:
         choices=["paper", "live"],
         help="paper places no orders; live sends real orders to Angel One",
     )
+    ap.add_argument(
+        "--algo",
+        default=os.environ.get("MERIDIAN_ALGO_ID", "gk50k"),
+        help="which registered algorithm this process is running as",
+    )
+    ap.add_argument(
+        "--strategy",
+        default=None,
+        help="path to a gated strategy module; omitted for the built-in build",
+    )
     args = ap.parse_args(argv)
 
-    eng = Engine(mode=args.mode)
+    eng = Engine(mode=args.mode, algo_id=args.algo, strategy_path=args.strategy)
     eng.install_signals()
     try:
         eng.connect()

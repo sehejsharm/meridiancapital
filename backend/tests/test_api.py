@@ -29,8 +29,11 @@ class FakeSupervisorState:
 
 
 class FakeSupervisor:
-    def __init__(self, db):
+    def __init__(self, db, algo_id="gk50k", mode_provider=None, strategy_path=None):
         self.db = db
+        self.algo_id = algo_id
+        self.mode_provider = mode_provider
+        self.strategy_path = strategy_path
         self.state = FakeSupervisorState()
         self.calls: list[tuple] = []
 
@@ -66,6 +69,9 @@ class FakeSupervisor:
 
     def snapshot(self):
         return {"running": self.state.running, "pid": self.state.pid, "mode": self.state.mode}
+
+    def refresh_state(self):
+        pass
 
 
 @pytest.fixture

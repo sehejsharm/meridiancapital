@@ -9,8 +9,23 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
-from engine.config import STATE_FILE
+from engine.config import DATA_DIR, STATE_FILE
+
+
+def state_file_for(algo_id: str) -> Path:
+    """Each algorithm gets its own crash-recovery file.
+
+    Sharing one would be catastrophic with several engines running: whichever
+    saved last would overwrite the others' open positions, and a restarted
+    engine would re-adopt a position belonging to a different algorithm.
+    The built-in keeps the original filename so an in-flight session survives
+    this upgrade.
+    """
+    if algo_id == "gk50k":
+        return STATE_FILE
+    return DATA_DIR / f"gk50k_state_{algo_id}.json"
 
 
 @dataclass
@@ -29,11 +44,12 @@ class State:
     locked_profit: bool = False
     position: dict = field(default_factory=dict)
 
-    def save(self) -> None:
+    def save(self, algo_id: str = "gk50k") -> None:
+        path = state_file_for(algo_id)
         try:
-            tmp = STATE_FILE.with_suffix(".tmp")
+            tmp = path.with_suffix(".tmp")
             tmp.write_text(json.dumps(asdict(self), default=str), encoding="utf-8")
-            tmp.replace(STATE_FILE)
+            tmp.replace(path)
         except OSError:
             pass
 
@@ -41,11 +57,12 @@ class State:
         return asdict(self)
 
     @staticmethod
-    def load() -> "State":
-        if not STATE_FILE.exists():
+    def load(algo_id: str = "gk50k") -> "State":
+        path = state_file_for(algo_id)
+        if not path.exists():
             return State()
         try:
-            raw = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            raw = json.loads(path.read_text(encoding="utf-8"))
             known = {f for f in State.__dataclass_fields__}
             return State(**{k: v for k, v in raw.items() if k in known})
         except Exception:

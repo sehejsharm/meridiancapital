@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api", tags=["data"], dependencies=[Depends(require_a
 @router.get("/status")
 async def status() -> dict:
     c = ctx()
-    return system_status(c.db, c.sup, c.sched)
+    return system_status(c.db, c.sup, c.sched, c.fleet)
 
 
 @router.get("/snapshot")
@@ -21,7 +21,7 @@ async def snapshot() -> dict:
     c = ctx()
     return {
         "snapshot": c.db.kv_get(K_SNAPSHOT, None),
-        "status": system_status(c.db, c.sup, c.sched),
+        "status": system_status(c.db, c.sup, c.sched, c.fleet),
     }
 
 

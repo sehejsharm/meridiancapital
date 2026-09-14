@@ -20,7 +20,18 @@ from app.config import settings
 from engine.config import DATA_DIR
 from shared.db import K_MODE, Database
 
-PIDFILE = DATA_DIR / "engine.pid"
+DEFAULT_ALGO = "gk50k"
+
+
+def pidfile_for(algo_id: str) -> Path:
+    """The built-in keeps the original path so an engine that was already
+    running when this upgrade landed is still adopted rather than orphaned."""
+    if algo_id == DEFAULT_ALGO:
+        return DATA_DIR / "engine.pid"
+    return DATA_DIR / f"engine-{algo_id}.pid"
+
+
+PIDFILE = pidfile_for(DEFAULT_ALGO)
 STOP_GRACE_SEC = 25.0
 
 
@@ -61,7 +72,22 @@ class SupervisorState:
 
 
 class Supervisor:
-    def __init__(self, db: Database):
+    def __init__(
+        self,
+        db: Database,
+        algo_id: str = DEFAULT_ALGO,
+        mode_provider=None,
+        strategy_path: Path | None = None,
+    ):
+        self.algo_id = algo_id
+        self.pidfile = pidfile_for(algo_id)
+        # How this algorithm's paper/live mode is decided. The built-in reads
+        # the operator setting in kv; uploaded algorithms carry their own.
+        self._mode_provider = mode_provider
+        self.strategy_path = strategy_path
+        self._init(db)
+
+    def _init(self, db: Database):
         self.db = db
         self.proc: subprocess.Popen | None = None
         self.state = SupervisorState(mode=self.desired_mode())
@@ -69,6 +95,11 @@ class Supervisor:
 
     # ── mode ─────────────────────────────────────────────────────────────────
     def desired_mode(self) -> str:
+        if self._mode_provider is not None:
+            return "live" if self._mode_provider() == "live" else "paper"
+        return self._desired_mode_from_kv()
+
+    def _desired_mode_from_kv(self) -> str:
         mode = self.db.kv_get(K_MODE, settings.default_mode)
         return "live" if mode == "live" else "paper"
 
@@ -80,23 +111,23 @@ class Supervisor:
 
     # ── discovery ────────────────────────────────────────────────────────────
     def adopt(self) -> None:
-        if not PIDFILE.exists():
+        if not self.pidfile.exists():
             return
         try:
-            pid = int(PIDFILE.read_text().strip())
+            pid = int(self.pidfile.read_text().strip())
         except (ValueError, OSError):
-            PIDFILE.unlink(missing_ok=True)
+            self.pidfile.unlink(missing_ok=True)
             return
         if _alive(pid) and _is_engine(pid):
             self.state.running = True
             self.state.pid = pid
             self.state.adopted = True
-            self.state.started_ts = PIDFILE.stat().st_mtime
+            self.state.started_ts = self.pidfile.stat().st_mtime
             self.db.add_event(
                 "info", f"API adopted running engine pid {pid}", source="supervisor"
             )
         else:
-            PIDFILE.unlink(missing_ok=True)
+            self.pidfile.unlink(missing_ok=True)
 
     def refresh(self) -> None:
         """Reap the child or notice an adopted engine has gone."""
@@ -122,10 +153,10 @@ class Supervisor:
         self.state.last_stop_reason = reason
         self.state.run_id = None
         self.proc = None
-        PIDFILE.unlink(missing_ok=True)
+        self.pidfile.unlink(missing_ok=True)
         level = "info" if code in (0, None) else "error"
         self.db.add_event(
-            level, f"engine stopped (pid {pid}, exit {code}): {reason}", source="supervisor"
+            level, f"engine stopped (pid {pid}, exit {code}): {reason}", source="supervisor", algo_id=self.algo_id
         )
 
     # ── start / stop ─────────────────────────────────────────────────────────
@@ -142,7 +173,10 @@ class Supervisor:
         env["MERIDIAN_TRADING_MODE"] = mode
         env["PYTHONUNBUFFERED"] = "1"
         python = settings.python_bin or sys.executable
-        cmd = [python, "-m", "engine.runner", "--mode", mode]
+        cmd = [python, "-m", "engine.runner", "--mode", mode, "--algo", self.algo_id]
+        if self.strategy_path is not None:
+            cmd += ["--strategy", str(self.strategy_path)]
+        env["MERIDIAN_ALGO_ID"] = self.algo_id
         try:
             proc = subprocess.Popen(
                 cmd,
@@ -154,7 +188,7 @@ class Supervisor:
             )
         except OSError as e:
             self.state.last_start_error = str(e)
-            self.db.add_event("error", f"engine start failed: {e}", source="supervisor")
+            self.db.add_event("error", f"engine start failed: {e}", source="supervisor", algo_id=self.algo_id)
             return {"ok": False, "detail": f"spawn failed: {e}"}
 
         self.proc = proc
@@ -165,11 +199,11 @@ class Supervisor:
         self.state.started_ts = time.time()
         self.state.last_start_error = ""
         self.state.manual_override = False
-        self.state.run_id = self.db.start_run(proc.pid, mode, trigger)
-        PIDFILE.write_text(str(proc.pid))
+        self.state.run_id = self.db.start_run(proc.pid, mode, trigger, algo_id=self.algo_id)
+        self.pidfile.write_text(str(proc.pid))
         self.db.add_event(
             "ok", f"engine started in {mode.upper()} mode (pid {proc.pid}, trigger {trigger})",
-            source="supervisor",
+            source="supervisor", algo_id=self.algo_id,
         )
         return {"ok": True, "pid": proc.pid, "mode": mode}
 
@@ -189,7 +223,7 @@ class Supervisor:
 
         self.db.add_event(
             "warn", f"engine did not stop within {STOP_GRACE_SEC:.0f}s — sending SIGTERM",
-            source="supervisor",
+            source="supervisor", algo_id=self.algo_id,
         )
         try:
             os.kill(pid, signal.SIGTERM)
@@ -205,7 +239,7 @@ class Supervisor:
                 return {"ok": True, "detail": "engine stopped after SIGTERM"}
 
         if force:
-            self.db.add_event("error", f"engine unresponsive — SIGKILL pid {pid}", source="supervisor")
+            self.db.add_event("error", f"engine unresponsive — SIGKILL pid {pid}", source="supervisor", algo_id=self.algo_id)
             try:
                 os.kill(pid, signal.SIGKILL)
             except ProcessLookupError:

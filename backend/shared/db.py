@@ -147,6 +147,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 """
 
+# Everything written before multi-algo belongs to the built-in build.
+DEFAULT_ALGO = "gk50k"
+
 _init_lock = threading.Lock()
 _initialised: set[str] = set()
 
@@ -240,21 +243,35 @@ class Database:
         return int(row["rev"]) if row else 0
 
     # ── events ───────────────────────────────────────────────────────────────
-    def add_event(self, level: str, message: str, extra: dict | None = None, source: str = "engine") -> int:
+    def add_event(
+        self,
+        level: str,
+        message: str,
+        extra: dict | None = None,
+        source: str = "engine",
+        algo_id: str = DEFAULT_ALGO,
+    ) -> int:
         with self.conn() as c:
             cur = c.execute(
-                "INSERT INTO events(ts, level, source, message, extra) VALUES(?,?,?,?,?)",
+                "INSERT INTO events(ts, level, source, message, extra, algo_id) VALUES(?,?,?,?,?,?)",
                 (
                     now_ist().isoformat(timespec="seconds"),
                     level,
                     source,
                     message,
                     json.dumps(extra, default=str) if extra else None,
+                    algo_id,
                 ),
             )
         return int(cur.lastrowid)
 
-    def events(self, limit: int = 200, after_id: int | None = None, levels: list[str] | None = None) -> list[dict]:
+    def events(
+        self,
+        limit: int = 200,
+        after_id: int | None = None,
+        levels: list[str] | None = None,
+        algo_id: str | None = None,
+    ) -> list[dict]:
         sql = "SELECT * FROM events"
         where, args = [], []
         if after_id is not None:
@@ -263,6 +280,9 @@ class Database:
         if levels:
             where.append(f"level IN ({','.join('?' * len(levels))})")
             args.extend(levels)
+        if algo_id:
+            where.append("algo_id = ?")
+            args.append(algo_id)
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY id DESC LIMIT ?"
@@ -284,20 +304,31 @@ class Database:
             "entry_ts", "exit_ts", "session_date", "mode", "view", "side", "strike", "expiry",
             "tsym", "lots", "qty", "entry_prem", "exit_prem", "spot_entry", "spot_exit",
             "peak_pct", "gross", "charges", "net", "reason", "hold_min", "equity", "pnl_source",
+            "algo_id",
         ]
-        vals = [trade.get(k) for k in cols]
+        vals = [trade.get(k) if k != "algo_id" else trade.get(k, DEFAULT_ALGO) for k in cols]
         with self.conn() as c:
             cur = c.execute(
                 f"INSERT INTO trades({','.join(cols)}) VALUES({','.join('?' * len(cols))})", vals
             )
         return int(cur.lastrowid)
 
-    def trades(self, limit: int = 500, session_date: str | None = None) -> list[dict]:
+    def trades(
+        self,
+        limit: int = 500,
+        session_date: str | None = None,
+        algo_id: str | None = None,
+    ) -> list[dict]:
         sql = "SELECT * FROM trades"
-        args: list = []
+        where, args = [], []
         if session_date:
-            sql += " WHERE session_date = ?"
+            where.append("session_date = ?")
             args.append(session_date)
+        if algo_id:
+            where.append("algo_id = ?")
+            args.append(algo_id)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY id DESC LIMIT ?"
         args.append(limit)
         with self.conn() as c:
@@ -325,21 +356,33 @@ class Database:
 
     # ── equity curve ─────────────────────────────────────────────────────────
     def add_equity_sample(self, session_date: str, equity: float, realised_today: float | None,
-                          peak_equity: float | None, day_pl: float | None) -> None:
+                          peak_equity: float | None, day_pl: float | None,
+                          algo_id: str = DEFAULT_ALGO) -> None:
         with self.conn() as c:
             c.execute(
-                """INSERT INTO equity_samples(ts, session_date, equity, realised_today, peak_equity, day_pl)
-                   VALUES(?,?,?,?,?,?)""",
+                """INSERT INTO equity_samples(ts, session_date, equity, realised_today,
+                                              peak_equity, day_pl, algo_id)
+                   VALUES(?,?,?,?,?,?,?)""",
                 (now_ist().isoformat(timespec="seconds"), session_date, equity,
-                 realised_today, peak_equity, day_pl),
+                 realised_today, peak_equity, day_pl, algo_id),
             )
 
-    def equity_curve(self, limit: int = 1000, session_date: str | None = None) -> list[dict]:
+    def equity_curve(
+        self,
+        limit: int = 1000,
+        session_date: str | None = None,
+        algo_id: str | None = None,
+    ) -> list[dict]:
         sql = "SELECT ts, equity, realised_today, peak_equity, day_pl FROM equity_samples"
-        args: list = []
+        where, args = [], []
         if session_date:
-            sql += " WHERE session_date = ?"
+            where.append("session_date = ?")
             args.append(session_date)
+        if algo_id:
+            where.append("algo_id = ?")
+            args.append(algo_id)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY id DESC LIMIT ?"
         args.append(limit)
         with self.conn() as c:
@@ -358,21 +401,29 @@ class Database:
         return [dict(r) for r in reversed(rows)]
 
     # ── commands (API writes, engine consumes) ───────────────────────────────
-    def enqueue_command(self, action: str, payload: dict | None = None, issued_by: str = "api") -> int:
+    def enqueue_command(self, action: str, payload: dict | None = None, issued_by: str = "api",
+                        algo_id: str = DEFAULT_ALGO) -> int:
         with self.conn() as c:
             cur = c.execute(
-                "INSERT INTO commands(created_ts, action, payload, issued_by) VALUES(?,?,?,?)",
+                "INSERT INTO commands(created_ts, action, payload, issued_by, algo_id) "
+                "VALUES(?,?,?,?,?)",
                 (now_ist().isoformat(timespec="seconds"), action,
-                 json.dumps(payload or {}, default=str), issued_by),
+                 json.dumps(payload or {}, default=str), issued_by, algo_id),
             )
         return int(cur.lastrowid)
 
-    def claim_commands(self) -> list[dict]:
-        """Atomically take every pending command. Engine-side only."""
+    def claim_commands(self, algo_id: str = DEFAULT_ALGO) -> list[dict]:
+        """Atomically take this algorithm's pending commands. Engine-side only.
+
+        Scoped by algo_id: with several engines sharing the bus, an unscoped
+        claim would let one engine swallow another's halt or flatten and then
+        act on it against the wrong position.
+        """
         with self.conn() as c:
             c.execute("BEGIN IMMEDIATE")
             rows = c.execute(
-                "SELECT * FROM commands WHERE status='pending' ORDER BY id"
+                "SELECT * FROM commands WHERE status='pending' AND algo_id=? ORDER BY id",
+                (algo_id,),
             ).fetchall()
             if rows:
                 ids = [r["id"] for r in rows]
@@ -415,11 +466,12 @@ class Database:
         return cur.rowcount or 0
 
     # ── engine runs ──────────────────────────────────────────────────────────
-    def start_run(self, pid: int, mode: str, trigger: str) -> int:
+    def start_run(self, pid: int, mode: str, trigger: str, algo_id: str = DEFAULT_ALGO) -> int:
         with self.conn() as c:
             cur = c.execute(
-                "INSERT INTO engine_runs(started_ts, pid, mode, trigger) VALUES(?,?,?,?)",
-                (now_ist().isoformat(timespec="seconds"), pid, mode, trigger),
+                """INSERT INTO engine_runs(started_ts, pid, mode, trigger, algo_id)
+                   VALUES(?,?,?,?,?)""",
+                (now_ist().isoformat(timespec="seconds"), pid, mode, trigger, algo_id),
             )
         return int(cur.lastrowid)
 
@@ -562,6 +614,11 @@ def _event_row(r: sqlite3.Row) -> dict:
 
 # Well-known kv keys
 K_SNAPSHOT = "engine:snapshot"
+
+
+def snapshot_key(algo_id: str = DEFAULT_ALGO) -> str:
+    """Where an engine publishes its live state for the dashboard."""
+    return K_SNAPSHOT if algo_id == DEFAULT_ALGO else f"{K_SNAPSHOT}:{algo_id}"
 K_MODE = "settings:mode"  # "paper" | "live"
 K_SCHEDULE = "settings:schedule_enabled"  # bool
 K_TUNING = "settings:tuning"  # dashboard overrides of the strategy parameters
