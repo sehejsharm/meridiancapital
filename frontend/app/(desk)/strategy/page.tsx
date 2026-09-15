@@ -48,7 +48,7 @@ export default function StrategyPage() {
 
   const load = useCallback(async () => {
     try {
-      const payload = await apiGet<TuningPayload>("/api/tuning");
+      const payload = await apiGet<TuningPayload>("/tuning");
       setData(payload);
       setDraft(toDraft(payload.effective));
       setError(null);
@@ -96,7 +96,7 @@ export default function StrategyPage() {
         const raw = draft[p.key];
         values[p.key] = p.kind === "time" ? raw : Number(raw);
       }
-      const payload = await apiPost<TuningPayload>("/api/tuning", { values, confirm });
+      const payload = await apiPost<TuningPayload>("/tuning", { values, confirm });
       setData(payload);
       setDraft(toDraft(payload.effective));
       setConfirm("");
@@ -118,7 +118,7 @@ export default function StrategyPage() {
     setBusy(true);
     setNotice(null);
     try {
-      const payload = await apiPost<TuningPayload>("/api/tuning/reset");
+      const payload = await apiPost<TuningPayload>("/tuning/reset");
       setData(payload);
       setDraft(toDraft(payload.effective));
       setConfirm("");

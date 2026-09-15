@@ -1,221 +1,183 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { EquityChart, type ChartPoint } from "@/components/EquityChart";
-import { EventFeed } from "@/components/EventFeed";
-import { GuardRails } from "@/components/GuardRails";
-import { PositionPanel } from "@/components/PositionPanel";
-import { SignalPanel } from "@/components/SignalPanel";
-import { Badge, Card, Empty, Field, StatTile } from "@/components/ui";
-import { apiGet } from "@/lib/client-api";
-import {
-  duration,
-  istDateTime,
-  istTime,
-  money,
-  percent,
-  signedMoney,
-  signedPercent,
-} from "@/lib/format";
+import { AlgoCard } from "@/components/AlgoCard";
+import { HealthStrip } from "@/components/HealthStrip";
+import { LiveTape } from "@/components/LiveTape";
+import { MarkedChart } from "@/components/MarkedChart";
+import { NewsPanel } from "@/components/NewsPanel";
+import { NiftyTicker } from "@/components/NiftyTicker";
+import { TradingViewChart } from "@/components/TradingViewChart";
+import { Badge, Card, Empty, StatTile } from "@/components/ui";
+import { apiGet, apiPost } from "@/lib/client-api";
+import { money, signedMoney } from "@/lib/format";
 import { useLiveFeed } from "@/lib/LiveContext";
-import type { EquityPoint } from "@/lib/types";
+import type { AlgoList, EquityPoint, TradeRow } from "@/lib/types";
 
-export default function DeskPage() {
+/**
+ * The deck.
+ *
+ * Layout follows the fleet rather than a fixed shape: one algorithm gets a wide
+ * card with room for its figures, several get a denser grid. A desk running six
+ * strategies and a desk running one should not be read the same way.
+ */
+export default function DeckPage() {
   const { snapshot, status, events, connection } = useLiveFeed();
-  const [curve, setCurve] = useState<EquityPoint[]>([]);
+  const [algos, setAlgos] = useState<AlgoList | null>(null);
+  const [equity, setEquity] = useState<EquityPoint[]>([]);
+  const [trades, setTrades] = useState<TradeRow[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const sessionDate = snapshot?.market.session_date;
+  const loadAlgos = useCallback(async () => {
+    try {
+      setAlgos(await apiGet<AlgoList>("/algos"));
+    } catch {
+      /* the fleet summary in status still renders */
+    }
+  }, []);
+
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
+    void loadAlgos();
+    const t = setInterval(() => void loadAlgos(), 10_000);
+    return () => clearInterval(t);
+  }, [loadAlgos]);
+
+  useEffect(() => {
+    void (async () => {
       try {
-        const data = await apiGet<{ intraday: EquityPoint[] }>("/equity");
-        if (!cancelled) setCurve(data.intraday);
+        const [e, t] = await Promise.all([
+          apiGet<{ curve: EquityPoint[] }>("/equity?limit=600"),
+          apiGet<{ trades: TradeRow[] }>("/trades?limit=80"),
+        ]);
+        setEquity(e.curve ?? []);
+        setTrades(t.trades ?? []);
       } catch {
-        /* the banner already reports a degraded connection */
+        /* chart falls back to its empty state */
       }
-    };
-    void load();
-    const timer = setInterval(() => void load(), 60_000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [sessionDate]);
+    })();
+  }, [snapshot?.ts]);
 
-  if (!snapshot) {
-    return <EngineDown status={status} connection={connection} events={events} />;
-  }
+  const control = useCallback(
+    async (algoId: string, action: "start" | "stop") => {
+      setBusy(algoId);
+      setNotice(null);
+      try {
+        await apiPost(`/algos/${algoId}/${action}`);
+        await loadAlgos();
+      } catch (e) {
+        setNotice(e instanceof Error ? e.message : `could not ${action} ${algoId}`);
+      } finally {
+        setBusy(null);
+      }
+    },
+    [loadAlgos],
+  );
 
-  const { account, guards, engine, market, health } = snapshot;
-  const chartPoints: ChartPoint[] = curve.map((p) => ({
-    label: p.ts,
-    value: p.equity,
-    secondary: p.day_pl,
-  }));
+  const fleet = status?.fleet;
+  const list = algos?.algos ?? [];
+  const single = list.length <= 1;
+  const account = snapshot?.account;
 
   return (
     <div className="space-y-5">
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <NiftyTicker />
+
+      {notice && (
+        <div role="alert" className="rounded-lg border border-critical/40 bg-critical/10 px-4 py-3 text-xs text-critical">
+          {notice}
+        </div>
+      )}
+
+      {fleet && fleet.live_running > 0 && (
+        <div className="rounded-lg border border-critical/50 bg-critical/10 px-4 py-2.5 text-xs text-critical">
+          <strong className="font-semibold">
+            {fleet.live_running} algorithm{fleet.live_running === 1 ? "" : "s"} trading real money.
+          </strong>{" "}
+          Orders placed now are live at Angel One.
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
-          label="Equity (Angel One)"
-          value={money(account.equity)}
-          delta={{
-            text: `${signedMoney(account.day_pl)} · ${signedPercent(account.day_pl_pct)} today`,
-            value: account.day_pl,
-          }}
-          hint={`Opened at ${money(account.start_equity)}`}
+          label="Equity"
+          value={account ? money(account.equity) : "—"}
+          hint={account ? `peak ${money(account.peak_equity)}` : undefined}
           tone="brand"
         />
         <StatTile
-          label="Realised today"
-          value={signedMoney(account.realised_today)}
-          delta={{
-            text: `${signedMoney(account.realised_week)} this week`,
-            value: account.realised_week,
-          }}
-          hint={`${guards.trades_today} of ${guards.max_trades_day} trades taken`}
+          label="Day P&L"
+          value={account ? signedMoney(account.day_pl) : "—"}
+          delta={account ? { text: `${account.day_pl_pct.toFixed(2)}%`, value: account.day_pl } : undefined}
         />
         <StatTile
-          label="Drawdown from peak"
-          value={percent(account.drawdown_pct)}
-          delta={{
-            text: `Halt at −${percent(guards.drawdown_stop, 0)}`,
-            value: account.drawdown_pct,
-          }}
-          hint={`Peak ${money(account.peak_equity)}`}
+          label="Engines running"
+          value={fleet ? `${fleet.running} / ${fleet.total}` : "—"}
+          hint={fleet ? `${fleet.live_running} on real money` : undefined}
         />
         <StatTile
-          label="Session"
-          value={market.open ? "Market open" : "Market closed"}
-          hint={`${market.session_date} · ${engine.phase.toLowerCase()}`}
+          label="Feed"
+          value={connection === "live" ? "Live" : connection === "polling" ? "Polling" : "Offline"}
+          hint={snapshot?.engine.phase ?? "no engine reporting"}
         />
+      </div>
+
+      <section aria-labelledby="fleet-heading" className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="fleet-heading" className="text-2xs font-semibold uppercase tracking-[0.16em] text-brand">
+            Algorithms
+          </h2>
+          <Badge tone={list.length ? "neutral" : "warning"}>
+            {list.length} registered
+          </Badge>
+        </div>
+
+        {!list.length ? (
+          <Empty>No algorithms registered yet.</Empty>
+        ) : (
+          <div
+            className={`grid gap-4 ${
+              single ? "grid-cols-1" : "sm:grid-cols-2 xl:grid-cols-3"
+            }`}
+          >
+            {list.map((algo) => (
+              <AlgoCard
+                key={algo.id}
+                algo={algo}
+                // The shared snapshot belongs to whichever engine published it;
+                // only attribute it to that algorithm.
+                snapshot={snapshot?.engine.pid === algo.runtime.pid ? snapshot : null}
+                busy={busy === algo.id}
+                compact={!single && list.length > 4}
+                onStart={() => void control(algo.id, "start")}
+                onStop={() => void control(algo.id, "stop")}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid gap-5 xl:grid-cols-[3fr_2fr]">
         <div className="space-y-5">
-          <Card
-            title="Equity curve"
-            subtitle={`Intraday, sampled every minute · ${market.session_date}`}
-            action={
-              <Badge tone={account.day_pl >= 0 ? "good" : "critical"}>
-                {account.day_pl >= 0 ? "Up" : "Down"} {signedMoney(account.day_pl)}
-              </Badge>
-            }
-          >
-            <EquityChart
-              points={chartPoints}
-              baseline={account.start_equity || null}
-              emptyMessage="The curve fills in once the engine has been up for a few minutes."
-              xLabel={(p) => istTime(p.label)}
-            />
+          <Card title="NIFTY 50" subtitle="Live price action from TradingView">
+            <TradingViewChart height={380} />
           </Card>
 
-          <PositionPanel position={snapshot.position} />
-          <EventFeed events={events} limit={25} title="Recent activity" />
+          <Card
+            title="Equity and fills"
+            subtitle="Arrows mark entries, circles mark exits coloured by outcome"
+          >
+            <MarkedChart equity={equity} trades={trades} height={280} />
+          </Card>
         </div>
 
         <div className="space-y-5">
-          <SignalPanel snapshot={snapshot} />
-          <GuardRails guards={guards} drawdownPct={account.drawdown_pct} />
-
-          <Card title="System health">
-            <dl className="divide-y divide-hairline">
-              <Field
-                label="Broker session"
-                value={health.broker_client_id ?? "—"}
-                tone={health.broker_connected ? "text-good" : "text-critical"}
-              />
-              <Field
-                label="Clock drift"
-                value={
-                  health.clock_drift_sec != null
-                    ? `${health.clock_drift_sec >= 0 ? "+" : "−"}${Math.abs(health.clock_drift_sec).toFixed(2)}s`
-                    : "unverified"
-                }
-                tone={
-                  health.clock_drift_sec != null && Math.abs(health.clock_drift_sec) > 5
-                    ? "text-warning"
-                    : "text-ink"
-                }
-              />
-              <Field label="Engine uptime" value={duration(engine.uptime_sec)} />
-              <Field label="Angel API calls" value={String(health.api?.total_calls ?? 0)} />
-              <Field
-                label="Rate-limit waits"
-                value={`${health.api?.throttles ?? 0} · ${(health.api?.waited_sec ?? 0).toFixed(1)}s`}
-                tone={(health.api?.throttles ?? 0) > 0 ? "text-warning" : "text-ink"}
-              />
-              <Field label="Contracts loaded" value={health.contracts_loaded.toLocaleString()} />
-              <Field
-                label="Next scheduled"
-                value={
-                  status?.schedule.next.at
-                    ? `${status.schedule.next.action} ${istDateTime(status.schedule.next.at)}`
-                    : "—"
-                }
-              />
-            </dl>
-            {health.last_error && (
-              <p className="mt-3 rounded-md border border-critical/40 bg-critical/10 px-3 py-2 text-2xs text-critical">
-                Last broker error: {health.last_error}
-              </p>
-            )}
-          </Card>
+          <HealthStrip />
+          <LiveTape events={events.slice(0, 60)} height={300} />
+          <NewsPanel limit={10} />
         </div>
       </div>
-    </div>
-  );
-}
-
-function EngineDown({
-  status,
-  connection,
-  events,
-}: {
-  status: ReturnType<typeof useLiveFeed>["status"];
-  connection: string;
-  events: ReturnType<typeof useLiveFeed>["events"];
-}) {
-  const schedule = status?.schedule;
-  const offline = status?.offline_note;
-
-  return (
-    <div className="space-y-5">
-      <Card
-        title="Engine offline"
-        subtitle="No live snapshot is being published"
-        action={<Badge tone={connection === "offline" ? "critical" : "warning"}>{connection}</Badge>}
-      >
-        {connection === "offline" ? (
-          <Empty>
-            The dashboard cannot reach the control plane on Oracle Cloud. Check that the API host
-            is up and reachable.
-          </Empty>
-        ) : (
-          <dl className="divide-y divide-hairline">
-            <Field label="Automation" value={schedule?.enabled ? "Armed" : "Disarmed"} />
-            <Field label="Trading day" value={schedule?.is_trading_day ? "Yes" : "No"} />
-            <Field
-              label="Next scheduled"
-              value={
-                schedule?.next.at
-                  ? `${schedule.next.action} at ${istDateTime(schedule.next.at)}`
-                  : "nothing scheduled"
-              }
-            />
-            <Field label="Scheduler decision" value={schedule?.last_decision ?? "—"} mono={false} />
-            {offline && <Field label="Last shutdown" value={offline.reason} mono={false} />}
-          </dl>
-        )}
-        <p className="mt-3 text-2xs text-ink-muted">
-          The engine is started and stopped automatically around the NSE session. Use Controls to
-          start it by hand.
-        </p>
-      </Card>
-
-      <EventFeed events={events} limit={40} />
     </div>
   );
 }

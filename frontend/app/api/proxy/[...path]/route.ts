@@ -48,14 +48,19 @@ async function relay(request: NextRequest, segments: string[]) {
       cache: "no-store",
     });
 
-    const payload = await upstream.text();
-    return new NextResponse(payload, {
-      status: upstream.status,
-      headers: {
-        "Content-Type": upstream.headers.get("content-type") ?? "application/json",
-        "Cache-Control": "no-store",
-      },
+    // Read as bytes, not text: a PDF re-encoded through a JS string is a
+    // corrupt PDF. This is a pass-through for every content type.
+    const payload = await upstream.arrayBuffer();
+    const headers = new Headers({
+      "Content-Type": upstream.headers.get("content-type") ?? "application/json",
+      "Cache-Control": "no-store",
     });
+    // Downloads name themselves upstream; without this the browser saves the
+    // route segment instead of the report filename.
+    const disposition = upstream.headers.get("content-disposition");
+    if (disposition) headers.set("Content-Disposition", disposition);
+
+    return new NextResponse(payload, { status: upstream.status, headers });
   } catch (error) {
     if (error instanceof ApiError) {
       return NextResponse.json({ detail: error.message }, { status: error.status });

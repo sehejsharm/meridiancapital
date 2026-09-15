@@ -151,6 +151,7 @@ export interface SystemStatus {
   offline_note: { ts: string; reason: string; mode: string } | null;
   operator: string;
   fund: string;
+  fleet: FleetOverview;
 }
 
 export interface TradeRow {
@@ -200,6 +201,7 @@ export interface EventRow {
   source: string;
   message: string;
   extra: Record<string, unknown> | null;
+  algo_id?: string;
 }
 
 export interface EquityPoint {
@@ -262,4 +264,159 @@ export interface TuningPayload {
   engine_running: boolean;
   pending_restart: boolean;
   confirm_phrase: string;
+}
+
+// ── fleet ────────────────────────────────────────────────────────────────────
+export interface FleetAlgo {
+  algo_id: string;
+  name: string;
+  kind: "builtin" | "uploaded";
+  running: boolean;
+  pid: number | null;
+  mode: "paper" | "live";
+}
+
+export interface FleetOverview {
+  algos: FleetAlgo[];
+  running: number;
+  live_running: number;
+  total: number;
+}
+
+// ── algo registry ────────────────────────────────────────────────────────────
+export interface GateCheck {
+  key: string;
+  title: string;
+  spec: string;
+  passed: boolean;
+  detail: string;
+  critical: boolean;
+}
+
+export interface GateReport {
+  passed: boolean;
+  error: string | null;
+  total: number;
+  failed: number;
+  checks: GateCheck[];
+  scan?: { ok: boolean; errors: string[]; imports: string[] };
+  name?: string;
+}
+
+export interface AlgoVersion {
+  id: number;
+  algo_id: string;
+  version: number;
+  created_ts: string;
+  uploaded_by: string | null;
+  sha256: string;
+  status: "pending" | "passed" | "failed" | "cleared";
+  gate_report: string | null;
+  paper_sessions: number;
+}
+
+export interface Promotion {
+  status: string;
+  paper_sessions: number;
+  required: number;
+  can_paper: boolean;
+  can_live: boolean;
+  live_blocker: string;
+}
+
+export interface Algo {
+  id: string;
+  name: string;
+  kind: "builtin" | "uploaded";
+  mode: "paper" | "live";
+  active_version: number | null;
+  enabled: boolean;
+  created_ts: string;
+  notes: string | null;
+  versions: AlgoVersion[];
+  active: AlgoVersion | null;
+  promotion: Promotion;
+  runtime: { running: boolean; pid: number | null; mode: string };
+}
+
+export interface AlgoList {
+  algos: Algo[];
+  paper_sessions_required: number;
+  go_live_phrase: string;
+}
+
+// ── deck feeds ───────────────────────────────────────────────────────────────
+export interface HealthCheck {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  state: "ok" | "warning" | "critical" | "unknown";
+  detail: string;
+}
+
+export interface HealthDetail {
+  state: "ok" | "warning" | "critical" | "unknown";
+  uptime_seconds: number;
+  load_average: number[] | null;
+  checks: HealthCheck[];
+}
+
+export interface NewsItem {
+  source: string;
+  title: string;
+  link: string;
+  summary: string;
+  published: string | null;
+}
+
+export interface NewsPayload {
+  items: NewsItem[];
+  fetched_at: string | null;
+  age_seconds: number;
+  stale: boolean;
+  sources: string[];
+  errors: string[];
+}
+
+export interface TickerPayload {
+  spot: number | null;
+  bar_close: number | null;
+  channel_high: number | null;
+  channel_low: number | null;
+  ts: string | null;
+  source_algo: string | null;
+  server_time: string;
+  live: boolean;
+}
+
+// ── reports ──────────────────────────────────────────────────────────────────
+export interface ReportSummary {
+  trades: number;
+  open_trades: number;
+  wins: number;
+  losses: number;
+  win_rate_pct: number;
+  net_pnl: number;
+  gross_profit: number;
+  gross_loss: number;
+  profit_factor: number | null;
+  largest_win: number;
+  largest_loss: number;
+  average_trade: number;
+  total_charges: number;
+  max_drawdown_pct: number;
+  errors: number;
+}
+
+export interface ReportPayload {
+  title: string;
+  algo_id: string;
+  start: string;
+  end: string;
+  generated_at: string;
+  summary: ReportSummary;
+  trades: TradeRow[];
+  equity: EquityPoint[];
+  events: EventRow[];
 }
