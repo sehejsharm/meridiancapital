@@ -137,6 +137,16 @@ CREATE TABLE IF NOT EXISTS algo_versions (
 );
 CREATE INDEX IF NOT EXISTS idx_versions_algo ON algo_versions(algo_id);
 
+CREATE TABLE IF NOT EXISTS passkeys (
+    credential_id   TEXT PRIMARY KEY,
+    public_key      TEXT NOT NULL,
+    sign_count      INTEGER NOT NULL DEFAULT 0,
+    label           TEXT NOT NULL DEFAULT '',
+    transports      TEXT,
+    created_ts      TEXT NOT NULL,
+    last_used_ts    TEXT
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     ts      TEXT NOT NULL,
@@ -506,6 +516,50 @@ class Database:
             c.execute("DELETE FROM holidays WHERE day=?", (day,))
 
     # ── audit ────────────────────────────────────────────────────────────────
+    # ── passkeys (Face ID / Touch ID / security keys) ────────────────────────
+    def add_passkey(self, credential_id: str, public_key: str, sign_count: int,
+                    label: str, transports: str = "") -> None:
+        with self.conn() as c:
+            c.execute(
+                """INSERT INTO passkeys(credential_id, public_key, sign_count, label,
+                                        transports, created_ts)
+                   VALUES(?,?,?,?,?,?)
+                   ON CONFLICT(credential_id) DO UPDATE SET
+                     public_key=excluded.public_key, label=excluded.label,
+                     transports=excluded.transports""",
+                (credential_id, public_key, sign_count, label, transports,
+                 now_ist().isoformat(timespec="seconds")),
+            )
+
+    def passkeys(self) -> list[dict]:
+        with self.conn() as c:
+            return [
+                dict(r)
+                for r in c.execute(
+                    """SELECT credential_id, label, transports, created_ts, last_used_ts,
+                              sign_count
+                       FROM passkeys ORDER BY created_ts"""
+                )
+            ]
+
+    def passkey(self, credential_id: str) -> dict | None:
+        with self.conn() as c:
+            r = c.execute(
+                "SELECT * FROM passkeys WHERE credential_id=?", (credential_id,)
+            ).fetchone()
+            return dict(r) if r else None
+
+    def touch_passkey(self, credential_id: str, sign_count: int) -> None:
+        with self.conn() as c:
+            c.execute(
+                "UPDATE passkeys SET sign_count=?, last_used_ts=? WHERE credential_id=?",
+                (sign_count, now_ist().isoformat(timespec="seconds"), credential_id),
+            )
+
+    def delete_passkey(self, credential_id: str) -> None:
+        with self.conn() as c:
+            c.execute("DELETE FROM passkeys WHERE credential_id=?", (credential_id,))
+
     # ── algo registry ────────────────────────────────────────────────────────
     def algos(self) -> list[dict]:
         with self.conn() as c:

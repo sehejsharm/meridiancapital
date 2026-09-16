@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE = "meridian_session";
+// /api/session covers its /passkey child via the startsWith check below: both
+// have to answer before a session exists.
 const PUBLIC_PATHS = ["/login", "/api/session"];
 
 export function middleware(request: NextRequest) {

@@ -130,12 +130,24 @@ def client_ip(request: Request) -> str:
 
 # ── brute-force throttle on the single login route ───────────────────────────
 class LoginThrottle:
-    def __init__(self, max_attempts: int = 8, window_sec: int = 300, lockout_sec: int = 900):
+    """Rate limit on the single login route.
+
+    The operator credential is a short numeric PIN, so the whole keyspace is
+    small enough to walk. These numbers are what make that impractical: five
+    tries, then a lockout that doubles on each repeat offence up to an hour.
+    At the cap an exhaustive search of a 4-digit PIN takes over two months per
+    source address.
+    """
+
+    def __init__(self, max_attempts: int = 5, window_sec: int = 300,
+                 lockout_sec: int = 900, max_lockout_sec: int = 3600):
         self.max_attempts = max_attempts
         self.window_sec = window_sec
         self.lockout_sec = lockout_sec
+        self.max_lockout_sec = max_lockout_sec
         self._hits: dict[str, list[float]] = {}
         self._locked: dict[str, float] = {}
+        self._strikes: dict[str, int] = {}
 
     def check(self, key: str) -> None:
         now = time.time()
@@ -152,12 +164,16 @@ class LoginThrottle:
         hits.append(now)
         self._hits[key] = hits
         if len(hits) >= self.max_attempts:
-            self._locked[key] = now + self.lockout_sec
+            strikes = self._strikes.get(key, 0) + 1
+            self._strikes[key] = strikes
+            penalty = min(self.lockout_sec * 2 ** (strikes - 1), self.max_lockout_sec)
+            self._locked[key] = now + penalty
             self._hits[key] = []
 
     def succeed(self, key: str) -> None:
         self._hits.pop(key, None)
         self._locked.pop(key, None)
+        self._strikes.pop(key, None)
 
 
 login_throttle = LoginThrottle()

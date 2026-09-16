@@ -43,6 +43,48 @@ a bare IP with a self-signed certificate.
   `something.duckdns.org` pointed at any IP. Caddy gets a Let's Encrypt certificate for it
   over HTTP-01 exactly as it would for your own domain.
 
+## 2b. Sign-in: PIN and Face ID
+
+The dashboard takes a single operator credential. Set or change it on the VM:
+
+```bash
+cd /path/to/meridiancapital
+sudo python3 backend/scripts/bootstrap_secrets.py --write
+sudo systemctl restart meridian-api
+```
+
+It prompts twice, never echoes, and rewrites only `MERIDIAN_PASSWORD_HASH` (and
+`MERIDIAN_JWT_SECRET` unless you pass `--keep-jwt`) inside
+`/etc/meridian/meridian.env`. Everything else in that file — your Angel One
+credentials — is left untouched. Rotating the JWT secret signs out every open
+session, which is what you want after a credential change.
+
+Only the hash is stored, so there is no way to recover a forgotten PIN; run the
+script again.
+
+> A 4-digit PIN is 10,000 combinations. What makes that survivable is the login
+> limiter: five attempts, then a lockout that doubles to an hour, applied to the
+> Face ID route as well so it cannot be used to sidestep the lock. Enrol Face ID
+> and treat the PIN as the fallback.
+
+### Face ID / Touch ID
+
+WebAuthn binds a credential to the origin of the **page**, which is the Vercel
+dashboard, not this API. Both must be set in `/etc/meridian/meridian.env`:
+
+```bash
+MERIDIAN_RP_ID='meridiancapital.vercel.app'
+MERIDIAN_RP_ORIGIN='https://meridiancapital.vercel.app'
+```
+
+Use your own domain if you have one pointed at the dashboard. Getting these
+wrong produces a credential the browser refuses to use — it fails closed, it
+does not silently weaken anything.
+
+Then, from the phone: sign in with the PIN, open **Controls**, and press *Enrol
+this device*. The private key stays in the phone's secure enclave; the server
+stores only a public key and a counter. Remove a lost device from the same card.
+
 ## 3. Install
 
 ```bash

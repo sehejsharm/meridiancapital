@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { PasskeyManager } from "@/components/PasskeyManager";
 import { Badge, Button, Card, Empty, Field } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { istDateTime } from "@/lib/format";
@@ -53,6 +54,8 @@ export default function ControlsPage() {
       )}
 
       <div className="grid gap-5 lg:grid-cols-2">
+        <PasskeyManager />
+
         <Card
           title="Engine"
           subtitle="The trading process itself"

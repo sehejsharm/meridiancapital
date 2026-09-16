@@ -23,6 +23,11 @@ class Settings:
     jwt_secret: str = field(default_factory=lambda: os.environ.get("MERIDIAN_JWT_SECRET", ""))
     password_hash: str = field(default_factory=lambda: os.environ.get("MERIDIAN_PASSWORD_HASH", ""))
     operator: str = field(default_factory=lambda: os.environ.get("MERIDIAN_OPERATOR", "sehej"))
+    # WebAuthn binds a credential to the origin the browser is on. That is the
+    # dashboard's domain (Vercel), not this API's — they are different hosts, so
+    # it cannot be inferred here and has to be configured.
+    rp_id: str = field(default_factory=lambda: os.environ.get("MERIDIAN_RP_ID", ""))
+    rp_origin: str = field(default_factory=lambda: os.environ.get("MERIDIAN_RP_ORIGIN", ""))
     token_ttl_min: int = int(os.environ.get("MERIDIAN_TOKEN_TTL_MIN", "720"))
     ws_ticket_ttl_sec: int = int(os.environ.get("MERIDIAN_WS_TICKET_TTL_SEC", "60"))
 
@@ -50,7 +55,9 @@ class Settings:
         if not self.jwt_secret or len(self.jwt_secret) < 32:
             problems.append("MERIDIAN_JWT_SECRET must be set to at least 32 random characters")
         if not self.password_hash:
-            problems.append("MERIDIAN_PASSWORD_HASH must be set (see scripts/hash_password.py)")
+            problems.append(
+                "MERIDIAN_PASSWORD_HASH must be set — run scripts/bootstrap_secrets.py --write"
+            )
         if self.default_mode not in ("paper", "live"):
             problems.append("MERIDIAN_TRADING_MODE must be 'paper' or 'live'")
         return problems

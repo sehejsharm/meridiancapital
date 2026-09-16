@@ -26,3 +26,22 @@ def tmp_db(tmp_path):
     from shared.db import Database
 
     return Database(tmp_path / "bus.db")
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_throttle():
+    """Keep one test's lockout from leaking into the next.
+
+    The limiter is process-global by design — it has to be, to be worth
+    anything — so a test that deliberately triggers a lockout would otherwise
+    lock out every test that logs in afterwards.
+    """
+    from app.security import login_throttle
+
+    login_throttle._hits.clear()
+    login_throttle._locked.clear()
+    login_throttle._strikes.clear()
+    yield
+    login_throttle._hits.clear()
+    login_throttle._locked.clear()
+    login_throttle._strikes.clear()

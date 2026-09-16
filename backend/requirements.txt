@@ -2,6 +2,7 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
+webauthn==3.0.0  # Face ID / Touch ID sign-in (WebAuthn verification)
 
 # Trading engine
 pandas==2.2.3
