@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ApiError, SESSION_COOKIE, login } from "@/lib/server-api";
+import { ApiError, ConfigError, SESSION_COOKIE, login } from "@/lib/server-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +31,9 @@ export async function POST(request: NextRequest) {
     });
     return response;
   } catch (error) {
+    if (error instanceof ConfigError) {
+      return NextResponse.json({ detail: error.message }, { status: 503 });
+    }
     if (error instanceof ApiError) {
       return NextResponse.json({ detail: error.message }, { status: error.status });
     }

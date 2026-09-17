@@ -11,10 +11,31 @@ import { cookies } from "next/headers";
 
 export const SESSION_COOKIE = "meridian_session";
 
+/**
+ * Raised when the deployment is misconfigured, as opposed to the control plane
+ * being down. The two need different messages: one is a setting to fix here,
+ * the other is a machine to go and look at.
+ */
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigError";
+  }
+}
+
 export function apiBase(): string {
-  const base = process.env.MERIDIAN_API_URL;
+  const base = process.env.MERIDIAN_API_URL?.trim();
   if (!base) {
-    throw new Error("MERIDIAN_API_URL is not set — point it at your Oracle Cloud API origin");
+    throw new ConfigError(
+      "MERIDIAN_API_URL is not set on this deployment — add it in Vercel " +
+        "(Settings, Environment Variables) pointing at your control plane, " +
+        "then redeploy.",
+    );
+  }
+  if (!/^https?:\/\//i.test(base)) {
+    throw new ConfigError(
+      `MERIDIAN_API_URL is "${base}", which has no scheme — it must start with https://`,
+    );
   }
   return base.replace(/\/$/, "");
 }

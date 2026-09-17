@@ -14,7 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { SESSION_COOKIE, apiBase } from "@/lib/server-api";
+import { ConfigError, SESSION_COOKIE, apiBase } from "@/lib/server-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,7 +52,10 @@ export async function POST() {
       status,
       headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      return NextResponse.json({ detail: error.message }, { status: 503 });
+    }
     return NextResponse.json({ detail: "control plane unreachable" }, { status: 502 });
   }
 }
@@ -90,7 +93,10 @@ export async function PUT(request: NextRequest) {
       maxAge: expires_in,
     });
     return response;
-  } catch {
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      return NextResponse.json({ detail: error.message }, { status: 503 });
+    }
     return NextResponse.json({ detail: "control plane unreachable" }, { status: 502 });
   }
 }

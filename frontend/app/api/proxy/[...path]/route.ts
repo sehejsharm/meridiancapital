@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { ApiError, apiBase, sessionToken } from "@/lib/server-api";
+import { ApiError, ConfigError, apiBase, sessionToken } from "@/lib/server-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +62,9 @@ async function relay(request: NextRequest, segments: string[]) {
 
     return new NextResponse(payload, { status: upstream.status, headers });
   } catch (error) {
+    if (error instanceof ConfigError) {
+      return NextResponse.json({ detail: error.message }, { status: 503 });
+    }
     if (error instanceof ApiError) {
       return NextResponse.json({ detail: error.message }, { status: error.status });
     }

@@ -81,18 +81,21 @@ function LoginForm() {
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { detail?: string };
           setError(body.detail ?? "sign-in failed");
-          setSecret("");
+          // Clear the keypad so the next attempt starts clean, but keep a typed
+          // password: retyping twelve characters because of a server-side
+          // problem is a punishment for someone else's fault.
+          if (mode === "keypad") setSecret("");
           return;
         }
         goOn();
       } catch {
         setError("could not reach the control plane");
-        setSecret("");
+        if (mode === "keypad") setSecret("");
       } finally {
         setBusy(false);
       }
     },
-    [goOn],
+    [goOn, mode],
   );
 
   const signInWithFaceId = useCallback(async () => {

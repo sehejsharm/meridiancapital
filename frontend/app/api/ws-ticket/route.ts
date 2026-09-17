@@ -9,7 +9,7 @@
 
 import { NextResponse } from "next/server";
 
-import { ApiError, callApi, websocketUrl } from "@/lib/server-api";
+import { ConfigError, ApiError, callApi, websocketUrl } from "@/lib/server-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +22,9 @@ export async function POST() {
     );
     return NextResponse.json({ url: websocketUrl(ticket), expiresIn: expires_in });
   } catch (error) {
+    if (error instanceof ConfigError) {
+      return NextResponse.json({ detail: error.message }, { status: 503 });
+    }
     if (error instanceof ApiError) {
       return NextResponse.json({ detail: error.message }, { status: error.status });
     }
