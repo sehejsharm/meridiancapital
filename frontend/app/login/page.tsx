@@ -7,22 +7,45 @@ import { Logo } from "@/components/Logo";
 import { PinPad } from "@/components/PinPad";
 import { Button } from "@/components/ui";
 import {
-  createCredential,
   describeWebAuthnError,
   getAssertion,
   platformAuthenticatorAvailable,
 } from "@/lib/webauthn";
 
-const PIN_LENGTH = 4;
+type Mode = "passphrase" | "keypad";
+const MODE_KEY = "meridian.login.mode";
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const [pin, setPin] = useState("");
+  const [mode, setMode] = useState<Mode>("passphrase");
+  const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [faceIdReady, setFaceIdReady] = useState(false);
   const attempted = useRef(false);
+
+  // Remember how this operator signs in. Per-browser convenience only — wrapped
+  // because storage throws in a private window.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(MODE_KEY);
+      if (saved === "keypad" || saved === "passphrase") setMode(saved);
+    } catch {
+      /* the default is fine */
+    }
+  }, []);
+
+  const chooseMode = useCallback((next: Mode) => {
+    setMode(next);
+    setSecret("");
+    setError(null);
+    try {
+      localStorage.setItem(MODE_KEY, next);
+    } catch {
+      /* not worth surfacing */
+    }
+  }, []);
 
   const goOn = useCallback(() => {
     const next = params.get("next");
@@ -30,9 +53,6 @@ function LoginForm() {
     router.refresh();
   }, [params, router]);
 
-  // Offer Face ID only when this browser can do platform biometrics AND a
-  // device is actually enrolled — a button that always fails is worse than no
-  // button.
   useEffect(() => {
     void (async () => {
       if (!(await platformAuthenticatorAvailable())) return;
@@ -42,13 +62,14 @@ function LoginForm() {
         const body = (await res.json()) as { available?: boolean };
         setFaceIdReady(Boolean(body.available));
       } catch {
-        /* the PIN still works */
+        /* the password still works */
       }
     })();
   }, []);
 
-  const submitPin = useCallback(
+  const submit = useCallback(
     async (value: string) => {
+      if (!value) return;
       setBusy(true);
       setError(null);
       try {
@@ -60,13 +81,13 @@ function LoginForm() {
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { detail?: string };
           setError(body.detail ?? "sign-in failed");
-          setPin("");
+          setSecret("");
           return;
         }
         goOn();
       } catch {
         setError("could not reach the control plane");
-        setPin("");
+        setSecret("");
       } finally {
         setBusy(false);
       }
@@ -87,7 +108,6 @@ function LoginForm() {
         handle: string;
         options: Parameters<typeof getAssertion>[0];
       };
-
       const credential = await getAssertion(options);
 
       const verifyRes = await fetch("/api/session/passkey", {
@@ -107,19 +127,12 @@ function LoginForm() {
     }
   }, [goOn]);
 
-  // On a phone the expected gesture is Face ID, so try it once automatically
-  // rather than making the operator reach for a button they were always going
-  // to press. A cancellation falls back to the PIN and is not an error.
+  // On a phone the expected gesture is Face ID, so try it once rather than
+  // making the operator reach for a button they were always going to press.
   useEffect(() => {
     if (!faceIdReady || attempted.current) return;
     attempted.current = true;
-    void (async () => {
-      try {
-        await signInWithFaceId();
-      } catch {
-        /* handled inside */
-      }
-    })();
+    void signInWithFaceId();
   }, [faceIdReady, signInWithFaceId]);
 
   return (
@@ -130,38 +143,105 @@ function LoginForm() {
         <p className="text-2xs tracking-[0.34em] text-brand">CAPITAL</p>
       </div>
 
-      <p className="mt-7 text-center text-2xs uppercase tracking-[0.16em] text-ink-muted">
-        Operator PIN
-      </p>
-
-      <div className="mt-5">
-        <PinPad
-          value={pin}
-          onChange={(next) => {
-            setPin(next);
-            if (error) setError(null);
+      {mode === "passphrase" ? (
+        <form
+          className="mt-8"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit(secret);
           }}
-          onComplete={submitPin}
-          length={PIN_LENGTH}
-          disabled={busy}
-        />
-      </div>
+        >
+          <label
+            htmlFor="operator-password"
+            className="block text-2xs uppercase tracking-[0.14em] text-ink-muted"
+          >
+            Operator password
+          </label>
+          <input
+            id="operator-password"
+            type="password"
+            value={secret}
+            onChange={(e) => {
+              setSecret(e.target.value);
+              if (error) setError(null);
+            }}
+            autoComplete="current-password"
+            autoFocus
+            required
+            maxLength={512}
+            className="mt-2 w-full rounded-md border border-hairline bg-surface px-3 py-2.5 text-sm text-ink outline-none transition-colors focus:border-brand"
+          />
+          <p className="mt-1.5 text-2xs tabular-nums text-ink-muted">
+            {secret.length} character{secret.length === 1 ? "" : "s"}
+          </p>
 
-      {error && (
-        <p role="alert" className="mt-4 text-center text-xs text-critical">
-          {error}
-        </p>
+          {error && (
+            <p role="alert" className="mt-3 text-xs text-critical">
+              {error}
+            </p>
+          )}
+
+          <div className="mt-5">
+            <Button type="submit" variant="primary" full disabled={busy || !secret}>
+              {busy ? "Signing in…" : "Enter the desk"}
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <p className="mt-7 text-center text-2xs uppercase tracking-[0.16em] text-ink-muted">
+            Operator PIN
+          </p>
+          <div className="mt-5">
+            <PinPad
+              value={secret}
+              onChange={(next) => {
+                setSecret(next);
+                if (error) setError(null);
+              }}
+              onSubmit={() => void submit(secret)}
+              disabled={busy}
+            />
+          </div>
+
+          {error && (
+            <p role="alert" className="mt-4 text-center text-xs text-critical">
+              {error}
+            </p>
+          )}
+
+          <div className="mt-5">
+            <Button
+              variant="primary"
+              full
+              onClick={() => void submit(secret)}
+              disabled={busy || !secret}
+            >
+              {busy ? "Signing in…" : "Enter the desk"}
+            </Button>
+          </div>
+        </>
       )}
 
       {faceIdReady && (
-        <div className="mt-6">
+        <div className="mt-3">
           <Button variant="default" full onClick={signInWithFaceId} disabled={busy}>
             {busy ? "Waiting…" : "Use Face ID"}
           </Button>
         </div>
       )}
 
-      <p className="mt-7 text-center text-2xs leading-relaxed text-ink-muted">
+      <div className="mt-6 text-center">
+        <button
+          type="button"
+          onClick={() => chooseMode(mode === "passphrase" ? "keypad" : "passphrase")}
+          className="text-2xs uppercase tracking-[0.12em] text-ink-muted underline underline-offset-4 transition-colors hover:text-brand"
+        >
+          {mode === "passphrase" ? "Use the number keypad" : "Use a password instead"}
+        </button>
+      </div>
+
+      <p className="mt-6 text-center text-2xs leading-relaxed text-ink-muted">
         This dashboard controls a live trading account.
         <br />
         Sessions expire after 12 hours.
