@@ -8,6 +8,8 @@ import { LiveTape } from "@/components/LiveTape";
 import { MarkedChart } from "@/components/MarkedChart";
 import { NewsPanel } from "@/components/NewsPanel";
 import { NiftyTicker } from "@/components/NiftyTicker";
+import { RateGauges } from "@/components/RateGauges";
+import { StalenessMonitor } from "@/components/StalenessMonitor";
 import { TradingViewChart } from "@/components/TradingViewChart";
 import { Badge, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
@@ -82,6 +84,7 @@ export default function DeckPage() {
 
   return (
     <div className="space-y-5">
+      <StalenessMonitor />
       <NiftyTicker />
 
       {notice && (
@@ -174,6 +177,7 @@ export default function DeckPage() {
 
         <div className="space-y-5">
           <HealthStrip />
+          <RateGauges api={snapshot?.health?.api} />
           <LiveTape events={events.slice(0, 60)} height={300} />
           <NewsPanel limit={10} />
         </div>

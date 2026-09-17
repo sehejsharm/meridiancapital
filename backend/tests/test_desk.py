@@ -139,6 +139,10 @@ def test_news_keeps_the_last_good_payload_when_a_refresh_fails(monkeypatch):
     feed = feeds.NewsFeed(feeds=(("A", "https://a.test"),))
     assert feed.get(force=True)["items"]
 
+    # Age the cache past the TTL so the next call is a genuine refresh rather
+    # than one the force-throttle serves from cache.
+    feed._cache.fetched_at -= feed.ttl + 1
+
     monkeypatch.setattr(feeds, "_fetch", lambda url: (_ for _ in ()).throw(OSError("down")))
     after = feed.get(force=True)
     assert after["items"], "a failed refresh must not blank the panel"
@@ -234,3 +238,26 @@ def test_reports_are_scoped_to_one_algo(client, auth, seeded):
     mine = client.get("/api/reports", params={"start": "2026-09-01", "end": "2026-09-30",
                                               "algo_id": "gk50k"}, headers=auth).json()
     assert mine["summary"]["net_pnl"] == pytest.approx(1600.0), "another algo's P&L leaked in"
+
+
+def test_a_forced_refresh_cannot_hammer_the_publishers(monkeypatch):
+    """Otherwise ?force=true is an open tap pointed at someone else's server."""
+    from app import feeds
+
+    fetches = {"n": 0}
+
+    def counted(url):
+        fetches["n"] += 1
+        return b"""<?xml version="1.0"?><rss version="2.0"><channel>
+        <item><title>Headline</title><link>https://e.test/1</link>
+        <pubDate>Mon, 14 Sep 2026 10:30:00 +0530</pubDate></item></channel></rss>"""
+
+    monkeypatch.setattr(feeds, "_fetch", counted)
+    feed = feeds.NewsFeed(feeds=(("A", "https://a.test"),))
+    feed.get(force=True)
+    first = fetches["n"]
+    assert first == 1
+
+    for _ in range(20):
+        feed.get(force=True)
+    assert fetches["n"] == first, "repeated forced refreshes must be served from cache"

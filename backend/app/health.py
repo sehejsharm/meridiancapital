@@ -18,7 +18,63 @@ MEM_CRITICAL_MB = 2048
 DISK_WARN_MB = 1024
 DISK_CRITICAL_MB = 256
 
+# System memory thresholds, as a share of total RAM. The engine holds pandas
+# frames and an option chain; an OOM kill with a position open is the scenario
+# these exist for.
+SYS_MEM_WARN = 0.80
+SYS_MEM_CRITICAL = 0.92
+SWAP_WARN = 0.25
+
 _STARTED = time.time()
+
+
+def _meminfo() -> dict[str, float]:
+    """Machine-wide memory in MB, from /proc. Empty if unreadable."""
+    try:
+        values: dict[str, float] = {}
+        with open("/proc/meminfo", encoding="utf-8") as f:
+            for line in f:
+                key, _, rest = line.partition(":")
+                parts = rest.split()
+                if parts:
+                    values[key] = float(parts[0]) / 1024.0  # kB -> MB
+        total = values.get("MemTotal", 0.0)
+        available = values.get("MemAvailable", values.get("MemFree", 0.0))
+        swap_total = values.get("SwapTotal", 0.0)
+        swap_free = values.get("SwapFree", 0.0)
+        if total <= 0:
+            return {}
+        return {
+            "total_mb": total,
+            "available_mb": available,
+            "used_mb": total - available,
+            "used_fraction": (total - available) / total,
+            "swap_total_mb": swap_total,
+            "swap_used_mb": swap_total - swap_free,
+            "swap_used_fraction": (swap_total - swap_free) / swap_total if swap_total else 0.0,
+        }
+    except (OSError, ValueError):
+        return {}
+
+
+def _position_open(db) -> bool:
+    """Is any engine currently holding a position?
+
+    This changes what a memory warning means. Spare RAM with everything flat is
+    housekeeping; the same reading with capital in the market is the failure the
+    deployment plan calls out, because an OOM kill there leaves a live position
+    with nothing managing its stop.
+    """
+    try:
+        from shared.db import snapshot_key
+
+        for algo in db.algos():
+            snap = db.kv_get(snapshot_key(algo["id"]), None)
+            if snap and snap.get("position"):
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def _rss_mb() -> float | None:
@@ -95,6 +151,39 @@ def collect(db, fleet) -> dict:
         "detail": f"{db_detail}" + (f", {trade_count:,} trades" if trade_count is not None else ""),
     })
 
+    mem = _meminfo()
+    exposed = _position_open(db)
+    if mem:
+        used = mem["used_fraction"]
+        state = _grade(used, SYS_MEM_WARN, SYS_MEM_CRITICAL, higher_is_worse=True)
+        # An OOM kill with capital in the market is the scenario worth shouting
+        # about, so exposure promotes a warning to critical.
+        if exposed and state == "warning":
+            state = "critical"
+        checks.append({
+            "key": "system_memory",
+            "label": "Machine memory",
+            "value": round(used * 100, 1),
+            "unit": "% used",
+            "state": state,
+            "detail": (
+                f"{mem['used_mb']:,.0f} of {mem['total_mb']:,.0f} MB"
+                + (" — A POSITION IS OPEN" if exposed else "")
+            ),
+        })
+        if mem["swap_total_mb"] > 0:
+            checks.append({
+                "key": "swap",
+                "label": "Swap in use",
+                "value": round(mem["swap_used_fraction"] * 100, 1),
+                "unit": "%",
+                "state": _grade(mem["swap_used_fraction"], SWAP_WARN, 0.75, higher_is_worse=True),
+                "detail": (
+                    f"{mem['swap_used_mb']:,.0f} of {mem['swap_total_mb']:,.0f} MB — "
+                    f"swapping means the loop is already running slow"
+                ),
+            })
+
     overview = fleet.overview()
     checks.append({
         "key": "engines",
@@ -121,5 +210,6 @@ def collect(db, fleet) -> dict:
         "state": worst,
         "uptime_seconds": round(time.time() - _STARTED, 1),
         "load_average": _load(),
+        "position_open": exposed,
         "checks": checks,
     }

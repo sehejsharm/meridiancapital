@@ -67,7 +67,7 @@ export interface Snapshot {
     clock_drift_sec: number | null;
     broker_connected: boolean;
     broker_client_id: string | null;
-    api: { total_calls?: number; throttles?: number; waited_sec?: number } | null;
+    api: ApiStats | null;
     contracts_loaded: number;
     telemetry_dropped: number;
     last_error: string | null;
@@ -337,6 +337,8 @@ export interface Algo {
   active: AlgoVersion | null;
   promotion: Promotion;
   runtime: { running: boolean; pid: number | null; mode: string };
+  /** Set when this registration is the paper twin of another algorithm. */
+  shadow_of: string | null;
 }
 
 export interface AlgoList {
@@ -419,4 +421,62 @@ export interface ReportPayload {
   trades: TradeRow[];
   equity: EquityPoint[];
   events: EventRow[];
+}
+
+// ── engine room ──────────────────────────────────────────────────────────────
+export interface RateEndpoint {
+  endpoint: string;
+  cap_per_sec: number;
+  rate_per_sec: number;
+  utilisation: number;
+  calls: number;
+  throttled: number;
+  cooling_off: boolean;
+  account_calls_this_second: number | null;
+}
+
+export interface ApiStats {
+  calls: Record<string, number>;
+  total_calls: number;
+  waited_sec: number;
+  throttles: number;
+  window_sec: number;
+  shared_budget: boolean;
+  shared_waited_sec: number;
+  endpoints: RateEndpoint[];
+  peak_utilisation: number;
+}
+
+export interface ShadowSide {
+  trades: number;
+  gross: number;
+  charges: number;
+  net: number;
+  wins: number;
+}
+
+export interface ShadowSession {
+  session_date: string;
+  live: ShadowSide;
+  paper: ShadowSide;
+  drag: number;
+  drag_pct_of_paper: number | null;
+  both_traded: boolean;
+}
+
+export interface ShadowComparison {
+  configured: boolean;
+  live_algo_id: string;
+  shadow_algo_id: string | null;
+  sessions?: ShadowSession[];
+  paired_sessions?: number;
+  totals?: {
+    live_net: number;
+    paper_net: number;
+    drag: number;
+    drag_pct_of_paper: number | null;
+    charges_paid: number;
+    slippage_est: number;
+    avg_drag_per_session: number | null;
+  };
 }

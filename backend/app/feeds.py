@@ -139,8 +139,15 @@ class NewsFeed:
 
         self._cache = _Cache(items=deduped[:MAX_ITEMS], fetched_at=time.time(), errors=errors)
 
+    # A forced refresh still cannot be used to hammer the publishers: below this
+    # interval a "force" is served from cache like any other request.
+    MIN_FORCE_INTERVAL = 30.0
+
     def get(self, force: bool = False) -> dict:
         with self._lock:
+            since = time.time() - self._cache.fetched_at
+            if force and since < self.MIN_FORCE_INTERVAL and self._cache.items:
+                force = False
             stale = time.time() - self._cache.fetched_at > self.ttl
             if force or stale or not self._cache.items:
                 # A failed refresh keeps whatever was cached; an empty panel is

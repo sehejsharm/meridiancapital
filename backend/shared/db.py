@@ -119,7 +119,8 @@ CREATE TABLE IF NOT EXISTS algos (
     active_version  INTEGER,
     enabled         INTEGER NOT NULL DEFAULT 0,
     created_ts      TEXT NOT NULL,
-    notes           TEXT
+    notes           TEXT,
+    shadow_of       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS algo_versions (
@@ -182,6 +183,7 @@ _ADDED_COLUMNS = (
     ("equity_samples", "algo_id", "TEXT NOT NULL DEFAULT 'gk50k'"),
     ("commands", "algo_id", "TEXT NOT NULL DEFAULT 'gk50k'"),
     ("engine_runs", "algo_id", "TEXT NOT NULL DEFAULT 'gk50k'"),
+    ("algos", "shadow_of", "TEXT"),
 )
 
 
@@ -579,7 +581,7 @@ class Database:
             )
 
     def set_algo_fields(self, algo_id: str, **fields: Any) -> None:
-        allowed = {"name", "mode", "active_version", "enabled", "notes"}
+        allowed = {"name", "mode", "active_version", "enabled", "notes", "shadow_of"}
         cols = {k: v for k, v in fields.items() if k in allowed}
         if not cols:
             return

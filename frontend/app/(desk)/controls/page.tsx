@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { EmergencyStop } from "@/components/EmergencyStop";
 import { PasskeyManager } from "@/components/PasskeyManager";
 import { Badge, Button, Card, Empty, Field } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
@@ -52,6 +53,8 @@ export default function ControlsPage() {
           {notice.text}
         </div>
       )}
+
+      <EmergencyStop onDone={refresh} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <PasskeyManager />

@@ -8,6 +8,7 @@ the audit log with the caller's IP before it takes effect.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -20,6 +21,10 @@ router = APIRouter(prefix="/api/control", tags=["control"], dependencies=[Depend
 
 GO_LIVE_PHRASE = "GO LIVE"
 FLATTEN_PHRASE = "FLATTEN"
+NUKE_PHRASE = "NUKE ALL"
+
+# How long the engines get to claim and act on their exit before being killed.
+NUKE_DRAIN_SEC = 3.0
 
 
 def _audit(request: Request, principal: Principal, action: str, detail: str = "") -> None:
@@ -216,3 +221,98 @@ async def remove_holiday(
     c.db.remove_holiday(day)
     _audit(request, principal, "holiday.remove", day)
     return {"ok": True, "holidays": c.db.holidays()}
+
+
+# ── emergency stop ───────────────────────────────────────────────────────────
+@router.post("/nuke")
+async def nuke(
+    body: ConfirmRequest, request: Request, principal: Principal = Depends(require_auth)
+) -> dict:
+    """Stop everything, everywhere, now.
+
+    Ordering is the whole design. Flatten commands are queued to every running
+    engine *before* anything is stopped, because a stopped engine cannot square
+    off its own position — killing first would strand live positions with
+    nothing managing them. Only once the exits are queued does the fleet come
+    down, and the halt flag is set so the scheduler cannot bring any of it back
+    up on the next tick.
+
+    What this cannot do: guarantee the exits filled. It queues market orders and
+    stops the processes that would otherwise keep trading. Anything that does
+    not fill has to be squared off in the Angel One app, and the response says
+    which engines were holding a position when the button was pressed.
+    """
+    c = ctx()
+    if body.confirm != NUKE_PHRASE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"the emergency stop requires confirm == '{NUKE_PHRASE}'",
+        )
+
+    _audit(request, principal, "risk.nuke", "emergency stop")
+    c.db.add_event("critical", f"EMERGENCY STOP pressed by {principal.subject}", source="api")
+
+    from shared.db import snapshot_key
+
+    flattened: list[dict] = []
+    stopped: list[dict] = []
+
+    running = [
+        (algo_id, sup)
+        for algo_id, sup in c.fleet.all().items()
+        if (sup.refresh() or True) and sup.state.running
+    ]
+
+    # 1. Queue an exit everywhere something is open, while the engines still live.
+    for algo_id, _sup in running:
+        snap = c.db.kv_get(snapshot_key(algo_id), None) or {}
+        had_position = bool(snap.get("position"))
+        try:
+            command_id = c.db.enqueue_command(
+                "flatten", issued_by=f"nuke:{principal.subject}", algo_id=algo_id
+            )
+        except Exception as exc:
+            command_id = None
+            c.db.add_event(
+                "critical",
+                f"could not queue the emergency exit for {algo_id}: {exc}",
+                source="api", algo_id=algo_id,
+            )
+        flattened.append(
+            {"algo_id": algo_id, "had_position": had_position, "command_id": command_id}
+        )
+
+    # 2. Give the engines a moment to claim and act on those commands.
+    await asyncio.sleep(NUKE_DRAIN_SEC)
+
+    # 3. Bring the fleet down and keep it down.
+    c.sched.set_enabled(False)
+    for algo_id, _sup in running:
+        result = c.fleet.stop(algo_id, reason=f"emergency stop by {principal.subject}", force=True)
+        stopped.append({"algo_id": algo_id, **result})
+        c.db.set_algo_fields(algo_id, enabled=0)
+
+    held = [f["algo_id"] for f in flattened if f["had_position"]]
+    c.db.add_event(
+        "critical",
+        f"emergency stop complete — {len(stopped)} engine(s) down, "
+        f"{len(held)} had an open position, automation disarmed",
+        source="api",
+    )
+
+    return {
+        "ok": True,
+        "engines_stopped": stopped,
+        "exits_queued": flattened,
+        "had_open_positions": held,
+        "automation_disarmed": True,
+        "detail": (
+            f"{len(stopped)} engine(s) stopped and automation disarmed. "
+            + (
+                f"{len(held)} had an open position — verify in the Angel One app that "
+                f"every exit filled."
+                if held
+                else "No engine was holding a position."
+            )
+        ),
+    }

@@ -11,6 +11,7 @@ import json
 import math
 import os
 import time
+from collections import deque
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -19,6 +20,7 @@ import pandas as pd
 
 from engine.clock import now_ist
 from engine.config import (
+    DB_PATH,
     FUNDS_CACHE_SEC,
     INDEX_EXCH,
     INDEX_TOKEN,
@@ -66,11 +68,26 @@ class Credentials:
 
 
 class RateLimiter:
-    def __init__(self, limits: dict | None = None):
+    """Per-endpoint pacing against Angel's published caps.
+
+    Cumulative counters answer "how much have we used today"; a gauge needs
+    "how hard are we pushing right now", so recent call times are kept in a
+    short rolling window and reported as a live rate against the cap.
+    """
+
+    WINDOW_SEC = 10.0
+
+    def __init__(self, limits: dict | None = None, shared=None):
         self.limits = dict(limits or RATE_LIMITS)
+        # The account-wide budget. Angel's caps are per API key, so with several
+        # engines running, pacing only this process would still present the sum
+        # of them to Angel.
+        self.shared = shared
         self.last = {k: 0.0 for k in self.limits}
         self.count = {k: 0 for k in self.limits}
         self.throttled_until = {k: 0.0 for k in self.limits}
+        self.recent: dict[str, deque] = {k: deque() for k in self.limits}
+        self.throttle_count = {k: 0 for k in self.limits}
         self.waits = 0.0
         self.blocked = 0
 
@@ -92,18 +109,68 @@ class RateLimiter:
             self.waits += wait
             self.blocked += 1
             time.sleep(wait)
-        self.last[key] = time.time()
+
+        # Then clear it with the account, which every other engine also draws on.
+        if self.shared is not None:
+            shared_wait = self.shared.acquire(key, cap)
+            if shared_wait:
+                self.waits += shared_wait
+                self.blocked += 1
+                self.shared_waits = getattr(self, "shared_waits", 0.0) + shared_wait
+        stamped = time.time()
+        self.last[key] = stamped
         self.count[key] += 1
+        self.recent[key].append(stamped)
+        self._trim(key, stamped)
 
     def penalise(self, key: str, seconds: float = 2.0) -> None:
         self.throttled_until[key] = time.time() + seconds
+        self.throttle_count[key] = self.throttle_count.get(key, 0) + 1
+
+    def _trim(self, key: str, now: float) -> None:
+        window = self.recent[key]
+        cutoff = now - self.WINDOW_SEC
+        while window and window[0] < cutoff:
+            window.popleft()
+
+    def rate(self, key: str, now: float | None = None) -> float:
+        """Calls per second over the rolling window."""
+        now = time.time() if now is None else now
+        self._trim(key, now)
+        return len(self.recent[key]) / self.WINDOW_SEC
 
     def stats(self) -> dict:
+        now = time.time()
+        endpoints = []
+        for key, cap in sorted(self.limits.items()):
+            used = self.rate(key, now)
+            endpoints.append(
+                {
+                    "endpoint": key,
+                    "cap_per_sec": cap,
+                    "rate_per_sec": round(used, 2),
+                    "utilisation": round(min(used / cap, 1.0), 3) if cap else 0.0,
+                    "calls": self.count.get(key, 0),
+                    "throttled": self.throttle_count.get(key, 0),
+                    "cooling_off": now < self.throttled_until.get(key, 0.0),
+                    "account_calls_this_second": (
+                        self.shared.usage(key) if self.shared is not None else None
+                    ),
+                }
+            )
         return {
             "calls": dict(self.count),
             "total_calls": sum(self.count.values()),
             "waited_sec": round(self.waits, 1),
             "throttles": self.blocked,
+            "window_sec": self.WINDOW_SEC,
+            "shared_budget": self.shared is not None,
+            "shared_waited_sec": round(getattr(self, "shared_waits", 0.0), 1),
+            "endpoints": endpoints,
+            # The endpoint closest to its cap is what actually limits the loop.
+            "peak_utilisation": round(
+                max((e["utilisation"] for e in endpoints), default=0.0), 3
+            ),
         }
 
 
@@ -149,7 +216,15 @@ class Broker:
         self.client_id = creds.client_id
         self.connected_at = time.time()
         self._bars: dict = {"until": 0.0, "df": None}
-        self.rl = RateLimiter()
+        # Every engine on this machine shares one account budget, held in the
+        # same database they already use as a bus.
+        try:
+            from shared.ratelimit import SharedRateLimiter
+
+            shared = SharedRateLimiter(DB_PATH)
+        except Exception:  # a limiter that cannot start must not stop trading
+            shared = None
+        self.rl = RateLimiter(shared=shared)
         self._funds: dict = {"until": 0.0, "v": None}
         self._pos: dict = {"until": 0.0, "v": None}
         self.last_error: str | None = None

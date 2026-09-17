@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { Wordmark } from "@/components/Logo";
+import { StalenessDot } from "@/components/StalenessMonitor";
 import { Badge } from "@/components/ui";
 import { signOut } from "@/lib/client-api";
 import { useLiveFeed } from "@/lib/LiveContext";
@@ -77,6 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {phase}
               </Badge>
             </span>
+            <StalenessDot />
             <ConnectionChip state={connection} ts={snapshot?.ts} />
             <button
               type="button"

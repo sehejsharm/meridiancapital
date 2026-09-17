@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 
 import { GateReport } from "@/components/GateReport";
+import { ShadowPanel } from "@/components/ShadowPanel";
 import { Badge, Button, Card, Empty, Field } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { istDateTime } from "@/lib/format";
@@ -207,6 +208,8 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
           )}
         </Card>
       </div>
+
+      {!algo.shadow_of && <ShadowPanel algoId={id} />}
 
       <Card title="Versions" subtitle="Every upload, with the verdict it received">
         {!algo.versions.length ? (

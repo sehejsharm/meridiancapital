@@ -133,3 +133,15 @@ body {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
+
+/* A stale feed has to be noticeable without being watched. Slow enough to read
+   through, and disabled entirely for anyone who asked for less motion. */
+@keyframes stale-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+.stale-pulse { animation: stale-pulse 1.1s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .stale-pulse { animation: none; }
+}

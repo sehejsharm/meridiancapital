@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.algo_store import MAX_SOURCE_BYTES, run_gate, sha256, slugify
 from app.deps import ctx
+from app import shadow
 from app.security import Principal, client_ip, require_auth
 from engine import promotion
 from engine.gate import check_catalogue
@@ -36,6 +37,10 @@ class ActivateRequest(BaseModel):
     version_id: int
 
 
+class ShadowRequest(BaseModel):
+    enabled: bool = True
+
+
 def _audit(request: Request, principal: Principal, action: str, detail: str = "") -> None:
     ctx().db.audit(principal.subject, action, detail, client_ip(request))
 
@@ -51,6 +56,7 @@ def _algo_view(db, algo: dict) -> dict:
         "active": {k: v for k, v in (active or {}).items() if k != "source"} or None,
         "promotion": promotion.progress(active),
         "runtime": sup,
+        "shadow_of": algo.get("shadow_of"),
     }
 
 
@@ -202,6 +208,14 @@ async def set_mode(
         raise HTTPException(status_code=409, detail="stop this algorithm before changing its mode")
 
     if body.mode == "live":
+        if algo.get("shadow_of"):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "a shadow is a paper twin by definition — it exists to be compared "
+                    "against the live run, not to place orders of its own"
+                ),
+            )
         version = db.version(algo["active_version"]) if algo.get("active_version") else None
         if not version:
             raise HTTPException(status_code=409, detail="no active version to run")
@@ -278,3 +292,77 @@ async def delete_algo(
     db.delete_algo(algo_id)
     _audit(request, principal, "algo.delete", algo_id)
     return {"ok": True, "deleted": algo_id}
+
+
+# ── shadow mode ──────────────────────────────────────────────────────────────
+SHADOW_SUFFIX = "-shadow"
+
+
+@router.post("/{algo_id}/shadow")
+async def set_shadow(
+    algo_id: str, body: ShadowRequest, request: Request,
+    principal: Principal = Depends(require_auth),
+) -> dict:
+    """Create or remove a paper twin of this algorithm.
+
+    The shadow is a separate registration pinned to the same source, forced to
+    paper and never promotable. It exists to be compared against, so it must
+    never be switchable to live: a second engine quietly sending real orders is
+    the opposite of what this is for.
+    """
+    db = ctx().db
+    algo = db.algo(algo_id)
+    if not algo:
+        raise HTTPException(status_code=404, detail="no such algorithm")
+    if algo.get("shadow_of"):
+        raise HTTPException(status_code=400, detail="a shadow cannot have a shadow of its own")
+
+    shadow_id = f"{algo_id}{SHADOW_SUFFIX}"
+
+    if not body.enabled:
+        if ctx().fleet.is_running(shadow_id):
+            raise HTTPException(status_code=409, detail="stop the shadow before removing it")
+        db.delete_algo(shadow_id)
+        _audit(request, principal, "algo.shadow.remove", shadow_id)
+        return {"ok": True, "shadow_algo_id": None}
+
+    version = db.version(algo.get("active_version")) if algo.get("active_version") else None
+    if not version and algo.get("kind") != "builtin":
+        raise HTTPException(status_code=409, detail="no active version to shadow")
+
+    db.upsert_algo(
+        shadow_id,
+        f"{algo['name']} (shadow)",
+        kind=algo.get("kind") or "uploaded",
+        notes=f"paper twin of {algo_id}, for measuring execution drag",
+    )
+    db.set_algo_fields(shadow_id, shadow_of=algo_id, mode="paper", enabled=0)
+
+    if version:
+        # Same bytes as the live one, recorded as already gated: this source
+        # passed the gate when it was uploaded and has not changed since.
+        shadow_version_id = db.add_version(
+            shadow_id, version["source"], version["sha256"], principal.subject
+        )
+        db.set_version_status(shadow_version_id, promotion.STATUS_PASSED, {"inherited_from": version["id"]})
+        db.set_algo_fields(shadow_id, active_version=shadow_version_id)
+
+    _audit(request, principal, "algo.shadow.create", shadow_id)
+    db.add_event(
+        "info",
+        f"shadow created for '{algo['name']}' — paper twin measuring execution drag",
+        source="api", algo_id=shadow_id,
+    )
+    return {"ok": True, "shadow_algo_id": shadow_id, **_algo_view(db, db.algo(shadow_id))}
+
+
+@router.get("/{algo_id}/shadow")
+async def shadow_comparison(algo_id: str) -> dict:
+    db = ctx().db
+    algo = db.algo(algo_id)
+    if not algo:
+        raise HTTPException(status_code=404, detail="no such algorithm")
+    shadow_id = f"{algo_id}{SHADOW_SUFFIX}"
+    if not db.algo(shadow_id):
+        return {"configured": False, "live_algo_id": algo_id, "shadow_algo_id": None}
+    return {"configured": True, **shadow.compare(db, algo_id, shadow_id)}
