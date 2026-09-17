@@ -14,6 +14,10 @@
 set -euo pipefail
 
 DOMAIN="${1:-}"
+# The dashboard's own origin. Caddy 403s any browser request whose Origin is not
+# on the allow-list, and the WebSocket live feed does send one — so a wrong value
+# here shows up as a dashboard that logs in fine and then never updates.
+DASHBOARD_ORIGIN="${2:-}"
 APP_USER="meridian"
 APP_DIR="/opt/meridian"
 DATA_DIR="/var/lib/meridian"
@@ -92,10 +96,18 @@ if [[ -n "$DOMAIN" ]]; then
     sed "s/api\.meridiancapital\.example/${DOMAIN}/g" \
         "$APP_DIR/backend/deploy/Caddyfile" > /etc/caddy/Caddyfile
     echo "    Caddyfile written for ${DOMAIN}"
-    warn "Edit /etc/caddy/Caddyfile to set your Vercel origin in the Origin allow-list."
+
+    if [[ -n "$DASHBOARD_ORIGIN" ]]; then
+        sed -i "s#https://meridian\.vercel\.app#${DASHBOARD_ORIGIN}#g" /etc/caddy/Caddyfile
+        echo "    Origin allow-list set to ${DASHBOARD_ORIGIN}"
+    else
+        warn "No dashboard origin given — the Origin allow-list still names the"
+        warn "placeholder https://meridian.vercel.app, which will 403 your live feed."
+        warn "Re-run as: sudo bash deploy/install.sh ${DOMAIN} https://your-app.vercel.app"
+    fi
 else
     warn "No domain argument given — /etc/caddy/Caddyfile left as-is."
-    warn "Re-run as: sudo bash deploy/install.sh api.your-host.example"
+    warn "Re-run as: sudo bash deploy/install.sh api.your-host.example https://your-app.vercel.app"
 fi
 
 log "Firewall"
