@@ -91,8 +91,13 @@ stores only a public key and a counter. Remove a lost device from the same card.
 ssh ubuntu@<vm-ip>
 git clone https://github.com/sehejsharm/meridiancapital.git
 cd meridiancapital
-sudo bash backend/deploy/install.sh api.your-host.example
+sudo bash backend/deploy/install.sh api.your-host.example https://your-app.vercel.app
 ```
+
+The second argument is your dashboard's own origin. Caddy 403s any browser
+request whose `Origin` is not on its allow-list, and the WebSocket live feed does
+send one — omit it and the dashboard signs in fine and then never updates, which
+is a confusing way to find a one-line mismatch.
 
 The script is idempotent — re-run it after every code update. It never touches
 `/etc/meridian/meridian.env` once that file exists, so credentials survive.
@@ -177,7 +182,7 @@ URL you were assigned, and `systemctl restart meridian-api`.
 
 ```bash
 cd ~/meridiancapital && git pull
-sudo bash backend/deploy/install.sh api.your-host.example
+sudo bash backend/deploy/install.sh api.your-host.example https://your-app.vercel.app
 ```
 
 The frontend redeploys itself on push.
