@@ -77,6 +77,17 @@ export default function ControlsPage() {
             )}
           </dl>
 
+          {status?.engine.last_output?.length ? (
+            <div className="mt-4">
+              <p className="text-2xs uppercase tracking-wide text-ink-muted">
+                What the engine said before it died
+              </p>
+              <pre className="mt-1.5 max-h-40 overflow-auto rounded-lg bg-surface-raised p-2.5 text-2xs leading-relaxed text-warning">
+                {status.engine.last_output.join("\n")}
+              </pre>
+            </div>
+          ) : null}
+
           <div className="mt-4 flex flex-wrap gap-2">
             <Button
               variant="primary"

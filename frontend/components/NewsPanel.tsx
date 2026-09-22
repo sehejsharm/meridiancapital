@@ -31,7 +31,7 @@ export function NewsPanel({ limit = 12 }: { limit?: number }) {
       }
     >
       {error && !items.length ? (
-        <Empty>News is unreachable right now.</Empty>
+        <Empty>News is unreachable right now — {error}</Empty>
       ) : !items.length ? (
         <Empty>No headlines yet.</Empty>
       ) : (

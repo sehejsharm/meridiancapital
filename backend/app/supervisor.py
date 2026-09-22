@@ -31,8 +31,15 @@ def pidfile_for(algo_id: str) -> Path:
     return DATA_DIR / f"engine-{algo_id}.pid"
 
 
+def outfile_for(algo_id: str) -> Path:
+    """Where this algorithm's engine writes stdout and stderr."""
+    return DATA_DIR / f"engine-{algo_id}.out"
+
+
 PIDFILE = pidfile_for(DEFAULT_ALGO)
 STOP_GRACE_SEC = 25.0
+OUTPUT_TAIL_LINES = 20
+OUTPUT_TAIL_BYTES = 8192
 
 
 def _alive(pid: int) -> bool:
@@ -43,6 +50,25 @@ def _alive(pid: int) -> bool:
     except PermissionError:
         return True
     return True
+
+
+def _tail(path: Path, max_bytes: int = OUTPUT_TAIL_BYTES, max_lines: int = OUTPUT_TAIL_LINES) -> list[str]:
+    """The last few lines the engine wrote, for a crash that never reached the
+    event log. Reads from the end so a long-running engine's output costs the
+    same as a short one's."""
+    try:
+        with path.open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - max_bytes))
+            raw = fh.read()
+    except OSError:
+        return []
+    text = raw.decode("utf-8", "replace")
+    if size > max_bytes:
+        # The read started mid-line; that fragment is not a line.
+        _, _, text = text.partition("\n")
+    return [line for line in text.splitlines() if line.strip()][-max_lines:]
 
 
 def _is_engine(pid: int) -> bool:
@@ -81,6 +107,7 @@ class Supervisor:
     ):
         self.algo_id = algo_id
         self.pidfile = pidfile_for(algo_id)
+        self.outfile = outfile_for(algo_id)
         # How this algorithm's paper/live mode is decided. The built-in reads
         # the operator setting in kv; uploaded algorithms carry their own.
         self._mode_provider = mode_provider
@@ -154,9 +181,15 @@ class Supervisor:
         self.state.run_id = None
         self.proc = None
         self.pidfile.unlink(missing_ok=True)
-        level = "info" if code in (0, None) else "error"
+        crashed = code not in (0, None)
+        self.state.stdout_tail = _tail(self.outfile) if crashed else []
+        # The last line of a traceback is the exception itself, which is the one
+        # line an operator needs to see without opening a shell on the box.
+        cause = f" — last output: {self.state.stdout_tail[-1][:300]}" if self.state.stdout_tail else ""
+        level = "error" if crashed else "info"
         self.db.add_event(
-            level, f"engine stopped (pid {pid}, exit {code}): {reason}", source="supervisor", algo_id=self.algo_id
+            level, f"engine stopped (pid {pid}, exit {code}): {reason}{cause}",
+            source="supervisor", algo_id=self.algo_id,
         )
 
     # ── start / stop ─────────────────────────────────────────────────────────
@@ -177,19 +210,37 @@ class Supervisor:
         if self.strategy_path is not None:
             cmd += ["--strategy", str(self.strategy_path)]
         env["MERIDIAN_ALGO_ID"] = self.algo_id
+        # An engine that dies before telemetry is up — a bad credential, a
+        # failed import — writes its only explanation to stderr. Discarding it
+        # leaves a crash loop with no cause anywhere, so it goes to a file that
+        # is truncated per start and read back when the process exits.
+        try:
+            out = self.outfile.open("wb")
+        except OSError as e:
+            self.db.add_event(
+                "warn", f"cannot write {self.outfile} ({e}) — engine output will be discarded",
+                source="supervisor", algo_id=self.algo_id,
+            )
+            out = None
+
         try:
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(settings.backend_dir),
                 env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=out or subprocess.DEVNULL,
+                stderr=subprocess.STDOUT if out else subprocess.DEVNULL,
                 start_new_session=True,
             )
         except OSError as e:
             self.state.last_start_error = str(e)
             self.db.add_event("error", f"engine start failed: {e}", source="supervisor", algo_id=self.algo_id)
             return {"ok": False, "detail": f"spawn failed: {e}"}
+        finally:
+            # The child holds its own duplicate of the descriptor; this one has
+            # to go or every restart leaks a file handle.
+            if out is not None:
+                out.close()
 
         self.proc = proc
         self.state.running = True
@@ -272,4 +323,5 @@ class Supervisor:
             "restart_backoff_remaining": max(0, round(s.blocked_until - time.time())),
             "manual_override": s.manual_override,
             "last_start_error": s.last_start_error,
+            "last_output": list(s.stdout_tail),
         }

@@ -134,6 +134,8 @@ export interface SystemStatus {
     restart_backoff_remaining?: number;
     manual_override?: boolean;
     last_start_error?: string;
+    /** The engine's own last lines, kept only when it exited badly. */
+    last_output?: string[];
   };
   schedule: {
     enabled: boolean;

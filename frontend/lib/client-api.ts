@@ -27,12 +27,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * Builds the relay URL for a control-plane path.
+ *
+ * The relay re-adds the control plane's own /api prefix, so a caller writing
+ * the endpoint out in full — "/api/news" rather than "/news" — would reach
+ * /api/api/news and get a 404 that reads on the deck as an outage. Both
+ * spellings resolve to the same endpoint so that mistake cannot ship silently.
+ */
+function relayUrl(path: string): string {
+  return `/api/proxy${path.replace(/^\/api(?=\/)/, "")}`;
+}
+
 export function apiGet<T>(path: string): Promise<T> {
-  return request<T>(`/api/proxy${path}`);
+  return request<T>(relayUrl(path));
 }
 
 export function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>(`/api/proxy${path}`, {
+  return request<T>(relayUrl(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body ?? {}),
@@ -40,7 +52,7 @@ export function apiPost<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export function apiDelete<T>(path: string): Promise<T> {
-  return request<T>(`/api/proxy${path}`, { method: "DELETE" });
+  return request<T>(relayUrl(path), { method: "DELETE" });
 }
 
 export async function signOut(): Promise<void> {

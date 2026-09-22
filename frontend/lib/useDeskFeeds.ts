@@ -48,13 +48,13 @@ function usePoll<T>(path: string, intervalMs: number, enabled = true) {
 
 /** The index ticker moves every second, so it polls every second. */
 export function useTicker() {
-  return usePoll<TickerPayload>("/api/ticker", 1000);
+  return usePoll<TickerPayload>("/ticker", 1000);
 }
 
 export function useHealth() {
-  return usePoll<HealthDetail>("/api/health/detail", 15_000);
+  return usePoll<HealthDetail>("/health/detail", 15_000);
 }
 
 export function useNews() {
-  return usePoll<NewsPayload>("/api/news", 120_000);
+  return usePoll<NewsPayload>("/news", 120_000);
 }
