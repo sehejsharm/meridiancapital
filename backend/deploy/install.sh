@@ -78,8 +78,11 @@ chmod 640 "$ENV_FILE"
 
 log "systemd unit"
 install -m 644 "$APP_DIR/backend/deploy/meridian-api.service" /etc/systemd/system/
+install -m 644 "$APP_DIR/backend/deploy/meridian-backup.service" /etc/systemd/system/
+install -m 644 "$APP_DIR/backend/deploy/meridian-backup.timer" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable meridian-api
+systemctl enable --now meridian-backup.timer
 
 log "Caddy (TLS termination)"
 if ! command -v caddy >/dev/null 2>&1; then

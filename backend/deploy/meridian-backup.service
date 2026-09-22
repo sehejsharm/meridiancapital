@@ -1,0 +1,8 @@
+[Unit]
+Description=Meridian Capital — nightly database backup
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/bin/bash /opt/meridian/backend/deploy/backup.sh

@@ -334,3 +334,45 @@ def test_paper_is_the_default_mode():
 def test_no_time_stop_was_introduced():
     src = (BACKEND / "engine" / "runner.py").read_text(encoding="utf-8")
     assert "max_" + "hold" not in src
+
+
+# ── lot size comes from the exchange, not a constant ─────────────────────────
+def test_pick_contract_returns_the_exchange_lot_size():
+    """NSE revises the NIFTY lot. Sizing on a stale constant places an order
+    that is either rejected (AB4014) or a different size than intended."""
+    from engine.strategy import pick_contract
+
+    table = {
+        (date(2026, 10, 1), 24950, "CE"): ("NIFTY01OCT2624950CE", "111", 65),
+    }
+    got = pick_contract(table, 25000.0, "CE", date(2026, 9, 25))
+    assert got is not None
+    symbol, token, expiry, strike, lot = got
+    assert lot == 65, "the scrip master's lot must win over the build constant"
+    assert symbol == "NIFTY01OCT2624950CE" and token == "111"
+
+
+def test_pick_contract_falls_back_when_a_table_has_no_lot():
+    from engine import config as C
+    from engine.strategy import pick_contract
+
+    legacy = {(date(2026, 10, 1), 24950, "CE"): ("SYM", "111")}
+    assert pick_contract(legacy, 25000.0, "CE", date(2026, 9, 25))[4] == C.LOT_SIZE
+
+
+def test_position_qty_prefers_what_was_actually_bought():
+    from engine.runner import position_qty
+
+    assert position_qty({"lots": 2, "lot_sz": 65, "qty": 130}) == 130
+    # No recorded qty: use the position's own lot, never today's constant.
+    assert position_qty({"lots": 2, "lot_sz": 65}) == 130
+
+
+def test_position_qty_survives_a_lot_revision_mid_position():
+    """A position opened at 65 must still be sold as 65 after the constant moves."""
+    from engine import config as C
+    from engine.runner import position_qty
+
+    opened_at_65 = {"lots": 1, "lot_sz": 65}
+    assert position_qty(opened_at_65) == 65
+    assert position_qty(opened_at_65) != 1 * C.LOT_SIZE or C.LOT_SIZE == 65

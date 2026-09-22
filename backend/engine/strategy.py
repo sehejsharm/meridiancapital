@@ -120,14 +120,21 @@ def round_trip_charges(entry: float, exit_: float, qty: int) -> float:
 
 
 def pick_contract(table: dict, spot: float, right: str, today: date):
-    """Nearest qualifying contract: target strike first, then +/- one step."""
+    """Nearest qualifying contract: (symbol, token, expiry, strike, lot_size).
+
+    The lot size comes from Angel's scrip master, not from a constant. NSE
+    revises it, and sizing on a stale number places an order that is either
+    rejected outright (AB4014, quantity not a multiple of the lot) or a
+    different size than intended.
+    """
     k0 = target_strike(spot, right)
     exps = sorted({e for (e, _, _) in table if C.MIN_DTE <= (e - today).days <= C.MAX_DTE})
     for exp in exps:
         for k in (k0, k0 + C.STRIKE_STEP, k0 - C.STRIKE_STEP):
             hit = table.get((exp, k, right))
             if hit:
-                return hit[0], hit[1], exp, k
+                lot = hit[2] if len(hit) > 2 and hit[2] else C.LOT_SIZE
+                return hit[0], hit[1], exp, k, lot
     return None
 
 

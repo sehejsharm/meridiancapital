@@ -39,6 +39,18 @@ class Shutdown(Exception):
     """Raised inside the loop when a stop has been requested."""
 
 
+def position_qty(p: dict) -> int:
+    """Contracts held, preferring what was actually bought.
+
+    Falls back to lots x the position's own lot size, and only then to the
+    build's constant — recomputing from the constant would sell a different
+    quantity than was bought if NSE revised the lot.
+    """
+    if p.get("qty"):
+        return int(p["qty"])
+    return int(p["lots"]) * int(p.get("lot_sz") or C.LOT_SIZE)
+
+
 class Engine:
     def __init__(self, mode: str = "paper", algo_id: str = "gk50k", strategy_path: str | None = None):
         self.mode = "live" if mode == "live" else "paper"
@@ -423,7 +435,7 @@ class Engine:
             fv = ((live_prem - p["entry"]) / p["entry"]) if live_prem else None
             peak = max(p.get("peak", fv if fv is not None else 0.0), fv if fv is not None else -9.0)
             es = self.strat.effective_stop(peak)
-            qty = p["lots"] * C.LOT_SIZE
+            qty = position_qty(p)
             idx_move = ((spot - p["spot"]) * (1 if p["view"] == "C" else -1)) if spot else None
             position = {
                 "tsym": p["tsym"], "side": p["right"], "strike": p["strike"], "expiry": p["expiry"],
@@ -510,7 +522,7 @@ class Engine:
         assert self.br is not None and self.pos is not None
         p = self.pos
         t = now_ist()
-        qty = p["lots"] * C.LOT_SIZE
+        qty = position_qty(p)
         ok, fill_px, detail = self.br.place(p["tsym"], p["token"], "SELL", qty)
         if not ok:
             for attempt in range(C.ORDER_RETRIES + 2):
@@ -614,7 +626,13 @@ class Engine:
         if got is None:
             self.tm.log(f"signal {view} but no ITM contract at DTE {C.MIN_DTE}-{C.MAX_DTE}", "warn")
             return
-        tsym, token, expiry, strike = got
+        tsym, token, expiry, strike, lot_sz = got
+        if lot_sz != C.LOT_SIZE:
+            self.tm.log(
+                f"lot size for {tsym} is {lot_sz} from Angel's scrip master, the build "
+                f"assumes {C.LOT_SIZE} — sizing on {lot_sz}",
+                "warn",
+            )
         prem = self.br.ltp("NFO", tsym, token)
         if prem is None or prem > C.MAX_PREMIUM:
             self.tm.log(f"signal {view} but {strike} unpriced or premium {prem} above cap", "warn")
@@ -626,7 +644,7 @@ class Engine:
             )
             return
 
-        qty = lots * C.LOT_SIZE
+        qty = lots * lot_sz
         ok, fill_px, detail = self.br.place(tsym, token, "BUY", qty)
         if not ok:
             for attempt in range(C.ORDER_RETRIES):
@@ -652,6 +670,9 @@ class Engine:
             "ts": t.isoformat(), "view": view, "right": "CE" if view == "C" else "PE",
             "strike": strike, "expiry": expiry.isoformat(), "tsym": tsym, "token": token,
             "entry": entry_px, "spot": spot, "lots": lots, "peak": 0.0,
+            # The lot this position was opened with, so an exit sells exactly
+            # what was bought even if the scrip master changes mid-session.
+            "lot_sz": lot_sz, "qty": qty,
         }
         self.st.trades_today += 1
         self.st.position = self.pos

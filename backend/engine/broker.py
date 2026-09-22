@@ -381,7 +381,13 @@ class Broker:
                 exp = datetime.strptime(str(r.get("expiry", "")).upper(), "%d%b%Y").date()
             except Exception:
                 continue
-            tbl[(exp, strike, right)] = (sym, str(r.get("token")))
+            try:
+                lot = int(float(r.get("lotsize") or 0))
+            except (TypeError, ValueError):
+                lot = 0
+            if lot <= 0:
+                continue  # unusable contract; a guessed lot size places a wrong-sized order
+            tbl[(exp, strike, right)] = (sym, str(r.get("token")), lot)
         return tbl
 
     # ── orders ───────────────────────────────────────────────────────────────

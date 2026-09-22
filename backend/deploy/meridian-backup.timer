@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly Meridian backup, after the market has closed
+
+[Timer]
+# 22:30 IST, well clear of the session and any end-of-day reconciliation.
+OnCalendar=*-*-* 17:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target
