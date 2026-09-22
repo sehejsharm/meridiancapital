@@ -261,3 +261,87 @@ def test_a_forced_refresh_cannot_hammer_the_publishers(monkeypatch):
     for _ in range(20):
         feed.get(force=True)
     assert fetches["n"] == first, "repeated forced refreshes must be served from cache"
+
+
+# ── daily log export ─────────────────────────────────────────────────────────
+def test_log_export_covers_only_the_requested_day(client, auth):
+    from app.deps import ctx
+
+    db = ctx().db
+    db.add_event("ok", "today's event", source="engine", algo_id="gk50k")
+    with db.conn() as c:
+        c.execute(
+            "INSERT INTO events(ts, level, source, message, algo_id) VALUES(?,?,?,?,?)",
+            ("2026-01-02T10:00:00", "info", "engine", "a different day", "gk50k"),
+        )
+
+    body = client.get("/api/logs", params={"day": "2026-01-02"}, headers=auth).json()
+    assert body["events"] == 1 and body["day"] == "2026-01-02"
+
+
+def test_log_summary_counts_errors(client, auth):
+    from app.deps import ctx
+    from engine.clock import now_ist
+
+    db = ctx().db
+    db.add_event("error", "broker timeout", source="engine")
+    db.add_event("critical", "kill switch", source="engine")
+    db.add_event("info", "routine", source="engine")
+
+    today = now_ist().strftime("%Y-%m-%d")
+    body = client.get("/api/logs", params={"day": today}, headers=auth).json()
+    assert body["errors"] == 2, "error and critical both count as errors"
+    # The API logs its own startup, so the total is >= what this test added.
+    assert body["events"] >= 3
+    assert body["by_level"]["error"] == 1 and body["by_level"]["critical"] == 1
+
+
+def test_log_csv_downloads_with_a_dated_filename(client, auth):
+    from app.deps import ctx
+    from engine.clock import now_ist
+
+    ctx().db.add_event("ok", "engine started", source="engine")
+    today = now_ist().strftime("%Y-%m-%d")
+
+    r = client.get("/api/logs.csv", params={"day": today}, headers=auth)
+    assert r.status_code == 200
+    assert "attachment;" in r.headers["content-disposition"]
+    assert today in r.headers["content-disposition"]
+    assert "engine started" in r.text
+    assert "Timestamp,Level,Source" in r.text
+
+
+def test_log_text_is_greppable_one_line_per_event(client, auth):
+    from app.deps import ctx
+    from engine.clock import now_ist
+
+    ctx().db.add_event("error", "broker timeout", source="engine")
+    today = now_ist().strftime("%Y-%m-%d")
+
+    r = client.get("/api/logs.txt", params={"day": today}, headers=auth)
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/plain")
+    body_lines = [ln for ln in r.text.splitlines() if not ln.startswith("#")]
+    assert any("ERROR" in ln and "broker timeout" in ln for ln in body_lines)
+
+
+def test_log_export_defaults_to_today(client, auth):
+    from engine.clock import now_ist
+
+    body = client.get("/api/logs", headers=auth).json()
+    assert body["day"] == now_ist().strftime("%Y-%m-%d")
+
+
+def test_a_malformed_day_is_refused(client, auth):
+    r = client.get("/api/logs.csv", params={"day": "not-a-date"}, headers=auth)
+    assert r.status_code == 400
+
+
+def test_an_empty_day_still_produces_a_file(client, auth):
+    r = client.get("/api/logs.txt", params={"day": "2019-01-01"}, headers=auth)
+    assert r.status_code == 200
+    assert "no events recorded" in r.text
+
+
+def test_logs_need_a_token(client):
+    assert client.get("/api/logs.csv").status_code == 401

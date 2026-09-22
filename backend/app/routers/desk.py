@@ -4,10 +4,12 @@ and the downloadable reports.
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import PlainTextResponse
 
-from app import health, reports
+from app import health, logs, reports
 from app.deps import ctx
 from app.feeds import NewsFeed
 from app.security import require_auth
@@ -98,4 +100,47 @@ async def report_pdf(
         content=reports.to_pdf(payload),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{reports.filename(payload, "pdf")}"'},
+    )
+
+
+# ── daily log export ─────────────────────────────────────────────────────────
+def _log_payload(day: str, algo_id: str | None):
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="day must be an ISO date, e.g. 2026-09-22")
+    return logs.day_events(ctx().db, day, algo_id)
+
+
+@router.get("/logs")
+async def log_summary(day: str | None = None, algo_id: str | None = None) -> dict:
+    """What a day's log holds, so the page can show it before downloading."""
+    day = day or now_ist().strftime("%Y-%m-%d")
+    events = _log_payload(day, algo_id)
+    return {"day": day, "algo_id": algo_id or "all", **logs.summarise(events)}
+
+
+@router.get("/logs.csv", response_class=PlainTextResponse)
+async def log_csv(day: str | None = None, algo_id: str | None = None) -> Response:
+    day = day or now_ist().strftime("%Y-%m-%d")
+    events = _log_payload(day, algo_id)
+    return Response(
+        content=logs.to_csv(day, events, algo_id),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{logs.filename(day, algo_id, "csv")}"'
+        },
+    )
+
+
+@router.get("/logs.txt", response_class=PlainTextResponse)
+async def log_text(day: str | None = None, algo_id: str | None = None) -> Response:
+    day = day or now_ist().strftime("%Y-%m-%d")
+    events = _log_payload(day, algo_id)
+    return Response(
+        content=logs.to_text(day, events, algo_id),
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{logs.filename(day, algo_id, "txt")}"'
+        },
     )
