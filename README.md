@@ -91,9 +91,10 @@ Deploying for real: [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Paper first
 
-`MERIDIAN_TRADING_MODE=paper` is the default and places no orders. Switching to live
-requires typing `GO LIVE` in the dashboard, and is refused while the engine is running —
-so it can never flip from paper to live with a position open.
+`MERIDIAN_TRADING_MODE=paper` is the default and places no orders. The dashboard asks
+which money an algorithm will trade every time you start one, and a mode change is
+refused while it is running — so it can never flip from paper to live with a position
+open.
 
 Run at least one full session in paper and confirm the blotter, the event log, and the
 end-of-day report all look right before arming live trading.

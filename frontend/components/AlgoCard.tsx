@@ -98,9 +98,11 @@ export function AlgoCard({
 
       <footer className="mt-auto flex items-center justify-between gap-3 border-t border-hairline px-4 py-2.5">
         <span className="truncate text-2xs text-ink-muted">
-          {algo.promotion.can_live
-            ? "cleared for real money"
-            : `${algo.promotion.paper_sessions}/${algo.promotion.required} paper sessions`}
+          {algo.gate.status === "passed"
+            ? "gate passed"
+            : algo.gate.status === "failed"
+              ? "gate flagged issues"
+              : "not screened"}
         </span>
         {running ? (
           <Button variant="danger" onClick={onStop} disabled={busy}>

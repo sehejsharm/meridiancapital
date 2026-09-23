@@ -177,7 +177,7 @@ def test_a_shadow_can_never_be_switched_to_live(client, auth):
     client.post("/api/algos/gk50k/shadow", json={"enabled": True}, headers=auth)
     r = client.post(
         "/api/algos/gk50k-shadow/mode",
-        json={"mode": "live", "confirm": "TRADE REAL MONEY"},
+        json={"mode": "live"},
         headers=auth,
     )
     assert r.status_code == 409

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { GateReport } from "@/components/GateReport";
 import { Badge, Button, Card, Empty } from "@/components/ui";
-import { apiGet, apiPost } from "@/lib/client-api";
+import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { istDateTime } from "@/lib/format";
 import type { AlgoList, GateCheck, GateReport as Report } from "@/lib/types";
 
@@ -15,6 +15,7 @@ interface UploadResult {
   version: number;
   passed: boolean;
   report: Report;
+  mode: "paper" | "live";
   next: string;
 }
 
@@ -23,7 +24,9 @@ export default function AlgosPage() {
   const [catalogue, setCatalogue] = useState<GateCheck[] | null>(null);
   const [name, setName] = useState("");
   const [source, setSource] = useState("");
+  const [mode, setMode] = useState<"paper" | "live">("paper");
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -49,7 +52,7 @@ export default function AlgosPage() {
     setError(null);
     setResult(null);
     try {
-      const out = await apiPost<UploadResult>("/algos", { name, source });
+      const out = await apiPost<UploadResult>("/algos", { name, source, mode });
       setResult(out);
       await load();
     } catch (e) {
@@ -57,7 +60,24 @@ export default function AlgosPage() {
     } finally {
       setBusy(false);
     }
-  }, [name, source, load]);
+  }, [name, source, mode, load]);
+
+  const remove = useCallback(
+    async (algoId: string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await apiDelete(`/algos/${algoId}`);
+        setRemoving(null);
+        await load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : `could not remove ${algoId}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load],
+  );
 
   const onFile = useCallback(async (file: File) => {
     setSource(await file.text());
@@ -66,12 +86,11 @@ export default function AlgosPage() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-xs text-warning">
-        <strong className="font-semibold">Uploaded code runs against a real brokerage account.</strong>{" "}
-        Every submission is screened and put through the acceptance gate below before it can
-        trade anything, and must then serve {data?.paper_sessions_required ?? 5} clean paper
-        sessions before real money is possible. The gate proves internal coherence — it cannot
-        prove a strategy is profitable.
+      <div className="rounded-lg border border-hairline bg-surface-raised px-4 py-3 text-xs text-ink-secondary">
+        <strong className="font-semibold text-ink">Your code, your call.</strong> Every upload is
+        put through the checks on the right and the findings are shown to you, but nothing is
+        blocked — the gate gauges internal coherence and cannot tell a profitable strategy from a
+        losing one. You pick paper or real money when you start it.
       </div>
 
       {error && (
@@ -114,6 +133,31 @@ export default function AlgosPage() {
               placeholder={"NAME = \"My strategy\"\n\ndef signal(closes): ...\ndef target_strike(spot, right): ...\ndef effective_stop(peak_gain): ...\ndef size_position(equity, premium): ...\ndef guards(): ..."}
               className="h-72 w-full resize-y rounded-md border border-hairline bg-surface-raised p-3 font-mono text-2xs leading-relaxed text-ink outline-none focus:border-brand"
             />
+
+            <fieldset className="flex flex-wrap items-center gap-2">
+              <legend className="sr-only">Starting mode</legend>
+              <span className="text-2xs uppercase tracking-wide text-ink-muted">Start in</span>
+              {(["paper", "live"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  aria-pressed={mode === m}
+                  onClick={() => setMode(m)}
+                  className={`min-h-[36px] rounded-md border px-3 py-1.5 text-2xs transition-colors ${
+                    mode === m
+                      ? m === "live"
+                        ? "border-critical bg-critical/15 text-critical"
+                        : "border-brand bg-brand/15 text-brand"
+                      : "border-hairline bg-surface-raised text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  {m === "live" ? "Real money" : "Paper"}
+                </button>
+              ))}
+              <span className="text-2xs text-ink-muted">
+                — you are asked again when you press Start
+              </span>
+            </fieldset>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-2xs text-ink-muted">
@@ -167,8 +211,9 @@ export default function AlgosPage() {
                   <th className="py-2 pr-3 font-medium">Kind</th>
                   <th className="py-2 pr-3 font-medium">Mode</th>
                   <th className="py-2 pr-3 font-medium">Version</th>
-                  <th className="py-2 pr-3 font-medium">Promotion</th>
-                  <th className="py-2 font-medium">State</th>
+                  <th className="py-2 pr-3 font-medium">Gate</th>
+                  <th className="py-2 pr-3 font-medium">State</th>
+                  <th className="py-2 font-medium sr-only">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-hairline">
@@ -189,15 +234,39 @@ export default function AlgosPage() {
                     <td className="py-2.5 pr-3 tabular-nums text-ink-secondary">
                       {a.active ? `v${a.active.version}` : "—"}
                     </td>
-                    <td className="py-2.5 pr-3 text-ink-secondary">
-                      {a.promotion.can_live
-                        ? "cleared"
-                        : `${a.promotion.paper_sessions}/${a.promotion.required} sessions`}
+                    <td className="py-2.5 pr-3">
+                      <Badge
+                        tone={
+                          a.gate.status === "passed"
+                            ? "good"
+                            : a.gate.status === "failed"
+                              ? "warning"
+                              : "neutral"
+                        }
+                      >
+                        {a.gate.status === "none" ? "—" : a.gate.status}
+                      </Badge>
                     </td>
-                    <td className="py-2.5">
+                    <td className="py-2.5 pr-3">
                       <Badge tone={a.runtime.running ? "good" : "neutral"} dot={a.runtime.running}>
                         {a.runtime.running ? "running" : "stopped"}
                       </Badge>
+                    </td>
+                    <td className="py-2.5 text-right">
+                      {a.kind === "builtin" ? null : removing === a.id ? (
+                        <span className="inline-flex gap-1.5">
+                          <Button variant="danger" disabled={busy} onClick={() => void remove(a.id)}>
+                            {a.runtime.running ? "Stop and remove" : "Remove"}
+                          </Button>
+                          <Button variant="ghost" disabled={busy} onClick={() => setRemoving(null)}>
+                            Keep
+                          </Button>
+                        </span>
+                      ) : (
+                        <Button variant="ghost" disabled={busy} onClick={() => setRemoving(a.id)}>
+                          Remove
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}

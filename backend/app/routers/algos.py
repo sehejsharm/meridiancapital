@@ -1,9 +1,8 @@
-"""Algorithm registry: upload, gate, promote, and per-algorithm control.
+"""Algorithm registry: upload, screen, and per-algorithm control.
 
-The one rule this router exists to enforce: source the operator pasted in a
-browser cannot reach the broker until it has passed the acceptance gate, and
-cannot reach *real money* until it has also survived the required run of clean
-paper sessions and the operator has typed the phrase.
+Uploaded source is put through the acceptance gate and the verdict is recorded
+against the version, but the operator decides what runs and whether it runs on
+paper or real money. The choice is made when an algorithm is started.
 """
 
 from __future__ import annotations
@@ -15,10 +14,12 @@ from app.algo_store import MAX_SOURCE_BYTES, run_gate, sha256, slugify
 from app.deps import ctx
 from app import shadow
 from app.security import Principal, client_ip, require_auth
-from engine import promotion
+from engine import versions
 from engine.gate import check_catalogue
 
 router = APIRouter(prefix="/api/algos", tags=["algos"], dependencies=[Depends(require_auth)])
+
+SHADOW_SUFFIX = "-shadow"
 
 
 class UploadRequest(BaseModel):
@@ -26,11 +27,21 @@ class UploadRequest(BaseModel):
     source: str = Field(min_length=1)
     notes: str = Field(default="", max_length=500)
     algo_id: str | None = None
+    mode: str = "paper"
 
 
 class ModeRequest(BaseModel):
     mode: str
-    confirm: str = ""
+
+
+class StartRequest(BaseModel):
+    """The mode the operator picked in the run dialog.
+
+    Omitted means "whatever it was set to last", which is what the scheduler
+    sends when it starts an algorithm at the open.
+    """
+
+    mode: str | None = None
 
 
 class ActivateRequest(BaseModel):
@@ -46,15 +57,15 @@ def _audit(request: Request, principal: Principal, action: str, detail: str = ""
 
 
 def _algo_view(db, algo: dict) -> dict:
-    versions = db.versions(algo["id"], limit=20)
+    history = db.versions(algo["id"], limit=20)
     active = db.version(algo["active_version"]) if algo.get("active_version") else None
     sup = ctx().fleet.snapshot(algo["id"]) if hasattr(ctx(), "fleet") else {}
     return {
         **algo,
         "enabled": bool(algo.get("enabled")),
-        "versions": versions,
+        "versions": history,
         "active": {k: v for k, v in (active or {}).items() if k != "source"} or None,
-        "promotion": promotion.progress(active),
+        "gate": versions.summary(active),
         "runtime": sup,
         "shadow_of": algo.get("shadow_of"),
     }
@@ -63,31 +74,24 @@ def _algo_view(db, algo: dict) -> dict:
 @router.get("")
 async def list_algos() -> dict:
     db = ctx().db
-    return {
-        "algos": [_algo_view(db, a) for a in db.algos()],
-        "paper_sessions_required": promotion.PAPER_SESSIONS_REQUIRED,
-        "go_live_phrase": promotion.GO_LIVE_PHRASE,
-    }
+    return {"algos": [_algo_view(db, a) for a in db.algos()]}
 
 
 @router.get("/gate-catalogue")
 async def gate_catalogue() -> dict:
-    """What an upload will be held to, published before anyone uploads."""
-    return {
-        "checks": check_catalogue(),
-        "paper_sessions_required": promotion.PAPER_SESSIONS_REQUIRED,
-    }
+    """What the gate looks at. Advisory — a failure does not block an upload."""
+    return {"checks": check_catalogue(), "advisory": True}
 
 
 @router.post("")
 async def upload_algo(
     body: UploadRequest, request: Request, principal: Principal = Depends(require_auth)
 ) -> dict:
-    """Accept source, run the acceptance gate, and record the verdict.
+    """Accept source, run the acceptance gate, and record what it found.
 
-    The gate runs synchronously: the operator is waiting for a yes or no, and
-    an upload that silently lands in a queue is an upload someone assumes
-    passed.
+    The gate runs synchronously because the operator is waiting to see the
+    report, but it is advisory: a failing check is shown, not enforced. What
+    runs, and on paper or real money, is the operator's call.
     """
     db = ctx().db
     if len(body.source.encode("utf-8")) > MAX_SOURCE_BYTES:
@@ -114,7 +118,7 @@ async def upload_algo(
     report = run_gate(body.source)
     passed = bool(report.get("passed"))
     db.set_version_status(
-        version_id, promotion.STATUS_PASSED if passed else promotion.STATUS_FAILED, report
+        version_id, versions.STATUS_PASSED if passed else versions.STATUS_FAILED, report
     )
 
     _audit(
@@ -128,10 +132,10 @@ async def upload_algo(
         source="api", algo_id=algo_id,
     )
 
-    if passed and not existing:
-        # First accepted version of a new algorithm becomes its active one, in
-        # paper mode. Nothing starts running on its own.
-        db.set_algo_fields(algo_id, active_version=version_id, mode="paper", enabled=0)
+    # Every upload becomes the active version, whatever the gate thought of it.
+    # Nothing starts running on its own: the operator picks a mode and starts it.
+    mode = "live" if body.mode == "live" else "paper"
+    db.set_algo_fields(algo_id, active_version=version_id, mode=mode, enabled=0)
 
     return {
         "ok": True,
@@ -140,11 +144,11 @@ async def upload_algo(
         "version": version["version"],
         "passed": passed,
         "report": report,
+        "mode": mode,
         "next": (
-            f"cleared for paper trading — {promotion.PAPER_SESSIONS_REQUIRED} clean paper "
-            f"sessions are required before it can trade real money"
+            "ready to run — start it when you want it trading"
             if passed
-            else "rejected — fix the failures below and upload again"
+            else "ready to run, but the gate flagged the checks below — worth a look first"
         ),
     }
 
@@ -176,19 +180,12 @@ async def activate_version(
     if not v or v["algo_id"] != algo_id:
         raise HTTPException(status_code=404, detail="no such version")
 
-    ok, why = promotion.may_run_paper(v)
-    if not ok:
-        raise HTTPException(status_code=409, detail=why)
     if ctx().fleet.is_running(algo_id):
         raise HTTPException(
             status_code=409, detail="stop this algorithm before changing its active version"
         )
 
     db.set_algo_fields(algo_id, active_version=body.version_id)
-    # A version that has not cleared live cannot remain selected in live mode.
-    algo = db.algo(algo_id)
-    if algo and algo.get("mode") == "live" and not promotion.may_run_live(v)[0]:
-        db.set_algo_fields(algo_id, mode="paper")
     _audit(request, principal, "algo.activate", f"{algo_id} -> v{v['version']}")
     return _algo_view(db, db.algo(algo_id))
 
@@ -207,26 +204,14 @@ async def set_mode(
     if ctx().fleet.is_running(algo_id):
         raise HTTPException(status_code=409, detail="stop this algorithm before changing its mode")
 
-    if body.mode == "live":
-        if algo.get("shadow_of"):
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "a shadow is a paper twin by definition — it exists to be compared "
-                    "against the live run, not to place orders of its own"
-                ),
-            )
-        version = db.version(algo["active_version"]) if algo.get("active_version") else None
-        if not version:
-            raise HTTPException(status_code=409, detail="no active version to run")
-        ok, why = promotion.may_run_live(version)
-        if not ok:
-            raise HTTPException(status_code=409, detail=why)
-        if body.confirm != promotion.GO_LIVE_PHRASE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"switching to LIVE requires confirm == '{promotion.GO_LIVE_PHRASE}'",
-            )
+    if body.mode == "live" and algo.get("shadow_of"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "a shadow is a paper twin by definition — it exists to be compared "
+                "against the live run, not to place orders of its own"
+            ),
+        )
 
     db.set_algo_fields(algo_id, mode=body.mode)
     _audit(request, principal, "algo.mode", f"{algo_id} -> {body.mode}")
@@ -240,27 +225,42 @@ async def set_mode(
 
 @router.post("/{algo_id}/start")
 async def start_algo(
-    algo_id: str, request: Request, principal: Principal = Depends(require_auth)
+    algo_id: str, request: Request, body: StartRequest | None = None,
+    principal: Principal = Depends(require_auth),
 ) -> dict:
+    """Start an algorithm in the mode the operator picked.
+
+    Starting also arms it: from here on the scheduler brings it up at the open
+    and takes it down at the close, until someone stops it.
+    """
     db = ctx().db
     algo = db.algo(algo_id)
     if not algo:
         raise HTTPException(status_code=404, detail="no such algorithm")
-    version = db.version(algo["active_version"]) if algo.get("active_version") else None
-    if not version:
+    if algo.get("kind") != "builtin" and not algo.get("active_version"):
         raise HTTPException(status_code=409, detail="no active version to run")
 
-    checker = promotion.may_run_live if algo["mode"] == "live" else promotion.may_run_paper
-    ok, why = checker(version)
-    if not ok:
-        raise HTTPException(status_code=409, detail=why)
+    mode = (body.mode if body else None) or algo.get("mode") or "paper"
+    if mode not in ("paper", "live"):
+        raise HTTPException(status_code=400, detail="mode must be 'paper' or 'live'")
+    if mode == "live" and algo.get("shadow_of"):
+        raise HTTPException(
+            status_code=409, detail="a shadow is a paper twin and cannot place real orders"
+        )
+    db.set_algo_fields(algo_id, mode=mode)
 
-    _audit(request, principal, "algo.start", f"{algo_id} mode={algo['mode']}")
+    _audit(request, principal, "algo.start", f"{algo_id} mode={mode}")
     res = ctx().fleet.start(algo_id, trigger=f"manual:{principal.subject}")
     if not res.get("ok"):
         raise HTTPException(status_code=409, detail=res.get("detail"))
     db.set_algo_fields(algo_id, enabled=1)
-    return res
+    db.add_event(
+        "critical" if mode == "live" else "info",
+        f"'{algo['name']}' started in {mode.upper()} by {principal.subject} — "
+        f"it will now start itself at the open until stopped",
+        source="api", algo_id=algo_id,
+    )
+    return {**res, "mode": mode}
 
 
 @router.post("/{algo_id}/stop")
@@ -287,15 +287,27 @@ async def delete_algo(
         raise HTTPException(status_code=404, detail="no such algorithm")
     if algo.get("kind") == "builtin":
         raise HTTPException(status_code=409, detail="the built-in build cannot be removed")
-    if ctx().fleet.is_running(algo_id):
-        raise HTTPException(status_code=409, detail="stop this algorithm before removing it")
-    db.delete_algo(algo_id)
-    _audit(request, principal, "algo.delete", algo_id)
-    return {"ok": True, "deleted": algo_id}
+
+    # Removing a registration that is mid-session would leave an orphan engine
+    # holding a position with nothing left to supervise it, so stop it first.
+    # Its shadow goes with it for the same reason.
+    removed = []
+    for target in (f"{algo_id}{SHADOW_SUFFIX}", algo_id):
+        if not db.algo(target):
+            continue
+        if ctx().fleet.is_running(target):
+            ctx().fleet.stop(target, reason=f"removed by {principal.subject}", force=True)
+        db.delete_algo(target)
+        removed.append(target)
+    # Drops the supervisors that no longer have a registration behind them.
+    ctx().fleet.sync()
+
+    _audit(request, principal, "algo.delete", ", ".join(removed))
+    db.add_event("warn", f"algorithm '{algo['name']}' removed by {principal.subject}", source="api")
+    return {"ok": True, "deleted": removed}
 
 
 # ── shadow mode ──────────────────────────────────────────────────────────────
-SHADOW_SUFFIX = "-shadow"
 
 
 @router.post("/{algo_id}/shadow")
@@ -344,7 +356,7 @@ async def set_shadow(
         shadow_version_id = db.add_version(
             shadow_id, version["source"], version["sha256"], principal.subject
         )
-        db.set_version_status(shadow_version_id, promotion.STATUS_PASSED, {"inherited_from": version["id"]})
+        db.set_version_status(shadow_version_id, versions.STATUS_PASSED, {"inherited_from": version["id"]})
         db.set_algo_fields(shadow_id, active_version=shadow_version_id)
 
     _audit(request, principal, "algo.shadow.create", shadow_id)

@@ -172,11 +172,13 @@ URL you were assigned, and `systemctl restart meridian-api`.
 
 1. Sign in to the dashboard with the operator password.
 2. **Controls → NSE holiday calendar** — add this year's dates from the NSE circular.
-3. **Controls → Automation → Arm** — the engine will now start at 09:05 and stop at 15:25
-   on trading days.
-4. Leave it in **paper** for a full session.
+3. **Controls → Automation → Arm** — anything you have started will now start itself at
+   09:05 and stop at 15:25 on trading days. The engine is up ten minutes before the 09:15
+   bell so it has time to log in to Angel, pull the scrip master and build its candles.
+4. Start an algorithm; the desk asks whether it runs on paper or real money. Paper is
+   worth a full session first.
 5. Check the Blotter, the Journal, and the end-of-day report.
-6. Only then: **Controls → Trading mode**, type `GO LIVE`.
+6. Stop it, then start it again on **real money** when you are satisfied.
 
 ## Updating
 

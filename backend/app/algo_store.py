@@ -1,7 +1,7 @@
 """Uploaded algorithm source: where it lives and how it is gated.
 
 Source is held in the database rather than on disk so that a version, its
-acceptance report and its promotion state move together and survive a redeploy
+acceptance report move together and survive a redeploy
 of the VM. It is written to a file only when an engine is about to run it, into
 a directory the engine user can read and nothing else can.
 """

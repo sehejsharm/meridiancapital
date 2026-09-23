@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 
 import { GateReport } from "@/components/GateReport";
+import { RunModeDialog } from "@/components/RunModeDialog";
 import { ShadowPanel } from "@/components/ShadowPanel";
 import { Badge, Button, Card, Empty, Field } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
@@ -11,12 +12,19 @@ import type { Algo, GateReport as Report } from "@/lib/types";
 
 type Notice = { tone: "good" | "critical"; text: string } | null;
 
+function gateLabel(status: string): string {
+  if (status === "passed") return "passed every check";
+  if (status === "failed") return "flagged issues — see the report below";
+  return "not screened";
+}
+
 export default function AlgoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [algo, setAlgo] = useState<Algo | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
-  const [confirm, setConfirm] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [openReport, setOpenReport] = useState<number | null>(null);
   const [reports, setReports] = useState<Record<number, Report>>({});
 
@@ -49,6 +57,21 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
       }
     },
     [load],
+  );
+
+  /** Answer from the run dialog: start a stopped algorithm, or restate the
+   *  mode of one that is already stopped and staying that way. */
+  const pickMode = useCallback(
+    async (mode: "paper" | "live") => {
+      setAsking(false);
+      const running = algo?.runtime.running;
+      if (running) {
+        await act(() => apiPost(`/algos/${id}/mode`, { mode }), `Set to ${mode}.`);
+      } else {
+        await act(() => apiPost(`/algos/${id}/start`, { mode }), `Started in ${mode}.`);
+      }
+    },
+    [act, algo?.runtime.running, id],
   );
 
   const showReport = useCallback(
@@ -88,6 +111,14 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="space-y-5">
+      <RunModeDialog
+        name={algo.name}
+        open={asking}
+        busy={busy}
+        onPick={(mode) => void pickMode(mode)}
+        onCancel={() => setAsking(false)}
+      />
+
       {notice && (
         <div
           role="status"
@@ -121,11 +152,7 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
           <dl className="divide-y divide-hairline">
             <Field label="Mode" value={live ? "LIVE — real orders" : "Paper — no orders"} />
             <Field label="Active version" value={algo.active ? `v${algo.active.version}` : "none"} />
-            <Field label="Gate status" value={algo.promotion.status} />
-            <Field
-              label="Paper sessions"
-              value={`${algo.promotion.paper_sessions} of ${algo.promotion.required}`}
-            />
+            <Field label="Gate" value={gateLabel(algo.gate.status)} />
           </dl>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -134,7 +161,7 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
                 Stop
               </Button>
             ) : (
-              <Button variant="primary" disabled={busy} onClick={() => act(() => apiPost(`/algos/${id}/start`), "Started.")}>
+              <Button variant="primary" disabled={busy} onClick={() => setAsking(true)}>
                 Start
               </Button>
             )}
@@ -144,67 +171,59 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
             >
               Set to paper
             </Button>
-            {algo.kind !== "builtin" && (
-              <Button
-                variant="ghost"
-                disabled={busy || running}
-                onClick={() => act(() => apiDelete(`/algos/${id}`), "Removed.")}
-              >
-                Remove
-              </Button>
-            )}
+            {algo.kind !== "builtin" &&
+              (confirmingDelete ? (
+                <>
+                  <Button
+                    variant="danger"
+                    disabled={busy}
+                    onClick={() => {
+                      setConfirmingDelete(false);
+                      void act(() => apiDelete(`/algos/${id}`), "Removed.");
+                    }}
+                  >
+                    {running ? "Stop and remove" : "Really remove"}
+                  </Button>
+                  <Button variant="ghost" disabled={busy} onClick={() => setConfirmingDelete(false)}>
+                    Keep
+                  </Button>
+                </>
+              ) : (
+                <Button variant="ghost" disabled={busy} onClick={() => setConfirmingDelete(true)}>
+                  Remove
+                </Button>
+              ))}
           </div>
         </Card>
 
-        <Card title="Real money" subtitle="The one switch that spends actual capital">
-          {algo.promotion.can_live ? (
-            <div className="space-y-3">
-              <p className="text-xs text-ink-secondary">
-                This version has served its paper sessions. Type{" "}
-                <code className="font-mono text-ink">TRADE REAL MONEY</code> to switch it over.
-              </p>
-              <input
-                aria-label="Confirmation phrase"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                placeholder="TRADE REAL MONEY"
-                className="w-full rounded-md border border-hairline bg-surface-raised px-3 py-2 font-mono text-xs uppercase tracking-wider text-ink outline-none focus:border-brand"
-              />
-              <Button
-                variant="danger"
-                disabled={busy || running || confirm !== "TRADE REAL MONEY"}
-                onClick={() =>
-                  act(
-                    () => apiPost(`/algos/${id}/mode`, { mode: "live", confirm }),
-                    "Switched to real money.",
-                  )
-                }
-              >
-                Switch to real money
-              </Button>
-              {running && (
-                <p className="text-2xs text-ink-muted">Stop the algorithm first.</p>
-              )}
-            </div>
-          ) : (
-            <div className="rounded-md border border-hairline bg-surface-raised p-3">
-              <p className="text-xs text-ink-secondary">{algo.promotion.live_blocker}</p>
-              <div
-                className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface"
-                role="meter"
-                aria-valuenow={algo.promotion.paper_sessions}
-                aria-valuemin={0}
-                aria-valuemax={algo.promotion.required}
-                aria-label="Paper sessions completed"
-              >
-                <div
-                  className="h-full rounded-full bg-brand transition-[width] duration-500"
-                  style={{
-                    width: `${Math.min(100, (algo.promotion.paper_sessions / algo.promotion.required) * 100)}%`,
-                  }}
-                />
-              </div>
-            </div>
+        <Card title="Mode" subtitle="Which money this algorithm trades">
+          <p className="text-xs text-ink-secondary">
+            You are asked every time you start it, and the answer sticks until you
+            change it. It is currently set to{" "}
+            <strong className={live ? "text-critical" : "text-ink"}>
+              {live ? "real money" : "paper"}
+            </strong>
+            .
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              disabled={busy || running || !live}
+              onClick={() => act(() => apiPost(`/algos/${id}/mode`, { mode: "paper" }), "Set to paper.")}
+            >
+              Set to paper
+            </Button>
+            <Button
+              variant="danger"
+              disabled={busy || running || live || !!algo.shadow_of}
+              onClick={() => setAsking(true)}
+            >
+              Set to real money
+            </Button>
+          </div>
+          {running && (
+            <p className="mt-3 text-2xs text-ink-muted">
+              Stop it first — a running algorithm holds its mode for the session.
+            </p>
           )}
         </Card>
       </div>
@@ -234,7 +253,7 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
                   <div className="flex items-center gap-2">
                     <Badge
                       tone={
-                        v.status === "cleared" ? "good" : v.status === "passed" ? "brand" : "critical"
+                        v.status === "passed" ? "good" : v.status === "failed" ? "warning" : "neutral"
                       }
                     >
                       {v.status}
@@ -244,7 +263,7 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
                         {openReport === v.id ? "Hide report" : "Report"}
                       </Button>
                     )}
-                    {algo.active_version !== v.id && v.status !== "failed" && (
+                    {algo.active_version !== v.id && (
                       <Button
                         disabled={busy || running}
                         onClick={() =>

@@ -312,18 +312,15 @@ export interface AlgoVersion {
   created_ts: string;
   uploaded_by: string | null;
   sha256: string;
-  status: "pending" | "passed" | "failed" | "cleared";
+  status: "pending" | "passed" | "failed";
   gate_report: string | null;
-  paper_sessions: number;
 }
 
-export interface Promotion {
+/** The gate's opinion of the active version. Advice, not a permission. */
+export interface GateSummary {
   status: string;
-  paper_sessions: number;
-  required: number;
-  can_paper: boolean;
-  can_live: boolean;
-  live_blocker: string;
+  gate_passed: boolean;
+  runnable: boolean;
 }
 
 export interface Algo {
@@ -337,7 +334,7 @@ export interface Algo {
   notes: string | null;
   versions: AlgoVersion[];
   active: AlgoVersion | null;
-  promotion: Promotion;
+  gate: GateSummary;
   runtime: { running: boolean; pid: number | null; mode: string };
   /** Set when this registration is the paper twin of another algorithm. */
   shadow_of: string | null;
@@ -345,8 +342,6 @@ export interface Algo {
 
 export interface AlgoList {
   algos: Algo[];
-  paper_sessions_required: number;
-  go_live_phrase: string;
 }
 
 // ── deck feeds ───────────────────────────────────────────────────────────────

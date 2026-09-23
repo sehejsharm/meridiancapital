@@ -2,7 +2,7 @@
 
 The promise this suite pins: operator-supplied source cannot reach the broker
 until it has passed the acceptance gate, cannot reach real money until it has
-also served its paper sessions, and two algorithms running at once never read
+is the operator's choice and not the gate's, and two algorithms at once never read
 or write each other's state.
 """
 
@@ -96,8 +96,10 @@ def auth(client):
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
 
-def upload(client, auth, name, source=REFERENCE):
-    return client.post("/api/algos", json={"name": name, "source": source}, headers=auth)
+def upload(client, auth, name, source=REFERENCE, mode="paper"):
+    return client.post(
+        "/api/algos", json={"name": name, "source": source, "mode": mode}, headers=auth
+    )
 
 
 # ── registry ─────────────────────────────────────────────────────────────────
@@ -117,11 +119,12 @@ def test_the_gate_catalogue_is_published_before_uploading(client, auth):
     body = client.get("/api/algos/gate-catalogue", headers=auth).json()
     keys = {c["key"] for c in body["checks"]}
     assert "stop_monotonic" in keys and "size_rejects_degenerate" in keys
-    assert body["paper_sessions_required"] == 5
+    # The catalogue says what the gate looks at, not what it will block.
+    assert body["advisory"] is True
 
 
 # ── upload and gate ──────────────────────────────────────────────────────────
-def test_a_good_upload_passes_and_is_paper_only(client, auth):
+def test_a_good_upload_passes_and_becomes_active(client, auth):
     r = upload(client, auth, "Reference Copy")
     assert r.status_code == 200
     body = r.json()
@@ -129,9 +132,10 @@ def test_a_good_upload_passes_and_is_paper_only(client, auth):
     assert body["report"]["failed"] == 0
 
     algo = client.get(f"/api/algos/{body['algo_id']}", headers=auth).json()
-    assert algo["promotion"]["can_paper"] is True
-    assert algo["promotion"]["can_live"] is False
-    assert "5" in algo["promotion"]["live_blocker"]
+    assert algo["gate"]["gate_passed"] is True
+    assert algo["active"]["id"] == body["version_id"]
+    # Uploading never starts anything.
+    assert algo["enabled"] is False
 
 
 def test_an_upload_with_a_widening_stop_is_rejected(client, auth):
@@ -156,11 +160,23 @@ def test_an_upload_that_imports_os_is_rejected_before_import(client, auth):
     assert body["report"]["error"] == "static screening rejected this source"
 
 
-def test_a_rejected_upload_cannot_be_started(client, auth):
+def test_a_gate_failure_does_not_block_the_upload(client, auth):
+    """The gate is advice. The operator decides what runs."""
     body = upload(client, auth, "Broken", "NAME='x'\n").json()
     assert body["passed"] is False
+    assert body["ok"] is True
+
+    algo = client.get(f"/api/algos/{body['algo_id']}", headers=auth).json()
+    assert algo["gate"]["gate_passed"] is False
+    assert algo["gate"]["runnable"] is True
+    assert algo["active"]["id"] == body["version_id"]
+
+
+def test_a_gate_failure_can_still_be_started(client, auth):
+    body = upload(client, auth, "Rough Edges", "NAME='x'\n").json()
+    assert body["passed"] is False
     r = client.post(f"/api/algos/{body['algo_id']}/start", headers=auth)
-    assert r.status_code == 409
+    assert r.status_code == 200, r.json()
 
 
 def test_oversized_source_is_refused(client, auth):
@@ -179,51 +195,58 @@ def test_the_builtin_cannot_be_deleted(client, auth):
     assert client.delete("/api/algos/gk50k", headers=auth).status_code == 409
 
 
-# ── promotion ────────────────────────────────────────────────────────────────
-def test_live_mode_is_refused_until_the_paper_sessions_are_served(client, auth):
+# ── choosing a mode ──────────────────────────────────────────────────────────
+def test_live_is_a_straight_choice_with_no_ladder(client, auth):
     algo_id = upload(client, auth, "Candidate").json()["algo_id"]
+    r = client.post(f"/api/algos/{algo_id}/mode", json={"mode": "live"}, headers=auth)
+    assert r.status_code == 200, r.json()
+    assert r.json()["mode"] == "live"
+
+
+def test_a_brand_new_upload_can_go_straight_to_live(client, auth):
+    """No paper sessions, no phrase, no waiting."""
+    body = upload(client, auth, "Impatient").json()
     r = client.post(
-        f"/api/algos/{algo_id}/mode",
-        json={"mode": "live", "confirm": "TRADE REAL MONEY"},
-        headers=auth,
+        f"/api/algos/{body['algo_id']}/start", json={"mode": "live"}, headers=auth
     )
-    assert r.status_code == 409
-    assert "paper sessions" in r.json()["detail"]
+    assert r.status_code == 200, r.json()
+    assert r.json()["mode"] == "live"
+
+    algo = client.get(f"/api/algos/{body['algo_id']}", headers=auth).json()
+    assert algo["mode"] == "live"
 
 
-def test_live_mode_still_needs_the_phrase_once_cleared(client, auth):
-    from app.deps import ctx
-    from engine import promotion
-
-    body = upload(client, auth, "Seasoned").json()
-    for _ in range(promotion.PAPER_SESSIONS_REQUIRED):
-        promotion.record_paper_session(ctx().db, body["version_id"])
-
-    without = client.post(f"/api/algos/{body['algo_id']}/mode", json={"mode": "live"}, headers=auth)
-    assert without.status_code == 400 and "TRADE REAL MONEY" in without.json()["detail"]
-
-    with_phrase = client.post(
-        f"/api/algos/{body['algo_id']}/mode",
-        json={"mode": "live", "confirm": "TRADE REAL MONEY"},
-        headers=auth,
-    )
-    assert with_phrase.status_code == 200 and with_phrase.json()["mode"] == "live"
+def test_the_mode_picked_at_start_wins_over_the_stored_one(client, auth):
+    algo_id = upload(client, auth, "Switcher", mode="live").json()["algo_id"]
+    r = client.post(f"/api/algos/{algo_id}/start", json={"mode": "paper"}, headers=auth)
+    assert r.status_code == 200 and r.json()["mode"] == "paper"
+    assert client.get(f"/api/algos/{algo_id}", headers=auth).json()["mode"] == "paper"
 
 
-def test_clean_paper_sessions_accumulate_then_promote(client, auth):
-    from app.deps import ctx
-    from engine import promotion
-
-    version_id = upload(client, auth, "Grinder").json()["version_id"]
-    for i in range(1, promotion.PAPER_SESSIONS_REQUIRED):
-        out = promotion.record_paper_session(ctx().db, version_id)
-        assert out["promoted_to_live_eligible"] is False, f"promoted early at session {i}"
-    final = promotion.record_paper_session(ctx().db, version_id)
-    assert final["promoted_to_live_eligible"] is True
-    assert ctx().db.version(version_id)["status"] == promotion.STATUS_CLEARED
+def test_starting_without_a_mode_keeps_the_stored_one(client, auth):
+    """This is how the scheduler starts things at the open."""
+    algo_id = upload(client, auth, "Remembered", mode="live").json()["algo_id"]
+    r = client.post(f"/api/algos/{algo_id}/start", headers=auth)
+    assert r.status_code == 200 and r.json()["mode"] == "live"
 
 
-def test_paper_mode_needs_no_phrase(client, auth):
+def test_a_shadow_still_cannot_trade_real_money(client, auth):
+    """Not a safety ladder — a shadow that placed real orders would not be a
+    shadow of anything."""
+    algo_id = upload(client, auth, "Twinned").json()["algo_id"]
+    shadow_id = client.post(
+        f"/api/algos/{algo_id}/shadow", json={"enabled": True}, headers=auth
+    ).json()["shadow_algo_id"]
+
+    assert client.post(
+        f"/api/algos/{shadow_id}/mode", json={"mode": "live"}, headers=auth
+    ).status_code == 409
+    assert client.post(
+        f"/api/algos/{shadow_id}/start", json={"mode": "live"}, headers=auth
+    ).status_code == 409
+
+
+def test_paper_mode_is_always_available(client, auth):
     algo_id = upload(client, auth, "Papery").json()["algo_id"]
     r = client.post(f"/api/algos/{algo_id}/mode", json={"mode": "paper"}, headers=auth)
     assert r.status_code == 200
@@ -321,10 +344,32 @@ def test_mode_cannot_change_while_running(client, auth):
     assert r.status_code == 409
 
 
-def test_a_running_algo_cannot_be_deleted(client, auth):
+def test_deleting_a_running_algo_stops_it_first(client, auth):
+    """An orphan engine still holding a position, with nothing supervising it,
+    is worse than refusing the delete was annoying."""
     algo_id = upload(client, auth, "Running").json()["algo_id"]
     client.post(f"/api/algos/{algo_id}/start", headers=auth)
-    assert client.delete(f"/api/algos/{algo_id}", headers=auth).status_code == 409
+    from app.deps import ctx
+
+    assert ctx().fleet.is_running(algo_id)
+
+    r = client.delete(f"/api/algos/{algo_id}", headers=auth)
+    assert r.status_code == 200, r.json()
+    assert algo_id in r.json()["deleted"]
+    assert not ctx().fleet.is_running(algo_id)
+    assert client.get(f"/api/algos/{algo_id}", headers=auth).status_code == 404
+
+
+def test_deleting_an_algo_takes_its_shadow_with_it(client, auth):
+    algo_id = upload(client, auth, "Haunted").json()["algo_id"]
+    shadow_id = client.post(
+        f"/api/algos/{algo_id}/shadow", json={"enabled": True}, headers=auth
+    ).json()["shadow_algo_id"]
+
+    r = client.delete(f"/api/algos/{algo_id}", headers=auth)
+    assert r.status_code == 200
+    assert set(r.json()["deleted"]) == {algo_id, shadow_id}
+    assert client.get(f"/api/algos/{shadow_id}", headers=auth).status_code == 404
 
 
 def test_a_stopped_algo_can_be_deleted(client, auth):

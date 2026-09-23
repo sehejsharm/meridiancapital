@@ -636,15 +636,6 @@ class Database:
                     (status, json.dumps(gate_report, default=str), version_id),
                 )
 
-    def bump_paper_sessions(self, version_id: int) -> int:
-        with self.conn() as c:
-            c.execute(
-                "UPDATE algo_versions SET paper_sessions = paper_sessions + 1 WHERE id=?",
-                (version_id,),
-            )
-            r = c.execute("SELECT paper_sessions FROM algo_versions WHERE id=?", (version_id,)).fetchone()
-            return int(r[0]) if r else 0
-
     def audit(self, actor: str, action: str, detail: str = "", ip: str = "") -> None:
         with self.conn() as c:
             c.execute(

@@ -239,7 +239,7 @@ function ModeCard({
   busy: string | null;
   onRun: (k: string, a: () => Promise<{ detail?: string }>, s: string) => Promise<void>;
 }) {
-  const [confirm, setConfirm] = useState("");
+  const [confirming, setConfirming] = useState(false);
 
   return (
     <Card
@@ -273,30 +273,30 @@ function ModeCard({
       ) : (
         <div className="space-y-3">
           <p className="text-xs text-ink-secondary">
-            Going live means real money on every fill. Type{" "}
-            <code className="rounded bg-surface-raised px-1 py-0.5 text-brand">GO LIVE</code> to
-            confirm.
+            Going live means real money on every fill.
           </p>
-          <input
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            placeholder="GO LIVE"
-            aria-label="Type GO LIVE to confirm"
-            className="w-full rounded-md border border-hairline bg-surface-raised px-3 py-2 text-sm tracking-[0.1em] text-ink outline-none placeholder:text-ink-muted focus:border-brand"
-          />
           <Button
             variant="danger"
-            disabled={confirm !== "GO LIVE" || busy !== null}
-            onClick={() =>
+            disabled={busy !== null}
+            onClick={() => {
+              if (!confirming) {
+                setConfirming(true);
+                return;
+              }
               void onRun(
                 "mode",
-                () => apiPost("/control/mode", { mode: "live", confirm }),
+                () => apiPost("/control/mode", { mode: "live", confirm: true }),
                 "engine armed for LIVE trading",
-              ).then(() => setConfirm(""))
-            }
+              ).then(() => setConfirming(false));
+            }}
           >
-            Arm live trading
+            {confirming ? "Tap again to arm real money" : "Arm live trading"}
           </Button>
+          {confirming && (
+            <Button variant="ghost" disabled={busy !== null} onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+          )}
         </div>
       )}
     </Card>

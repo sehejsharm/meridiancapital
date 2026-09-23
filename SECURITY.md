@@ -63,7 +63,6 @@ phrase the UI does not prefill:
 
 | Action | Phrase | Extra guard |
 |---|---|---|
-| Switch to live trading | `GO LIVE` | Refused while the engine is running |
 | Flatten an open position | `FLATTEN` | Refused when the book is empty |
 
 Stopping the engine is refused outright while a position is open, since an unmanaged

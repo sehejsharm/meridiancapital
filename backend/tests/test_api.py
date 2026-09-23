@@ -164,20 +164,25 @@ def test_manual_stop_blocks_the_scheduler_from_restarting(client, auth):
     assert client.get("/api/status", headers=auth).json()["schedule"]["manual_override"] is True
 
 
-def test_switching_to_live_requires_the_confirmation_phrase(client, auth):
+def test_switching_to_live_has_to_be_confirmed(client, auth):
+    """The dashboard asks; an unanswered ask is not a yes."""
     r = client.post("/api/control/mode", json={"mode": "live"}, headers=auth)
     assert r.status_code == 400
-    assert "GO LIVE" in r.json()["detail"]
 
 
-def test_switching_to_live_with_the_phrase_succeeds(client, auth):
-    r = client.post("/api/control/mode", json={"mode": "live", "confirm": "GO LIVE"}, headers=auth)
+def test_switching_to_live_once_confirmed_succeeds(client, auth):
+    r = client.post("/api/control/mode", json={"mode": "live", "confirm": True}, headers=auth)
     assert r.status_code == 200 and r.json()["mode"] == "live"
+
+
+def test_switching_to_paper_needs_no_confirmation(client, auth):
+    r = client.post("/api/control/mode", json={"mode": "paper"}, headers=auth)
+    assert r.status_code == 200 and r.json()["mode"] == "paper"
 
 
 def test_mode_cannot_change_while_the_engine_runs(client, auth):
     client.post("/api/control/engine/start", headers=auth)
-    r = client.post("/api/control/mode", json={"mode": "live", "confirm": "GO LIVE"}, headers=auth)
+    r = client.post("/api/control/mode", json={"mode": "live", "confirm": True}, headers=auth)
     assert r.status_code == 409
 
 

@@ -32,7 +32,7 @@ export function GateReport({ report }: { report: Report }) {
               report.passed ? "text-good" : "text-critical"
             }`}
           >
-            {report.passed ? "Accepted — cleared for paper trading" : "Rejected"}
+            {report.passed ? "Passed every check" : "Flagged — worth a look before you run it"}
           </p>
           {report.total > 0 && (
             <span className="text-2xs text-ink-muted">

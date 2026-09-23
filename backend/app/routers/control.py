@@ -19,7 +19,6 @@ from app.security import Principal, client_ip, require_auth
 
 router = APIRouter(prefix="/api/control", tags=["control"], dependencies=[Depends(require_auth)])
 
-GO_LIVE_PHRASE = "GO LIVE"
 FLATTEN_PHRASE = "FLATTEN"
 NUKE_PHRASE = "NUKE ALL"
 
@@ -38,7 +37,8 @@ class StopRequest(BaseModel):
 
 class ModeRequest(BaseModel):
     mode: str
-    confirm: str = ""
+    # The dashboard asks before switching to real money; this is that answer.
+    confirm: bool = False
 
     @field_validator("mode")
     @classmethod
@@ -113,10 +113,10 @@ async def set_mode(
     body: ModeRequest, request: Request, principal: Principal = Depends(require_auth)
 ) -> dict:
     c = ctx()
-    if body.mode == "live" and body.confirm != GO_LIVE_PHRASE:
+    if body.mode == "live" and not body.confirm:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"switching to LIVE requires confirm == '{GO_LIVE_PHRASE}'",
+            detail="switching to LIVE has to be confirmed",
         )
     if c.sup.state.running:
         raise HTTPException(

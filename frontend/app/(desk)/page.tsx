@@ -9,6 +9,7 @@ import { MarkedChart } from "@/components/MarkedChart";
 import { NewsPanel } from "@/components/NewsPanel";
 import { NiftyTicker } from "@/components/NiftyTicker";
 import { RateGauges } from "@/components/RateGauges";
+import { RunModeDialog } from "@/components/RunModeDialog";
 import { StalenessMonitor } from "@/components/StalenessMonitor";
 import { TradingViewChart } from "@/components/TradingViewChart";
 import { Badge, Card, Empty, StatTile } from "@/components/ui";
@@ -62,11 +63,11 @@ export default function DeckPage() {
   }, [snapshot?.ts]);
 
   const control = useCallback(
-    async (algoId: string, action: "start" | "stop") => {
+    async (algoId: string, action: "start" | "stop", mode?: "paper" | "live") => {
       setBusy(algoId);
       setNotice(null);
       try {
-        await apiPost(`/algos/${algoId}/${action}`);
+        await apiPost(`/algos/${algoId}/${action}`, mode ? { mode } : undefined);
         await loadAlgos();
       } catch (e) {
         setNotice(e instanceof Error ? e.message : `could not ${action} ${algoId}`);
@@ -77,6 +78,17 @@ export default function DeckPage() {
     [loadAlgos],
   );
 
+  // Starting is never one tap: the desk asks which money this will trade.
+  const [asking, setAsking] = useState<string | null>(null);
+  const pickMode = useCallback(
+    async (mode: "paper" | "live") => {
+      const algoId = asking;
+      setAsking(null);
+      if (algoId) await control(algoId, "start", mode);
+    },
+    [asking, control],
+  );
+
   const fleet = status?.fleet;
   const list = algos?.algos ?? [];
   const single = list.length <= 1;
@@ -84,6 +96,14 @@ export default function DeckPage() {
 
   return (
     <div className="space-y-5">
+      <RunModeDialog
+        name={list.find((a) => a.id === asking)?.name ?? "this algorithm"}
+        open={asking !== null}
+        busy={busy !== null}
+        onPick={(mode) => void pickMode(mode)}
+        onCancel={() => setAsking(null)}
+      />
+
       <StalenessMonitor />
       <NiftyTicker />
 
@@ -153,7 +173,7 @@ export default function DeckPage() {
                 snapshot={snapshot?.engine.pid === algo.runtime.pid ? snapshot : null}
                 busy={busy === algo.id}
                 compact={!single && list.length > 4}
-                onStart={() => void control(algo.id, "start")}
+                onStart={() => setAsking(algo.id)}
                 onStop={() => void control(algo.id, "stop")}
               />
             ))}

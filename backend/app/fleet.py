@@ -16,7 +16,6 @@ import threading
 
 from app.algo_store import materialise
 from app.supervisor import DEFAULT_ALGO, Supervisor
-from engine import promotion
 from shared.db import Database
 
 
@@ -93,22 +92,24 @@ class Fleet:
             version = self.db.version(algo.get("active_version")) if algo.get("active_version") else None
             if not version:
                 return {"ok": False, "detail": "no active version to run"}
-            checker = (
-                promotion.may_run_live if algo.get("mode") == "live" else promotion.may_run_paper
-            )
-            ok, why = checker(version)
-            if not ok:
-                return {"ok": False, "detail": why}
             sup.strategy_path = materialise(algo_id, version["version"], version["source"])
 
         return sup.start(trigger=trigger)
 
-    def stop(self, algo_id: str, reason: str = "manual", force: bool = False) -> dict:
+    def stop(
+        self, algo_id: str, reason: str = "manual", force: bool = False, manual: bool = True
+    ) -> dict:
+        """Stop one algorithm.
+
+        ``manual`` marks it as the operator's decision, which keeps the
+        scheduler from bringing it straight back up. The scheduler's own
+        end-of-session stop passes False, or nothing would ever run again.
+        """
         sup = self.get(algo_id)
         if not sup:
             return {"ok": False, "detail": "no such algorithm"}
         res = sup.stop(reason=reason, force=force)
-        if res.get("ok"):
+        if res.get("ok") and manual:
             sup.state.manual_override = True
         return res
 

@@ -54,6 +54,8 @@ def build_context() -> Context:
     # The built-in's supervisor is shared with the scheduler, so automatic
     # start/stop and manual fleet control cannot disagree about its state.
     fleet._sups[BUILTIN_ID] = sup
+    # And the scheduler drives the rest of the fleet through the same window.
+    sched.fleet = fleet
     hub = Hub(db, status_provider=lambda: system_status(db, sup, sched, fleet))
     _ctx = Context(db=db, sup=sup, sched=sched, hub=hub, fleet=fleet)
     return _ctx
