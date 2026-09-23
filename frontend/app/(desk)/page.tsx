@@ -14,6 +14,7 @@ import { StalenessMonitor } from "@/components/StalenessMonitor";
 import { TradingViewChart } from "@/components/TradingViewChart";
 import { Badge, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
+import { fetchAlgos } from "@/lib/algos";
 import { money, signedMoney } from "@/lib/format";
 import { useLiveFeed } from "@/lib/LiveContext";
 import type { AlgoList, EquityPoint, TradeRow } from "@/lib/types";
@@ -35,7 +36,7 @@ export default function DeckPage() {
 
   const loadAlgos = useCallback(async () => {
     try {
-      setAlgos(await apiGet<AlgoList>("/algos"));
+      setAlgos(await fetchAlgos());
     } catch {
       /* the fleet summary in status still renders */
     }

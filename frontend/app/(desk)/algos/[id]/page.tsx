@@ -7,6 +7,7 @@ import { RunModeDialog } from "@/components/RunModeDialog";
 import { ShadowPanel } from "@/components/ShadowPanel";
 import { Badge, Button, Card, Empty, Field } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
+import { fetchAlgo } from "@/lib/algos";
 import { istDateTime } from "@/lib/format";
 import type { Algo, GateReport as Report } from "@/lib/types";
 
@@ -30,7 +31,7 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
 
   const load = useCallback(async () => {
     try {
-      setAlgo(await apiGet<Algo>(`/algos/${id}`));
+      setAlgo(await fetchAlgo(id));
     } catch (e) {
       setNotice({ tone: "critical", text: e instanceof Error ? e.message : "not found" });
     }

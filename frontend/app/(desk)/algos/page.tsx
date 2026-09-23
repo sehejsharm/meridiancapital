@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { GateReport } from "@/components/GateReport";
 import { Badge, Button, Card, Empty } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
+import { fetchAlgos } from "@/lib/algos";
 import { istDateTime } from "@/lib/format";
 import type { AlgoList, GateCheck, GateReport as Report } from "@/lib/types";
 
@@ -33,7 +34,7 @@ export default function AlgosPage() {
 
   const load = useCallback(async () => {
     try {
-      setData(await apiGet<AlgoList>("/algos"));
+      setData(await fetchAlgos());
     } catch (e) {
       setError(e instanceof Error ? e.message : "could not load algorithms");
     }

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { LazyMarkedChart } from "@/components/LazyMarkedChart";
 import { Badge, Button, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
+import { fetchAlgos } from "@/lib/algos";
 import { istDateTime, istTime, money, pnlClass, signedMoney } from "@/lib/format";
 import type { AlgoList, ReportPayload } from "@/lib/types";
 
@@ -32,7 +33,7 @@ export default function ReportsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void apiGet<AlgoList>("/algos").then(setAlgos).catch(() => setAlgos(null));
+    void fetchAlgos().then(setAlgos).catch(() => setAlgos(null));
   }, []);
 
   const query = useMemo(() => {
