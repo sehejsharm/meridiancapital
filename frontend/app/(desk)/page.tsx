@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlgoCard } from "@/components/AlgoCard";
 import { HealthStrip } from "@/components/HealthStrip";
 import { LiveTape } from "@/components/LiveTape";
-import { MarkedChart } from "@/components/MarkedChart";
+import { LazyMarkedChart } from "@/components/LazyMarkedChart";
 import { NewsPanel } from "@/components/NewsPanel";
 import { NiftyTicker } from "@/components/NiftyTicker";
 import { RateGauges } from "@/components/RateGauges";
@@ -122,7 +122,7 @@ export default function DeckPage() {
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatTile
           label="Equity"
           value={account ? money(account.equity) : "—"}
@@ -191,7 +191,7 @@ export default function DeckPage() {
             title="Equity and fills"
             subtitle="Arrows mark entries, circles mark exits coloured by outcome"
           >
-            <MarkedChart equity={equity} trades={trades} height={280} />
+            <LazyMarkedChart equity={equity} trades={trades} height={280} />
           </Card>
         </div>
 

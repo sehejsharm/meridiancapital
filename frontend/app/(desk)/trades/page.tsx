@@ -93,7 +93,61 @@ export default function BlotterPage() {
             breakout.
           </Empty>
         ) : (
-          <div className="-mx-4 overflow-x-auto px-4">
+          <>
+          {/* Phones: a trade reads as a card — the result and net up top where
+              the eye lands, the mechanics underneath. Twelve columns sideways is
+              two and a half screens of scrolling to find out whether you won. */}
+          <ul className="space-y-2.5 md:hidden">
+            {trades.map((t) => {
+              const open = !t.exit_ts;
+              const won = (t.net ?? 0) > 0;
+              return (
+                <li key={t.id} className="tnum rounded-lg border border-hairline bg-surface-raised p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {open ? (
+                        <Badge tone="brand">Open</Badge>
+                      ) : (
+                        <Badge tone={won ? "good" : "critical"}>{won ? "Win" : "Loss"}</Badge>
+                      )}
+                      <span className="truncate text-sm font-medium text-ink">
+                        {t.strike} {t.side}
+                      </span>
+                      {t.mode === "paper" && (
+                        <span className="text-2xs uppercase text-ink-muted">paper</span>
+                      )}
+                    </div>
+                    <span
+                      className={`shrink-0 text-base font-semibold ${
+                        open ? "text-ink-muted" : won ? "text-profit" : "text-loss"
+                      }`}
+                    >
+                      {open ? "—" : signedMoney(t.net)}
+                      {t.pnl_source === "estimate" && <span className="ml-0.5 text-warning">~</span>}
+                    </span>
+                  </div>
+                  <dl className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2 text-2xs">
+                    <MiniField label="In" value={t.entry_prem?.toFixed(2) ?? "—"} />
+                    <MiniField label="Out" value={t.exit_prem?.toFixed(2) ?? "—"} />
+                    <MiniField
+                      label="Peak"
+                      value={t.peak_pct != null ? signedPercent(t.peak_pct / 100, 0) : "—"}
+                    />
+                    <MiniField label="Lots" value={String(t.lots ?? "—")} />
+                    <MiniField label="Held" value={minutes(t.hold_min)} />
+                    <MiniField label="Charges" value={t.charges != null ? money(t.charges) : "—"} />
+                  </dl>
+                  <p className="mt-2.5 border-t border-hairline pt-2 text-2xs text-ink-muted">
+                    {t.entry_ts}
+                    {t.exit_ts ? ` → ${t.exit_ts}` : ""}
+                    {t.reason ? ` · ${t.reason}` : ""}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="-mx-4 hidden overflow-x-auto px-4 md:block">
             <table className="w-full min-w-[56rem] border-collapse text-xs">
               <thead>
                 <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">
@@ -169,14 +223,24 @@ export default function BlotterPage() {
                 })}
               </tbody>
             </table>
+          </div>
             <p className="mt-3 text-2xs text-ink-muted">
               A <span className="text-warning">~</span> marks a trade whose P&amp;L is a local
               estimate because Angel One was unreachable at exit. Every other figure is Angel&apos;s
               own, net of real charges.
             </p>
-          </div>
+          </>
         )}
       </Card>
+    </div>
+  );
+}
+
+function MiniField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="uppercase tracking-[0.1em] text-ink-muted">{label}</dt>
+      <dd className="mt-0.5 truncate text-xs text-ink-secondary">{value}</dd>
     </div>
   );
 }

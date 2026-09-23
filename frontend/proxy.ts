@@ -5,7 +5,7 @@ const SESSION_COOKIE = "meridian_session";
 // have to answer before a session exists.
 const PUBLIC_PATHS = ["/login", "/api/session"];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
@@ -27,6 +27,12 @@ export function middleware(request: NextRequest) {
   return NextResponse.redirect(target);
 }
 
+// Everything a browser or home screen fetches *without* the session cookie has
+// to bypass the sign-in redirect. A manifest is requested with credentials
+// omitted, and iOS fetches the touch icon the same way — redirected to /login
+// they receive HTML instead of an image, and the installed app shows no logo.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|robots.txt).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|manifest.webmanifest|icons/|robots.txt).*)",
+  ],
 };

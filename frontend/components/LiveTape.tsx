@@ -73,7 +73,7 @@ export function LiveTape({
               setPinned(true);
               if (box.current) box.current.scrollTop = 0;
             }}
-            className="rounded-md border border-hairline px-2 py-1 text-2xs uppercase tracking-[0.1em] text-ink-secondary hover:text-ink"
+            className="rounded-md border border-hairline px-2 py-1 text-2xs uppercase tracking-[0.1em] text-ink-secondary hover:text-ink touch:min-h-[40px] touch:px-3"
           >
             Jump to newest
           </button>

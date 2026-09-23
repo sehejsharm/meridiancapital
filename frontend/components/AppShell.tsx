@@ -2,9 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Wordmark } from "@/components/Logo";
+import {
+  IconAlgos,
+  IconControls,
+  IconDeck,
+  IconJournal,
+  IconMore,
+  IconReports,
+  IconSignOut,
+  IconTrades,
+  IconTune,
+} from "@/components/NavIcons";
 import { StalenessDot } from "@/components/StalenessMonitor";
 import { Badge } from "@/components/ui";
 import { signOut } from "@/lib/client-api";
@@ -12,14 +23,23 @@ import { useLiveFeed } from "@/lib/LiveContext";
 import { istTime } from "@/lib/format";
 
 const NAV = [
-  { href: "/", label: "Deck", short: "Deck" },
-  { href: "/algos", label: "Algorithms", short: "Algos" },
-  { href: "/trades", label: "Blotter", short: "Trades" },
-  { href: "/reports", label: "Reports", short: "Reports" },
-  { href: "/journal", label: "Journal", short: "Log" },
-  { href: "/strategy", label: "Strategy", short: "Tune" },
-  { href: "/controls", label: "Controls", short: "Control" },
+  { href: "/", label: "Deck", short: "Deck", Icon: IconDeck },
+  { href: "/algos", label: "Algorithms", short: "Algos", Icon: IconAlgos },
+  { href: "/trades", label: "Blotter", short: "Trades", Icon: IconTrades },
+  { href: "/reports", label: "Reports", short: "Reports", Icon: IconReports },
+  { href: "/journal", label: "Journal", short: "Log", Icon: IconJournal },
+  { href: "/strategy", label: "Strategy", short: "Tune", Icon: IconTune },
+  { href: "/controls", label: "Controls", short: "Controls", Icon: IconControls },
 ];
+
+/**
+ * A phone gets five tabs, not seven: seven at a usable width is wider than the
+ * screen, and the one pushed off the edge was Controls — the page with the
+ * emergency stop. Controls is therefore always a tab; the pages you visit
+ * rather than act from sit behind More.
+ */
+const TABS = ["/", "/algos", "/trades", "/controls"];
+const MORE = NAV.filter((n) => !TABS.includes(n.href));
 
 function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -45,9 +65,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <header className="relative z-10 border-b border-hairline bg-surface/80 backdrop-blur">
+      <header className="pt-safe relative z-10 border-b border-hairline bg-surface/80 backdrop-blur">
         <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-3 sm:px-6">
-          <Link href="/" className="shrink-0">
+          <Link href="/" className="-my-1.5 shrink-0 py-1.5">
             <Wordmark />
           </Link>
 
@@ -83,7 +103,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={() => void signOut()}
-              className="shrink-0 rounded-md px-2 py-1 text-2xs uppercase tracking-[0.12em] text-ink-muted transition-colors hover:text-ink"
+              className="hidden shrink-0 rounded-md px-2 py-1 text-2xs uppercase tracking-[0.12em] text-ink-muted transition-colors hover:text-ink lg:inline-flex"
             >
               Sign out
             </button>
@@ -92,47 +112,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="h-px rule-gold" />
       </header>
 
-      <main className="relative z-10 mx-auto max-w-[1400px] px-4 py-5 pb-24 sm:px-6 lg:pb-6">
+      <main className="relative z-10 mx-auto max-w-[1400px] px-4 py-5 sm:px-6">
         {children}
       </main>
 
-      <footer className="relative z-10 mx-auto max-w-[1400px] px-4 pb-24 text-2xs text-ink-muted sm:px-6 lg:pb-8">
+      <footer className="pb-tabbar relative z-10 mx-auto max-w-[1400px] px-4 text-2xs text-ink-muted sm:px-6 lg:pb-8">
         Meridian Capital · {snapshot?.engine.banner ?? "GANESH KAVACH 50K"} · all money figures
         read from Angel One
       </footer>
 
-      {/* Thumb-reachable navigation on a phone, with safe-area padding so the
-          last row is not sitting under the home indicator. */}
-      <nav
-        aria-label="Sections"
-        className="fixed inset-x-0 bottom-0 z-20 border-t border-hairline bg-surface/95 backdrop-blur lg:hidden"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        <ul className="mx-auto flex max-w-[1400px] items-stretch overflow-x-auto">
-          {NAV.map((item) => {
-            const active = isActive(pathname, item.href);
-            return (
-              <li key={item.href} className="flex-1">
-                <Link
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex min-h-[52px] min-w-[64px] flex-col items-center justify-center gap-0.5 px-2 py-2 text-2xs font-medium uppercase tracking-[0.1em] transition-colors ${
-                    active ? "text-brand" : "text-ink-muted"
-                  }`}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`h-0.5 w-6 rounded-full transition-colors ${
-                      active ? "bg-brand" : "bg-transparent"
-                    }`}
-                  />
-                  {item.short}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+      <TabBar pathname={pathname} />
     </div>
   );
 }
@@ -150,5 +139,111 @@ function ConnectionChip({ state, ts }: { state: string; ts?: string }) {
       <Badge tone={copy.tone}>{copy.label}</Badge>
       {ts && <span className="text-2xs tabular-nums text-ink-muted">{istTime(ts)} IST</span>}
     </span>
+  );
+}
+
+function TabBar({ pathname }: { pathname: string }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreActive = MORE.some((n) => isActive(pathname, n.href));
+
+  // Navigating closes the sheet; so does the back gesture's Escape equivalent.
+  useEffect(() => setMoreOpen(false), [pathname]);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMoreOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [moreOpen]);
+
+  return (
+    <>
+      {moreOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
+          onClick={() => setMoreOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* The sheet sits directly above the bar so the thumb travels upward
+          from the button that opened it. */}
+      <div
+        id="more-sheet"
+        role="menu"
+        aria-label="More sections"
+        hidden={!moreOpen}
+        className="fixed inset-x-3 z-40 rounded-xl border border-hairline bg-surface p-2 shadow-2xl lg:hidden"
+        style={{ bottom: "calc(64px + env(safe-area-inset-bottom))" }}
+      >
+        {MORE.map(({ href, label, Icon }) => {
+          const active = isActive(pathname, href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              role="menuitem"
+              aria-current={active ? "page" : undefined}
+              className={`flex min-h-[52px] items-center gap-3 rounded-lg px-3 text-sm transition-colors ${
+                active ? "bg-brand-dim text-brand" : "text-ink hover:bg-surface-raised"
+              }`}
+            >
+              <Icon className="shrink-0" />
+              {label}
+            </Link>
+          );
+        })}
+        <div className="my-1 h-px bg-hairline" />
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => void signOut()}
+          className="flex min-h-[52px] w-full items-center gap-3 rounded-lg px-3 text-sm text-ink-secondary transition-colors hover:bg-surface-raised"
+        >
+          <IconSignOut className="shrink-0" />
+          Sign out
+        </button>
+      </div>
+
+      <nav
+        aria-label="Sections"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-surface/95 backdrop-blur lg:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <ul className="mx-auto grid max-w-lg grid-cols-5">
+          {TABS.map((href) => {
+            const item = NAV.find((n) => n.href === href)!;
+            const active = isActive(pathname, href);
+            return (
+              <li key={href}>
+                <Link
+                  href={href}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex h-14 flex-col items-center justify-center gap-1 text-[10px] font-medium uppercase tracking-[0.08em] transition-colors ${
+                    active ? "text-brand" : "text-ink-muted"
+                  }`}
+                >
+                  <item.Icon />
+                  {item.short}
+                </Link>
+              </li>
+            );
+          })}
+          <li>
+            <button
+              type="button"
+              aria-expanded={moreOpen}
+              aria-controls="more-sheet"
+              onClick={() => setMoreOpen((v) => !v)}
+              className={`flex h-14 w-full flex-col items-center justify-center gap-1 text-[10px] font-medium uppercase tracking-[0.08em] transition-colors ${
+                moreOpen || moreActive ? "text-brand" : "text-ink-muted"
+              }`}
+            >
+              <IconMore />
+              More
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </>
   );
 }

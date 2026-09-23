@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { MarkedChart } from "@/components/MarkedChart";
+import { LazyMarkedChart } from "@/components/LazyMarkedChart";
 import { Badge, Button, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
 import { istDateTime, istTime, money, pnlClass, signedMoney } from "@/lib/format";
@@ -110,13 +110,13 @@ export default function ReportsPage() {
           <span className="text-2xs text-ink-muted">Download</span>
           <a
             href={`/api/proxy/reports.csv?${query}`}
-            className="inline-flex items-center rounded-md border border-hairline bg-surface-raised px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-ink transition-colors hover:border-brand/50"
+            className="inline-flex items-center rounded-md border border-hairline bg-surface-raised px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-ink transition-colors hover:border-brand/50 touch:min-h-[44px] touch:px-4"
           >
             CSV
           </a>
           <a
             href={`/api/proxy/reports.pdf?${query}`}
-            className="inline-flex items-center rounded-md border border-hairline bg-surface-raised px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-ink transition-colors hover:border-brand/50"
+            className="inline-flex items-center rounded-md border border-hairline bg-surface-raised px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-ink transition-colors hover:border-brand/50 touch:min-h-[44px] touch:px-4"
           >
             PDF
           </a>
@@ -150,7 +150,7 @@ export default function ReportsPage() {
           </div>
 
           <Card title="Equity and fills" subtitle="The period's curve with every entry and exit marked">
-            <MarkedChart equity={report.equity} trades={report.trades} height={300} />
+            <LazyMarkedChart equity={report.equity} trades={report.trades} height={300} />
           </Card>
 
           <Card title="Blotter" subtitle={`${report.trades.length} trades in the period`}>

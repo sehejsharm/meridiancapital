@@ -25,10 +25,34 @@ export function TradingViewChart({
 }) {
   const holder = useRef<HTMLDivElement | null>(null);
   const [failed, setFailed] = useState(false);
+  // The embed is several hundred KB of third-party script plus an iframe. On a
+  // phone it sits three screens below the fold, so it waits until it is about
+  // to be seen instead of competing with the numbers you opened the deck for.
+  const [near, setNear] = useState(false);
 
   useEffect(() => {
     const node = holder.current;
-    if (!node) return;
+    if (!node || near) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setNear(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setNear(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "400px 0px" },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [near]);
+
+  useEffect(() => {
+    const node = holder.current;
+    if (!node || !near) return;
     node.innerHTML = "";
 
     const container = document.createElement("div");
@@ -66,10 +90,13 @@ export function TradingViewChart({
       clearTimeout(timer);
       node.innerHTML = "";
     };
-  }, [symbol, interval]);
+  }, [symbol, interval, near]);
 
   return (
-    <div className="relative overflow-hidden rounded-md" style={{ height }}>
+    <div
+      className="relative h-[300px] overflow-hidden rounded-md sm:h-[var(--chart-h)]"
+      style={{ ["--chart-h" as string]: `${height}px` }}
+    >
       <div ref={holder} className="h-full w-full" />
       {failed && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-hairline bg-surface px-4 text-center">

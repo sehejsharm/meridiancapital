@@ -14,7 +14,7 @@
   --surface-2: #1e1e1b;
   --text-primary: #f5f3ee;
   --text-secondary: #b5b2a6;
-  --text-muted: #86837a;
+  --text-muted: #8a877e;
   --hairline: rgba(212, 175, 55, 0.16);
   --gridline: #24241f;
   --baseline: #38372f;
@@ -28,7 +28,7 @@
   --status-good: #0ca30c;
   --status-warning: #fab219;
   --status-serious: #ec835a;
-  --status-critical: #d03b3b;
+  --status-critical: #d86161;
 
   --profit: #2fbf4f;
   --loss: #e66767;
@@ -42,17 +42,21 @@
     --surface-2: #f0eee7;
     --text-primary: #14130f;
     --text-secondary: #4f4d45;
-    --text-muted: #837f74;
+    --text-muted: #6e6a5f;
     --hairline: rgba(20, 19, 15, 0.12);
     --gridline: #e3e0d6;
     --baseline: #c2beb0;
 
-    --brand: #8a6d1f;
+    --brand: #82651f;
     --brand-bright: #6f5615;
-    --brand-dim: rgba(138, 109, 31, 0.1);
+    --brand-dim: rgba(130, 101, 31, 0.1);
     --logo-plate: #14130f;
 
-    --series-1: #8a6d1f;
+    --series-1: #82651f;
+    --status-good: #0c770c;
+    --status-warning: #935905;
+    --status-serious: #c02913;
+    --status-critical: #bd2e2e;
     --profit: #046b04;
     --loss: #b02f2f;
   }
@@ -65,17 +69,21 @@
   --surface-2: #f0eee7;
   --text-primary: #14130f;
   --text-secondary: #4f4d45;
-  --text-muted: #837f74;
+  --text-muted: #6e6a5f;
   --hairline: rgba(20, 19, 15, 0.12);
   --gridline: #e3e0d6;
   --baseline: #c2beb0;
 
-  --brand: #8a6d1f;
+  --brand: #82651f;
   --brand-bright: #6f5615;
-  --brand-dim: rgba(138, 109, 31, 0.1);
+  --brand-dim: rgba(130, 101, 31, 0.1);
   --logo-plate: #14130f;
 
-  --series-1: #8a6d1f;
+  --series-1: #82651f;
+  --status-good: #0c770c;
+  --status-warning: #935905;
+  --status-serious: #c02913;
+  --status-critical: #bd2e2e;
   --profit: #046b04;
   --loss: #b02f2f;
 }
@@ -144,4 +152,47 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .stale-pulse { animation: none; }
+}
+
+/* ── phones ──────────────────────────────────────────────────────────────────
+   iOS Safari zooms the whole page when a field under 16px takes focus, and
+   does not zoom back out — the single most common reason a web app "feels
+   broken" on an iPhone. The design's 12px fields stay on desktop; on a touch
+   screen they go to 16px. !important because Tailwind's per-element text-size
+   utilities out-rank an element selector, and this has to win everywhere. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([aria-hidden="true"]),
+  select {
+    min-height: 44px;
+  }
+}
+
+/* Room for the fixed tab bar plus the home indicator. The bar is 56px. */
+.pb-tabbar {
+  padding-bottom: calc(56px + 1.5rem + env(safe-area-inset-bottom));
+}
+
+/* Launched from the home screen the status bar is translucent, so the header
+   has to clear the notch itself. In a normal browser tab the inset is 0. */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* A tap on a phone should not flash a grey box or wait for a double-tap check. */
+a,
+button,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Rubber-band overscroll on the page itself drags the fixed bars around. */
+html,
+body {
+  overscroll-behavior-y: none;
 }

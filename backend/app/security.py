@@ -122,6 +122,21 @@ def authenticate_ws_ticket(ticket: str) -> Principal:
 
 
 def client_ip(request: Request) -> str:
+    """The address a request should be throttled and audited under.
+
+    Every dashboard sign-in arrives from Vercel's servers, and Caddy sets
+    X-Forwarded-For to the peer it saw — Vercel, not the person. Keyed on that,
+    the login lockout is shared by everyone, and any bot's five wrong guesses
+    lock the operator out. The relay therefore forwards the real client address,
+    and it is believed only alongside the shared relay secret: a script calling
+    this API directly cannot mint its own address to dodge the lockout.
+    """
+    forwarded = request.headers.get("x-meridian-client-ip", "").strip()
+    presented = request.headers.get("x-meridian-relay", "")
+    secret = settings.relay_secret
+    if forwarded and secret and hmac.compare_digest(presented.encode(), secret.encode()):
+        return forwarded[:64]
+
     fwd = request.headers.get("x-forwarded-for")
     if fwd:
         return fwd.split(",")[0].strip()

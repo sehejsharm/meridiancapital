@@ -143,7 +143,7 @@ export default function AlgosPage() {
                   type="button"
                   aria-pressed={mode === m}
                   onClick={() => setMode(m)}
-                  className={`min-h-[36px] rounded-md border px-3 py-1.5 text-2xs transition-colors ${
+                  className={`min-h-[36px] rounded-md border px-3 py-1.5 text-2xs transition-colors touch:min-h-[44px] touch:px-4 ${
                     mode === m
                       ? m === "live"
                         ? "border-critical bg-critical/15 text-critical"
@@ -203,7 +203,55 @@ export default function AlgosPage() {
         {!data?.algos.length ? (
           <Empty>Nothing registered yet.</Empty>
         ) : (
-          <div className="-mx-4 overflow-x-auto px-4">
+          <>
+          {/* Phones: one card per algorithm, every action in reach of a thumb.
+              A table scrolled sideways puts Remove off the edge of the screen. */}
+          <ul className="divide-y divide-hairline md:hidden">
+            {data.algos.map((a) => (
+              <li key={a.id} className="py-3 first:pt-0 last:pb-0">
+                <div className="flex items-start justify-between gap-3">
+                  <Link href={`/algos/${a.id}`} className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-ink">{a.name}</span>
+                    <span className="mt-0.5 block text-2xs text-ink-muted">
+                      {a.kind} · {a.active ? `v${a.active.version}` : "no version"} ·{" "}
+                      {istDateTime(a.created_ts)}
+                    </span>
+                  </Link>
+                  <Badge tone={a.runtime.running ? "good" : "neutral"} dot={a.runtime.running}>
+                    {a.runtime.running ? "running" : "stopped"}
+                  </Badge>
+                </div>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <Badge tone={a.mode === "live" ? "critical" : "neutral"}>
+                    {a.mode === "live" ? "real money" : "paper"}
+                  </Badge>
+                  {a.gate.status !== "none" && (
+                    <Badge tone={a.gate.status === "passed" ? "good" : a.gate.status === "failed" ? "warning" : "neutral"}>
+                      gate {a.gate.status}
+                    </Badge>
+                  )}
+                  <span className="ml-auto flex gap-2">
+                    {a.kind === "builtin" ? null : removing === a.id ? (
+                      <>
+                        <Button variant="danger" disabled={busy} onClick={() => void remove(a.id)}>
+                          {a.runtime.running ? "Stop + remove" : "Remove"}
+                        </Button>
+                        <Button variant="ghost" disabled={busy} onClick={() => setRemoving(null)}>
+                          Keep
+                        </Button>
+                      </>
+                    ) : (
+                      <Button variant="ghost" disabled={busy} onClick={() => setRemoving(a.id)}>
+                        Remove
+                      </Button>
+                    )}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <div className="-mx-4 hidden overflow-x-auto px-4 md:block">
             <table className="w-full min-w-[640px] text-xs">
               <thead>
                 <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">
@@ -273,6 +321,7 @@ export default function AlgosPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </Card>
     </div>

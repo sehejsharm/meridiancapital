@@ -31,6 +31,10 @@ class Settings:
     token_ttl_min: int = int(os.environ.get("MERIDIAN_TOKEN_TTL_MIN", "720"))
     ws_ticket_ttl_sec: int = int(os.environ.get("MERIDIAN_WS_TICKET_TTL_SEC", "60"))
 
+    # Shared with the dashboard's relay so it can say who is really signing in.
+    # Empty disables the feature; see security.client_ip.
+    relay_secret: str = field(default_factory=lambda: os.environ.get("MERIDIAN_RELAY_SECRET", ""))
+
     # network
     cors_origins: list[str] = field(
         default_factory=lambda: _csv_env("MERIDIAN_CORS_ORIGINS", "http://localhost:3000")

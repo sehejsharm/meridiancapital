@@ -52,7 +52,7 @@ export function AlgoCard({
             />
             <Link
               href={`/algos/${algo.id}`}
-              className="truncate text-sm font-semibold text-ink hover:text-brand"
+              className="-my-3 block truncate py-3 text-sm font-semibold text-ink hover:text-brand"
             >
               {algo.name}
             </Link>

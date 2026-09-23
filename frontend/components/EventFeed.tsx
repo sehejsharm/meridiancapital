@@ -51,7 +51,7 @@ export function EventFeed({
               key={f.id}
               type="button"
               onClick={() => setFilter(f.id)}
-              className={`rounded px-2 py-1 text-2xs font-medium uppercase tracking-[0.1em] transition-colors ${
+              className={`rounded px-2 py-1 text-2xs font-medium uppercase tracking-[0.1em] transition-colors touch:min-h-[40px] touch:px-3 ${
                 filter === f.id
                   ? "bg-brand-dim text-brand"
                   : "text-ink-muted hover:text-ink-secondary"

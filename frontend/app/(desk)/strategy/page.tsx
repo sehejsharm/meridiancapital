@@ -226,7 +226,7 @@ export default function StrategyPage() {
                         onChange={(e) =>
                           setDraft((d) => ({ ...d, [p.key]: storeFor(p, e.target.value) }))
                         }
-                        className={`w-28 rounded-md border bg-surface-raised px-2.5 py-1.5 text-right text-xs tabular-nums text-ink outline-none focus:border-brand ${
+                        className={`w-28 rounded-md border bg-surface-raised px-2.5 py-1.5 text-right text-xs tabular-nums text-ink outline-none focus:border-brand touch:min-h-[44px] ${
                           isDefault ? "border-hairline" : "border-warning/60"
                         }`}
                       />

@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 /**
  * Colours are declared as CSS custom properties in globals.css so light and dark
@@ -37,7 +38,14 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // `touch:` applies on coarse pointers — phones and tablets — regardless of
+    // width, so a landscape phone still gets finger-sized targets and a narrow
+    // desktop window does not get oversized ones.
+    plugin(({ addVariant }) => {
+      addVariant("touch", "@media (pointer: coarse)");
+    }),
+  ],
 };
 
 export default config;

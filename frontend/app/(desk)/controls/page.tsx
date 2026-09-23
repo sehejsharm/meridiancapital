@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { EmergencyStop } from "@/components/EmergencyStop";
-import { PasskeyManager } from "@/components/PasskeyManager";
 import { Badge, Button, Card, Empty, Field } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { istDateTime } from "@/lib/format";
@@ -57,8 +56,6 @@ export default function ControlsPage() {
       <EmergencyStop onDone={refresh} />
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <PasskeyManager />
-
         <Card
           title="Engine"
           subtitle="The trading process itself"
@@ -407,7 +404,7 @@ function HolidayCalendar({ onNotice }: { onNotice: (n: Notice) => void }) {
       action={<Badge tone="neutral">{holidays.length} dates</Badge>}
     >
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex-1 text-2xs uppercase tracking-[0.12em] text-ink-muted">
+        <label className="w-full min-w-0 text-2xs uppercase tracking-[0.12em] text-ink-muted sm:w-auto sm:flex-1">
           Date
           <input
             type="date"
@@ -416,7 +413,7 @@ function HolidayCalendar({ onNotice }: { onNotice: (n: Notice) => void }) {
             className="mt-1 w-full rounded-md border border-hairline bg-surface-raised px-3 py-2 text-sm text-ink outline-none focus:border-brand"
           />
         </label>
-        <label className="flex-[2] text-2xs uppercase tracking-[0.12em] text-ink-muted">
+        <label className="w-full min-w-0 text-2xs uppercase tracking-[0.12em] text-ink-muted sm:w-auto sm:flex-[2]">
           Label
           <input
             value={label}

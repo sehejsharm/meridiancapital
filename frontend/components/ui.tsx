@@ -51,10 +51,10 @@ export function StatTile({
   tone?: "neutral" | "brand";
 }) {
   return (
-    <div className="rounded-lg border border-hairline bg-surface px-4 py-3">
-      <div className="text-2xs uppercase tracking-[0.14em] text-ink-muted">{label}</div>
+    <div className="min-w-0 rounded-lg border border-hairline bg-surface px-3 py-3 sm:px-4">
+      <div className="truncate text-2xs uppercase tracking-[0.14em] text-ink-muted">{label}</div>
       <div
-        className={`mt-1.5 text-2xl font-semibold tabular-nums ${
+        className={`mt-1.5 truncate text-xl font-semibold tabular-nums sm:text-2xl ${
           tone === "brand" ? "text-brand" : "text-ink"
         }`}
       >
@@ -215,7 +215,7 @@ export function Button({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${styles} ${full ? "w-full" : ""}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] transition-colors touch:min-h-[44px] touch:px-4 disabled:cursor-not-allowed disabled:opacity-40 ${styles} ${full ? "w-full" : ""}`}
     >
       {children}
     </button>

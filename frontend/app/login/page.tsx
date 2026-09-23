@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { PinPad } from "@/components/PinPad";
 import { Button } from "@/components/ui";
+import { HONEYPOT_FIELD } from "@/lib/honeypot";
 import {
   describeWebAuthnError,
   getAssertion,
@@ -24,6 +25,7 @@ function LoginForm() {
   const [busy, setBusy] = useState(false);
   const [faceIdReady, setFaceIdReady] = useState(false);
   const attempted = useRef(false);
+  const trap = useRef("");
 
   // Remember how this operator signs in. Per-browser convenience only — wrapped
   // because storage throws in a private window.
@@ -76,7 +78,7 @@ function LoginForm() {
         const res = await fetch("/api/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: value }),
+          body: JSON.stringify({ password: value, [HONEYPOT_FIELD]: trap.current }),
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { detail?: string };
@@ -145,6 +147,23 @@ function LoginForm() {
         <h1 className="mt-4 text-lg font-semibold tracking-[0.22em] text-ink">MERIDIAN</h1>
         <p className="text-2xs tracking-[0.34em] text-brand">CAPITAL</p>
       </div>
+
+      {/* Decoy for form-filling bots. Off-screen rather than display:none —
+          the cruder bots skip hidden fields but fill anything laid out — and
+          out of the tab order and the accessibility tree, so no person ever
+          reaches it. */}
+      <input
+        type="text"
+        name={HONEYPOT_FIELD}
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        defaultValue=""
+        onChange={(e) => {
+          trap.current = e.target.value;
+        }}
+        className="pointer-events-none absolute -left-[9999px] top-0 h-px w-px opacity-0"
+      />
 
       {mode === "passphrase" ? (
         <form
@@ -238,7 +257,7 @@ function LoginForm() {
         <button
           type="button"
           onClick={() => chooseMode(mode === "passphrase" ? "keypad" : "passphrase")}
-          className="text-2xs uppercase tracking-[0.12em] text-ink-muted underline underline-offset-4 transition-colors hover:text-brand"
+          className="inline-flex min-h-[44px] items-center px-3 text-2xs uppercase tracking-[0.12em] text-ink-muted underline underline-offset-4 transition-colors hover:text-brand"
         >
           {mode === "passphrase" ? "Use the number keypad" : "Use a password instead"}
         </button>

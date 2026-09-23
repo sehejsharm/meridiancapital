@@ -69,21 +69,10 @@ script again.
 
 ### Face ID / Touch ID
 
-WebAuthn binds a credential to the origin of the **page**, which is the Vercel
-dashboard, not this API. Both must be set in `/etc/meridian/meridian.env`:
-
-```bash
-MERIDIAN_RP_ID='meridiancapital.vercel.app'
-MERIDIAN_RP_ORIGIN='https://meridiancapital.vercel.app'
-```
-
-Use your own domain if you have one pointed at the dashboard. Getting these
-wrong produces a credential the browser refuses to use — it fails closed, it
-does not silently weaken anything.
-
-Then, from the phone: sign in with the PIN, open **Controls**, and press *Enrol
-this device*. The private key stays in the phone's secure enclave; the server
-stores only a public key and a counter. Remove a lost device from the same card.
+Removed from the dashboard. The control plane's passkey endpoints are still there
+and dormant — with no enrolment card no device can be enrolled, so the login page
+never offers Face ID. The enrolment UI can be restored from git history
+(`frontend/components/PasskeyManager.tsx`) if it is wanted again.
 
 ## 3. Install
 
@@ -164,6 +153,23 @@ it would ship your API origin to every browser.
 
 Deploy, then go back and make sure `MERIDIAN_CORS_ORIGINS` on the VM matches the Vercel
 URL you were assigned, and `systemctl restart meridian-api`.
+
+### Recommended: the relay secret
+
+Every sign-in through the dashboard reaches the VM from Vercel's servers, so without
+this the login lockout is keyed on Vercel's address — shared by everyone — and a bot's
+five wrong guesses lock you out too. With a shared secret the dashboard forwards the
+real visitor's address and the lockout lands on whoever is guessing. On the VM:
+
+```bash
+S=$(openssl rand -hex 32)
+echo "MERIDIAN_RELAY_SECRET=$S" | sudo tee -a /etc/meridian/meridian.env >/dev/null
+sudo systemctl restart meridian-api
+echo "$S"        # copy this
+```
+
+Then in Vercel add `MERIDIAN_RELAY_SECRET` with that value (not `NEXT_PUBLIC_`), and
+redeploy. Unset on either side, the old behaviour stands; nothing breaks.
 
 > Vercel gives each preview deployment its own URL. If you want previews to work, add
 > them to `MERIDIAN_CORS_ORIGINS` as a comma-separated list — or just use production.
