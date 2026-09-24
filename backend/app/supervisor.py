@@ -38,6 +38,11 @@ def outfile_for(algo_id: str) -> Path:
 
 PIDFILE = pidfile_for(DEFAULT_ALGO)
 STOP_GRACE_SEC = 25.0
+# A program squares off on Ctrl-C before it exits: cancel its resting exit
+# orders, confirm, sell, book. On a slow broker day that takes longer than an
+# engine's shutdown, and cutting it short with SIGTERM would leave the booking
+# half done.
+PROGRAM_STOP_GRACE_SEC = 75.0
 OUTPUT_TAIL_LINES = 20
 OUTPUT_TAIL_BYTES = 8192
 
@@ -297,7 +302,9 @@ class Supervisor:
             return {"ok": True, "detail": "engine was not running"}
 
         pid = self.state.pid
+        grace = STOP_GRACE_SEC
         if self.is_program(pid):
+            grace = PROGRAM_STOP_GRACE_SEC
             # A program never reads the engine's command queue. SIGINT is the
             # Ctrl-C a program is written to handle — it saves its state and
             # reports before exiting — so it gets that first.
@@ -312,7 +319,7 @@ class Supervisor:
                 return {"ok": True, "detail": "program already gone"}
         else:
             self.db.enqueue_command("stop", {"reason": reason, "force": force}, issued_by=trigger)
-        deadline = time.time() + STOP_GRACE_SEC
+        deadline = time.time() + grace
         while time.time() < deadline:
             time.sleep(0.5)
             self.refresh()
@@ -320,7 +327,7 @@ class Supervisor:
                 return {"ok": True, "detail": "engine stopped gracefully"}
 
         self.db.add_event(
-            "warn", f"engine did not stop within {STOP_GRACE_SEC:.0f}s — sending SIGTERM",
+            "warn", f"engine did not stop within {grace:.0f}s — sending SIGTERM",
             source="supervisor", algo_id=self.algo_id,
         )
         try:

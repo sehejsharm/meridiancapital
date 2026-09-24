@@ -145,6 +145,29 @@ def test_stopping_sends_ctrl_c_so_the_program_can_clean_up(fleet, tmp_db):
     assert (here / "stopped.txt").read_text() == "clean", "the program was killed, not interrupted"
 
 
+SLOW_EXIT = PROGRAM.replace(
+    'open(os.path.join(HERE, "stopped.txt"), "w").write("clean")',
+    'time.sleep(1.5); open(os.path.join(HERE, "stopped.txt"), "w").write("clean")',
+)
+
+
+def test_a_program_gets_longer_to_square_off_than_an_engine(fleet, tmp_db, monkeypatch):
+    """Its Ctrl-C handler sells and books before exiting; SIGTERM mid-way would
+    leave the booking half done."""
+    from app import programs, supervisor
+
+    monkeypatch.setattr(supervisor, "STOP_GRACE_SEC", 0.5)
+    monkeypatch.setattr(supervisor, "PROGRAM_STOP_GRACE_SEC", 6.0)
+    register(tmp_db, "slow", SLOW_EXIT)
+    fleet.start("slow")
+    here = programs.program_path("slow").parent
+    assert wait_for(lambda: (here / "argv.txt").exists())
+    time.sleep(0.3)
+    res = fleet.stop("slow", reason="test")
+    assert res["ok"] is True and "gracefully" in res["detail"]
+    assert (here / "stopped.txt").read_text() == "clean", "cut off before it finished squaring off"
+
+
 def test_an_api_restart_recognises_a_running_program(fleet, tmp_db):
     """Otherwise the scheduler would start a second copy trading the account."""
     from app.supervisor import _is_engine
