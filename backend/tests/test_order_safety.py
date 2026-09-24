@@ -258,7 +258,9 @@ def test_the_builtin_satisfies_the_contract():
     assert missing_members(Path("engine/builtin_gk50k.py").read_text()) == []
 
 
-def test_starting_a_standalone_upload_is_refused_with_the_reason(tmp_db):
+def test_a_standalone_program_without_a_paper_switch_is_refused_with_the_reason(tmp_db):
+    """Standalone programs run as written (tests/test_programs.py) — but one that
+    cannot be told paper from live is not started, since 'paper' could trade."""
     from app.fleet import Fleet
 
     class Sup:
@@ -283,7 +285,7 @@ def test_starting_a_standalone_upload_is_refused_with_the_reason(tmp_db):
     fleet = Fleet(tmp_db, supervisor_factory=Sup)
     res = fleet.start("og")
     assert res["ok"] is False
-    assert "signal()" in res["detail"] and "standalone" in res["detail"]
+    assert "paper from live" in res["detail"]
     assert fleet.get("og").started is False
 
 
@@ -340,3 +342,59 @@ def test_paper_runs_alongside_a_live_algorithm(tmp_db):
     fleet = Fleet(tmp_db, supervisor_factory=Sup)
     assert fleet.start("gk50k")["ok"] is True
     assert fleet.start("paper-one")["ok"] is True
+
+
+# ── the mode an algorithm actually runs in ───────────────────────────────────
+def test_choosing_real_money_for_the_builtin_is_what_its_engine_runs(tmp_db):
+    """The run dialog wrote the algorithm's record while the built-in's engine
+    read a separate global setting — so real money quietly started on paper."""
+    from app.supervisor import DEFAULT_ALGO, Supervisor
+    from shared.db import K_MODE
+
+    tmp_db.upsert_algo(DEFAULT_ALGO, "GANESH KAVACH 50K", kind="builtin")
+    tmp_db.set_algo_fields(DEFAULT_ALGO, mode="paper")
+    tmp_db.kv_set(K_MODE, "paper")
+    sup = Supervisor(tmp_db, algo_id=DEFAULT_ALGO)
+
+    sup.set_mode("live")
+    assert sup.desired_mode() == "live"
+    assert tmp_db.algo(DEFAULT_ALGO)["mode"] == "live"
+    assert tmp_db.kv_get(K_MODE) == "live", "the global mirror drifted from the record"
+
+
+def test_the_record_wins_over_a_stale_global_setting(tmp_db):
+    from app.supervisor import DEFAULT_ALGO, Supervisor
+    from shared.db import K_MODE
+
+    tmp_db.upsert_algo(DEFAULT_ALGO, "GANESH KAVACH 50K", kind="builtin")
+    tmp_db.set_algo_fields(DEFAULT_ALGO, mode="live")
+    tmp_db.kv_set(K_MODE, "paper")
+    assert Supervisor(tmp_db, algo_id=DEFAULT_ALGO).desired_mode() == "live"
+
+
+def test_the_start_dialog_choice_reaches_the_builtin_engine():
+    """End to end through the API: pick real money for the built-in and the
+    mode its engine is started in is live."""
+    import os
+
+    from fastapi.testclient import TestClient
+
+    from app import deps
+    from app.config import settings
+    from tests.test_api import PASSWORD, FakeSupervisor
+
+    import tempfile
+    from pathlib import Path
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(settings, "db_path", Path(tempfile.mkdtemp()) / "mode.db")
+        mp.setattr(settings, "password_hash", os.environ["MERIDIAN_PASSWORD_HASH"])
+        mp.setattr(deps, "Supervisor", FakeSupervisor)
+        from app.main import app
+
+        with TestClient(app) as c:
+            tok = c.post("/api/auth/login", json={"password": PASSWORD}).json()["token"]
+            h = {"Authorization": f"Bearer {tok}"}
+            r = c.post("/api/algos/gk50k/start", json={"mode": "live"}, headers=h)
+            assert r.status_code == 200, r.json()
+            assert deps.ctx().fleet.get("gk50k").desired_mode() == "live"

@@ -88,10 +88,11 @@ export default function AlgosPage() {
   return (
     <div className="space-y-5">
       <div className="rounded-lg border border-hairline bg-surface-raised px-4 py-3 text-xs text-ink-secondary">
-        <strong className="font-semibold text-ink">Your code, your call.</strong> Every upload is
-        put through the checks on the right and the findings are shown to you, but nothing is
-        blocked — the gate gauges internal coherence and cannot tell a profitable strategy from a
-        losing one. You pick paper or real money when you start it.
+        <strong className="font-semibold text-ink">Your code, your call.</strong> Upload a strategy
+        module and the engine trades it, after the checks on the right (advisory — nothing is
+        blocked). Upload a complete trading program — one that logs in and places its own orders —
+        and it runs exactly as written, started with <code className="text-ink">--paper</code> or{" "}
+        <code className="text-ink">--live</code>. You pick paper or real money when you start it.
       </div>
 
       {error && (
@@ -228,7 +229,7 @@ export default function AlgosPage() {
                   </Badge>
                   {a.gate.status !== "none" && (
                     <Badge tone={a.gate.status === "passed" ? "good" : a.gate.status === "failed" ? "warning" : "neutral"}>
-                      gate {a.gate.status}
+                      {a.gate.status === "program" ? "program" : `gate ${a.gate.status}`}
                     </Badge>
                   )}
                   <span className="ml-auto flex gap-2">

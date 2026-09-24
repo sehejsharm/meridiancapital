@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from app.algo_store import MAX_SOURCE_BYTES, run_gate, sha256, slugify
+from app.programs import mode_arguments, runtime_of
 from app.deps import ctx
 from app import shadow
 from app.security import Principal, client_ip, require_auth
@@ -66,6 +67,10 @@ def _algo_view(db, algo: dict) -> dict:
         "versions": history,
         "active": {k: v for k, v in (active or {}).items() if k != "source"} or None,
         "gate": versions.summary(active),
+        "runtime_kind": (
+            "builtin" if algo.get("kind") == "builtin"
+            else runtime_of(active["source"]) if active else "none"
+        ),
         "runtime": sup,
         "shadow_of": algo.get("shadow_of"),
     }
@@ -115,11 +120,29 @@ async def upload_algo(
     version_id = db.add_version(algo_id, body.source, sha256(body.source), principal.subject)
     version = db.version(version_id)
 
-    report = run_gate(body.source)
-    passed = bool(report.get("passed"))
-    db.set_version_status(
-        version_id, versions.STATUS_PASSED if passed else versions.STATUS_FAILED, report
-    )
+    kind = runtime_of(body.source)
+    if kind == "program":
+        # The gate tests strategy modules; a complete program is run as it is,
+        # so there is nothing for it to check. Say what it is instead.
+        switch = mode_arguments(body.source)
+        if switch is None:
+            note = ("standalone program with no paper/live switch — it will not be started until "
+                    "it accepts --paper/--live or reads MERIDIAN_TRADING_MODE")
+        else:
+            how = "--paper / --live" if switch["paper"] else "MERIDIAN_TRADING_MODE"
+            note = f"standalone program — runs as its own process, told its mode with {how}"
+        report = {
+            "passed": True, "program": True, "total": 0, "failed": 0, "checks": [],
+            "error": None, "note": note,
+        }
+        passed = True
+        db.set_version_status(version_id, versions.STATUS_PROGRAM, report)
+    else:
+        report = run_gate(body.source)
+        passed = bool(report.get("passed"))
+        db.set_version_status(
+            version_id, versions.STATUS_PASSED if passed else versions.STATUS_FAILED, report
+        )
 
     _audit(
         request, principal, "algo.upload",
@@ -145,8 +168,11 @@ async def upload_algo(
         "passed": passed,
         "report": report,
         "mode": mode,
+        "kind": kind,
         "next": (
-            "ready to run — start it when you want it trading"
+            "standalone program — it runs exactly as written, as its own process"
+            if kind == "program"
+            else "ready to run — start it when you want it trading"
             if passed
             else "ready to run, but the gate flagged the checks below — worth a look first"
         ),
@@ -213,7 +239,7 @@ async def set_mode(
             ),
         )
 
-    db.set_algo_fields(algo_id, mode=body.mode)
+    ctx().fleet.set_mode(algo_id, body.mode)
     _audit(request, principal, "algo.mode", f"{algo_id} -> {body.mode}")
     db.add_event(
         "critical" if body.mode == "live" else "info",
@@ -250,7 +276,7 @@ async def start_algo(
         raise HTTPException(
             status_code=409, detail="a shadow is a paper twin and cannot place real orders"
         )
-    db.set_algo_fields(algo_id, mode=mode)
+    ctx().fleet.set_mode(algo_id, mode)
 
     _audit(request, principal, "algo.start", f"{algo_id} mode={mode}")
     res = ctx().fleet.start(algo_id, trigger=f"manual:{principal.subject}")

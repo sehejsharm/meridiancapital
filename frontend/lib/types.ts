@@ -303,6 +303,9 @@ export interface GateReport {
   checks: GateCheck[];
   scan?: { ok: boolean; errors: string[]; imports: string[] };
   name?: string;
+  /** Set for a standalone program: it runs as written, so nothing was gated. */
+  program?: boolean;
+  note?: string;
 }
 
 export interface AlgoVersion {
@@ -312,7 +315,7 @@ export interface AlgoVersion {
   created_ts: string;
   uploaded_by: string | null;
   sha256: string;
-  status: "pending" | "passed" | "failed";
+  status: "pending" | "passed" | "failed" | "program";
   gate_report: string | null;
 }
 
@@ -335,6 +338,9 @@ export interface Algo {
   versions: AlgoVersion[];
   active: AlgoVersion | null;
   gate: GateSummary;
+  /** How it runs: the built-in, a strategy module the engine calls, or a
+   *  standalone program started as its own process. */
+  runtime_kind?: "builtin" | "strategy" | "program" | "invalid" | "none";
   runtime: { running: boolean; pid: number | null; mode: string };
   /** Set when this registration is the paper twin of another algorithm. */
   shadow_of: string | null;

@@ -12,11 +12,19 @@ worth anything as a rehearsal.
 
 from __future__ import annotations
 
+import sys
 import threading
 
 from app.algo_store import materialise
 from app.supervisor import DEFAULT_ALGO, Supervisor
-from engine.contract import looks_standalone, missing_members
+from app.programs import (
+    install_hint,
+    materialise_program,
+    missing_packages,
+    mode_arguments,
+    runtime_of,
+)
+from engine.contract import missing_members
 from shared.db import Database
 
 
@@ -116,21 +124,54 @@ class Fleet:
                     "detail": "this algorithm has no active version — open it and activate one, "
                     "or upload it again",
                 }
-            # Starting a file the engine cannot call would only crash-loop the
-            # engine; say why instead. This reads the source, it never runs it.
-            missing = missing_members(version["source"])
-            if missing:
-                detail = f"this file cannot run as a strategy — it does not define {', '.join(missing)}."
-                if looks_standalone(version["source"]):
-                    detail += (
-                        " It is a standalone trading program (it logs in and places its own "
-                        "orders), not a strategy module. The built-in GANESH KAVACH 50K runs "
-                        "this strategy under the engine's order handling."
-                    )
-                return {"ok": False, "detail": detail}
-            sup.strategy_path = materialise(algo_id, version["version"], version["source"])
+            source = version["source"]
+            kind = runtime_of(source)
+            if kind == "program":
+                problem = self._program_problem(source)
+                if problem:
+                    return {"ok": False, "detail": problem}
+                sup.strategy_path = None
+                sup.program_path = materialise_program(algo_id, source)
+                sup.program_args = mode_arguments(source) or {}
+            elif kind == "strategy":
+                sup.program_path = None
+                sup.strategy_path = materialise(algo_id, version["version"], source)
+            else:
+                # Neither a module the engine can call nor a program that runs
+                # itself; starting it would only crash-loop. Say why instead.
+                missing = missing_members(source)
+                return {
+                    "ok": False,
+                    "detail": f"this file cannot run: it neither defines the strategy functions "
+                    f"({', '.join(missing)}) nor runs itself (no `if __name__ == \"__main__\":` block).",
+                }
 
         return sup.start(trigger=trigger)
+
+    def set_mode(self, algo_id: str, mode: str) -> None:
+        sup = self.get(algo_id)
+        if sup is None:
+            raise KeyError(algo_id)
+        sup.set_mode(mode)
+
+    @staticmethod
+    def _program_problem(source: str) -> str | None:
+        """Why a program cannot be started safely, or None."""
+        if mode_arguments(source) is None:
+            return (
+                "this program has no way to be told paper from live — it defines no --paper/--live "
+                "flags and does not read MERIDIAN_TRADING_MODE — so starting it on paper could "
+                "place real orders. Add either and upload it again."
+            )
+        missing = missing_packages(source)
+        if missing:
+            from app.config import settings
+
+            return (
+                f"this program imports {', '.join(missing)}, which is not installed on the VM. "
+                f"Install it with: {install_hint(missing, settings.python_bin or sys.executable)}"
+            )
+        return None
 
     def stop(
         self, algo_id: str, reason: str = "manual", force: bool = False, manual: bool = True

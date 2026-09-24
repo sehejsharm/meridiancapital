@@ -84,6 +84,12 @@ def materialise(algo_id: str, version: int, source: str) -> Path:
     """Write a gated version to disk so an engine process can import it."""
     ALGO_DIR.mkdir(parents=True, exist_ok=True)
     path = ALGO_DIR / f"{algo_id}_v{version}.py"
+    # The file is left read-only, so a second start of the same version cannot
+    # rewrite it in place — as a non-root service user that is a permission
+    # error. Identical content is left alone; anything else is replaced.
+    if path.exists() and path.read_text(encoding="utf-8") == source:
+        return path
+    path.unlink(missing_ok=True)
     path.write_text(source, encoding="utf-8")
     path.chmod(0o440)
     return path

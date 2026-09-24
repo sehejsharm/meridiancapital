@@ -17,6 +17,20 @@ export function GateReport({ report }: { report: Report }) {
   );
   const scanFailed = report.scan && !report.scan.ok;
 
+  if (report.program) {
+    return (
+      <div className="rounded-lg border border-brand/40 bg-brand-dim px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand">
+          Standalone program
+        </p>
+        <p className="mt-1.5 text-xs text-ink-secondary">
+          {report.note ??
+            "It runs exactly as written, as its own process. The strategy checks do not apply."}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div

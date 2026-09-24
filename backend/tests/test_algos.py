@@ -42,9 +42,15 @@ class FakeSupervisor:
         self.state = FakeState()
 
     def desired_mode(self):
-        return self.mode_provider() if self.mode_provider else self.state.mode
+        if self.mode_provider:
+            return self.mode_provider()
+        algo = self.db.algo(self.algo_id)
+        return (algo or {}).get("mode") or self.state.mode
 
     def set_mode(self, mode):
+        # As the real supervisor: the algorithm's record is where a mode lives.
+        if self.db.algo(self.algo_id):
+            self.db.set_algo_fields(self.algo_id, mode=mode)
         self.state.mode = mode
 
     def refresh(self):

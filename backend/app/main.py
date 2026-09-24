@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.deps import build_context, ctx
+from app.program_output import ProgramOutput
 from app.routers import algos, auth, control, data, desk, tuning, ws
 from engine.clock import now_ist
 from engine.config import BANNER, BUILD_VERSION
@@ -37,11 +38,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     )
     await c.hub.start()
     await c.sched.start()
+    programs_out = ProgramOutput(c.db, c.fleet)
+    await programs_out.start()
     # Reconcile immediately so a mid-session restart brings the engine back at once.
     c.sched.tick()
     try:
         yield
     finally:
+        await programs_out.stop()
         await c.sched.stop()
         await c.hub.stop()
         c.db.add_event("info", "API shutting down (engine left running)", source="api")

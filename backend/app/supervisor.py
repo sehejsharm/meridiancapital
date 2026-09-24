@@ -71,13 +71,24 @@ def _tail(path: Path, max_bytes: int = OUTPUT_TAIL_BYTES, max_lines: int = OUTPU
     return [line for line in text.splitlines() if line.strip()][-max_lines:]
 
 
-def _is_engine(pid: int) -> bool:
-    """Guard against a recycled PID belonging to some unrelated process."""
+def _cmdline(pid: int) -> str:
     try:
-        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode()
+        return Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode()
     except OSError:
-        return False
-    return "engine.runner" in cmdline
+        return ""
+
+
+def _is_engine(pid: int) -> bool:
+    """Guard against a recycled PID belonging to some unrelated process.
+
+    A standalone program counts too: without this, an API restart would not
+    recognise a running program, and the scheduler would start a second copy
+    of it trading the same account.
+    """
+    from app.programs import is_program_cmdline
+
+    cmdline = _cmdline(pid)
+    return "engine.runner" in cmdline or is_program_cmdline(cmdline)
 
 
 @dataclass
@@ -112,6 +123,10 @@ class Supervisor:
         # the operator setting in kv; uploaded algorithms carry their own.
         self._mode_provider = mode_provider
         self.strategy_path = strategy_path
+        # Set when this algorithm is a standalone program rather than a
+        # strategy module: its path, and the arguments that select each mode.
+        self.program_path: Path | None = None
+        self.program_args: dict[str, list[str]] = {}
         self._init(db)
 
     def _init(self, db: Database):
@@ -124,16 +139,27 @@ class Supervisor:
     def desired_mode(self) -> str:
         if self._mode_provider is not None:
             return "live" if self._mode_provider() == "live" else "paper"
-        return self._desired_mode_from_kv()
+        return self._stored_mode()
 
-    def _desired_mode_from_kv(self) -> str:
-        mode = self.db.kv_get(K_MODE, settings.default_mode)
+    def _stored_mode(self) -> str:
+        """The algorithm's own record is the one source of truth for its mode.
+
+        The built-in used to read a separate global setting while the run
+        dialog wrote the record, so choosing real money for it started the
+        engine on paper. The global setting now only mirrors the built-in's
+        record, and is read only where no record exists yet.
+        """
+        algo = self.db.algo(self.algo_id)
+        mode = (algo or {}).get("mode") or self.db.kv_get(K_MODE, settings.default_mode)
         return "live" if mode == "live" else "paper"
 
     def set_mode(self, mode: str) -> None:
         if mode not in ("paper", "live"):
             raise ValueError("mode must be 'paper' or 'live'")
-        self.db.kv_set(K_MODE, mode)
+        if self.db.algo(self.algo_id):
+            self.db.set_algo_fields(self.algo_id, mode=mode)
+        if self.algo_id == DEFAULT_ALGO:
+            self.db.kv_set(K_MODE, mode)
         self.state.mode = mode
 
     # ── discovery ────────────────────────────────────────────────────────────
@@ -206,9 +232,15 @@ class Supervisor:
         env["MERIDIAN_TRADING_MODE"] = mode
         env["PYTHONUNBUFFERED"] = "1"
         python = settings.python_bin or sys.executable
-        cmd = [python, "-m", "engine.runner", "--mode", mode, "--algo", self.algo_id]
-        if self.strategy_path is not None:
-            cmd += ["--strategy", str(self.strategy_path)]
+        cwd = str(settings.backend_dir)
+        if self.program_path is not None:
+            # A complete program, run as it would be by hand, told its mode.
+            cmd = [python, "-u", str(self.program_path), *self.program_args.get(mode, [])]
+            cwd = str(self.program_path.parent)
+        else:
+            cmd = [python, "-m", "engine.runner", "--mode", mode, "--algo", self.algo_id]
+            if self.strategy_path is not None:
+                cmd += ["--strategy", str(self.strategy_path)]
         env["MERIDIAN_ALGO_ID"] = self.algo_id
         # An engine that dies before telemetry is up — a bad credential, a
         # failed import — writes its only explanation to stderr. Discarding it
@@ -226,7 +258,7 @@ class Supervisor:
         try:
             proc = subprocess.Popen(
                 cmd,
-                cwd=str(settings.backend_dir),
+                cwd=cwd,
                 env=env,
                 stdout=out or subprocess.DEVNULL,
                 stderr=subprocess.STDOUT if out else subprocess.DEVNULL,
@@ -264,7 +296,21 @@ class Supervisor:
             return {"ok": True, "detail": "engine was not running"}
 
         pid = self.state.pid
-        self.db.enqueue_command("stop", {"reason": reason, "force": force}, issued_by=trigger)
+        if self.is_program(pid):
+            # A program never reads the engine's command queue. SIGINT is the
+            # Ctrl-C a program is written to handle — it saves its state and
+            # reports before exiting — so it gets that first.
+            self.db.add_event(
+                "info", f"stopping program (pid {pid}) with SIGINT — {reason}",
+                source="supervisor", algo_id=self.algo_id,
+            )
+            try:
+                os.kill(pid, signal.SIGINT)
+            except ProcessLookupError:
+                self._mark_stopped(None, "already gone")
+                return {"ok": True, "detail": "program already gone"}
+        else:
+            self.db.enqueue_command("stop", {"reason": reason, "force": force}, issued_by=trigger)
         deadline = time.time() + STOP_GRACE_SEC
         while time.time() < deadline:
             time.sleep(0.5)
@@ -300,6 +346,13 @@ class Supervisor:
             return {"ok": True, "detail": "engine killed"}
         return {"ok": False, "detail": "engine did not stop; retry with force=true"}
 
+    def is_program(self, pid: int | None = None) -> bool:
+        if self.program_path is not None:
+            return True
+        from app.programs import is_program_cmdline
+
+        return bool(pid) and is_program_cmdline(_cmdline(pid))
+
     def restart(self, trigger: str = "manual") -> dict:
         self.stop(reason="restart", force=True, trigger=trigger)
         return self.start(trigger=trigger)
@@ -324,4 +377,5 @@ class Supervisor:
             "manual_override": s.manual_override,
             "last_start_error": s.last_start_error,
             "last_output": list(s.stdout_tail),
+            "kind": "program" if self.is_program(s.pid) else "engine",
         }

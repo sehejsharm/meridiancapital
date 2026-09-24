@@ -49,10 +49,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { snapshot, status, connection } = useLiveFeed();
 
-  const mode = snapshot?.engine.mode ?? status?.engine.mode ?? "paper";
   const running = status?.engine.running ?? false;
   const phase = running ? (snapshot?.engine.phase ?? "STARTING") : "STOPPED";
   const liveCount = status?.fleet?.live_running ?? 0;
+  // The header speaks for the whole desk: any algorithm on real money makes it
+  // Live, not just the built-in engine whose status used to be the only input.
+  const builtinLive = running && (snapshot?.engine.mode ?? status?.engine.mode) === "live";
+  const mode = liveCount > 0 || builtinLive ? "live" : "paper";
 
   return (
     <div className="min-h-screen">

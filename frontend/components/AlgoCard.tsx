@@ -28,8 +28,10 @@ export function AlgoCard({
   onStop?: () => void;
   compact?: boolean;
 }) {
-  const live = algo.mode === "live";
   const running = algo.runtime?.running ?? false;
+  // A running algorithm is labelled with the mode its process is actually in;
+  // the saved setting only says what the next start will use.
+  const live = (running ? algo.runtime?.mode : algo.mode) === "live";
   const account = snapshot?.account;
   const position = snapshot?.position ?? null;
 
@@ -98,11 +100,15 @@ export function AlgoCard({
 
       <footer className="mt-auto flex items-center justify-between gap-3 border-t border-hairline px-4 py-2.5">
         <span className="truncate text-2xs text-ink-muted">
-          {algo.gate.status === "passed"
-            ? "gate passed"
-            : algo.gate.status === "failed"
-              ? "gate flagged issues"
-              : "not screened"}
+          {algo.runtime_kind === "program"
+            ? "standalone program"
+            : algo.runtime_kind === "builtin"
+              ? "built-in engine"
+              : algo.gate.status === "passed"
+                ? "gate passed"
+                : algo.gate.status === "failed"
+                  ? "gate flagged issues"
+                  : "not screened"}
         </span>
         {running ? (
           <Button variant="danger" onClick={onStop} disabled={busy}>

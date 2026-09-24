@@ -16,6 +16,8 @@ from __future__ import annotations
 STATUS_PENDING = "pending"
 STATUS_FAILED = "failed"
 STATUS_PASSED = "passed"
+# A complete program: run as written, so the strategy gate does not apply.
+STATUS_PROGRAM = "program"
 
 
 def gate_verdict(version: dict | None) -> str:
