@@ -203,6 +203,9 @@ def test_the_operators_imports_are_all_in_the_vm_requirements():
     }
     for module in ("pandas", "colorama", "pyotp", "SmartApi"):
         assert PIP_NAMES.get(module, module).lower() in declared, f"{module} is not installed on the VM"
+    # Imported by SmartApi's smartConnect.py but missing from its own metadata:
+    # without it the engine cannot log in at all.
+    assert "logzero" in declared
 
 
 def test_an_uploaded_program_is_labelled_not_gated(tmp_path, monkeypatch):

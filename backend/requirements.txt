@@ -8,6 +8,10 @@ webauthn==3.0.0  # Face ID / Touch ID sign-in (WebAuthn verification)
 pandas==2.2.3
 pyotp==2.9.0
 smartapi-python==1.5.5
+# smartapi-python imports logzero at the top of smartConnect.py but does not
+# declare it, so a clean install gives a SmartApi that fails on import and an
+# engine that exits 2 on every start. Pinned here so no install can miss it.
+logzero==1.7.0
 websocket-client==1.8.0
 
 # Standalone programs: packages the operator's own trading scripts import.
