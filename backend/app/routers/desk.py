@@ -9,7 +9,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import PlainTextResponse
 
-from app import health, logs, reports
+from app import health, logs, market, reports
 from app.deps import ctx
 from app.feeds import NewsFeed
 from app.security import require_auth
@@ -29,6 +29,20 @@ async def health_detail() -> dict:
 @router.get("/news")
 async def news(force: bool = Query(default=False)) -> dict:
     return _news.get(force=force)
+
+
+@router.get("/market/nifty")
+async def market_nifty() -> dict:
+    """Today's one-minute NIFTY candles for the deck's chart."""
+    import asyncio
+
+    return await asyncio.to_thread(market.nifty_chart, ctx().db)
+
+
+@router.get("/market/chain")
+async def market_chain() -> dict:
+    """The option chain around the traded contract, with volume, OI and Greeks."""
+    return market.option_chain(ctx().db)
 
 
 @router.get("/ticker")

@@ -12,6 +12,8 @@ import { RateGauges } from "@/components/RateGauges";
 import { RunModeDialog } from "@/components/RunModeDialog";
 import { StalenessMonitor } from "@/components/StalenessMonitor";
 import { TradingViewChart } from "@/components/TradingViewChart";
+import { NiftyChart } from "@/components/NiftyChart";
+import { OptionChain } from "@/components/OptionChain";
 import { Badge, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
 import { fetchAlgos } from "@/lib/algos";
@@ -32,6 +34,9 @@ export default function DeckPage() {
   const [equity, setEquity] = useState<EquityPoint[]>([]);
   const [trades, setTrades] = useState<TradeRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  // TradingView's free widget does not reliably carry NSE's NIFTY, so the
+  // chart drawn from Angel's own candles is the default.
+  const [chartView, setChartView] = useState<"native" | "tradingview">("native");
   const [notice, setNotice] = useState<string | null>(null);
 
   const loadAlgos = useCallback(async () => {
@@ -184,9 +189,32 @@ export default function DeckPage() {
 
       <div className="grid gap-5 xl:grid-cols-[3fr_2fr]">
         <div className="space-y-5">
-          <Card title="NIFTY 50" subtitle="Live price action from TradingView">
-            <TradingViewChart height={380} />
+          <Card
+            title="NIFTY 50"
+            subtitle={chartView === "native" ? "Today, one-minute candles" : "TradingView"}
+            action={
+              <div className="flex rounded-md border border-hairline p-0.5 text-2xs" role="tablist">
+                {(["native", "tradingview"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    role="tab"
+                    aria-selected={chartView === v}
+                    onClick={() => setChartView(v)}
+                    className={`rounded px-2.5 py-1 uppercase tracking-[0.1em] transition-colors touch:min-h-[36px] ${
+                      chartView === v ? "bg-brand-dim text-brand" : "text-ink-muted hover:text-ink"
+                    }`}
+                  >
+                    {v === "native" ? "Chart" : "TradingView"}
+                  </button>
+                ))}
+              </div>
+            }
+          >
+            {chartView === "native" ? <NiftyChart height={380} /> : <TradingViewChart height={380} />}
           </Card>
+
+          <OptionChain />
 
           <Card
             title="Equity and fills"

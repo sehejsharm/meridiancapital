@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import threading
 import time
 from collections import deque
 import urllib.request
@@ -90,11 +91,19 @@ class RateLimiter:
         self.throttle_count = {k: 0 for k in self.limits}
         self.waits = 0.0
         self.blocked = 0
+        # One lock per endpoint: the dashboard's market-data thread paces its
+        # quote calls here too, and must never make the trading loop wait on a
+        # different endpoint's pacing.
+        self._locks = {k: threading.Lock() for k in self.limits}
 
     def acquire(self, key: str) -> None:
         cap = self.limits.get(key)
         if not cap:
             return
+        with self._locks[key]:
+            self._acquire(key, cap)
+
+    def _acquire(self, key: str, cap: float) -> None:
         now = time.time()
         if now < self.throttled_until[key]:
             wait = self.throttled_until[key] - now
@@ -180,6 +189,14 @@ def is_rate_limited(resp) -> bool:
 
 
 TERMINAL_ORDER_STATES = ("complete", "rejected", "cancelled")
+
+
+def _num(v) -> float | None:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
 
 
 def _net_qty(row: dict) -> int:
@@ -473,6 +490,43 @@ class Broker:
                 continue  # unusable contract; a guessed lot size places a wrong-sized order
             tbl[(exp, strike, right)] = (sym, str(r.get("token")), lot)
         return tbl
+
+    def quotes(self, exch: str, tokens: list[str]) -> dict[str, dict] | None:
+        """Full quotes — price, volume, open interest, best bid and ask — for up
+        to 50 contracts in a single call. None if Angel could not be read."""
+        if not tokens:
+            return {}
+        try:
+            self.rl.acquire("quote")
+            r = self.api.getMarketData("FULL", {exch: [str(t) for t in tokens[:50]]})
+        except Exception as e:
+            self.log(f"quote read failed: {str(e)[:100]}", "debug")
+            return None
+        if is_rate_limited(r):
+            self.rl.penalise("quote", 10.0)
+            return None
+        if not (isinstance(r, dict) and r.get("status")):
+            return None
+        out: dict[str, dict] = {}
+        for q in (r.get("data") or {}).get("fetched") or []:
+            token = str(q.get("symbolToken") or q.get("symboltoken") or "")
+            if not token:
+                continue
+            depth = q.get("depth") or {}
+            best_bid = (depth.get("buy") or [{}])[0] or {}
+            best_ask = (depth.get("sell") or [{}])[0] or {}
+            out[token] = {
+                "ltp": _num(q.get("ltp")),
+                "change": _num(q.get("netChange")),
+                "change_pct": _num(q.get("percentChange")),
+                "volume": _num(q.get("tradeVolume")),
+                "oi": _num(q.get("opnInterest")),
+                "bid": _num(best_bid.get("price")),
+                "ask": _num(best_ask.get("price")),
+                "high": _num(q.get("high")),
+                "low": _num(q.get("low")),
+            }
+        return out
 
     # ── orders ───────────────────────────────────────────────────────────────
     def order_status(self, order_id, tries: int = 6, wait: float = 1.5):

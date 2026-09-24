@@ -50,6 +50,9 @@ RATE_LIMITS = {
     "order": 10.0,
     "orderbook": 1.5,
     "tradebook": 1.5,
+    # Option-chain quotes for the dashboard: one call covers the whole chain,
+    # and the feed asks every 15s — this cap only stops a runaway loop.
+    "quote": 0.5,
 }
 FUNDS_CACHE_SEC = 10.0
 POSITION_CACHE_SEC = 10.0

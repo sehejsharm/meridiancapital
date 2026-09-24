@@ -868,6 +868,11 @@ class Engine:
     def run(self) -> int:
         assert self.br is not None
         last_clock_check = time.time()
+        # The dashboard's chart and option chain, on their own thread.
+        from engine.market_feed import MarketFeed
+
+        self.feed = MarketFeed(self)
+        self.feed.start()
 
         while True:
             try:
@@ -892,6 +897,8 @@ class Engine:
 
                 market_open = is_market_hours(t)
                 spot = self.br.ltp(C.INDEX_EXCH, C.INDEX_TSYM, C.INDEX_TOKEN) if market_open else None
+                if spot:
+                    self.last_spot, self.last_spot_at = spot, time.time()
                 bars = self.br.one_min_bars() if market_open else None
                 if bars is None:
                     view, hi, lo = "", None, None
@@ -1078,6 +1085,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return eng.run()
     finally:
+        if getattr(eng, "feed", None):
+            eng.feed.stop()
         eng.publish_offline(eng.stop_reason or "exited")
         eng.db.expire_stale_commands()
 

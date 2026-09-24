@@ -483,3 +483,74 @@ export interface ShadowComparison {
     avg_drag_per_session: number | null;
   };
 }
+
+// ── market view ──────────────────────────────────────────────────────────────
+export interface NiftyBar {
+  /** IST wall-clock, as seconds since the epoch read as UTC. */
+  t: number;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+}
+
+export interface NiftyChartPayload {
+  source: "angel" | "yahoo" | null;
+  label: string | null;
+  bars: NiftyBar[];
+  age_seconds?: number | null;
+  stale?: boolean;
+  error?: string;
+}
+
+export interface ChainSide {
+  tsym: string;
+  token: string;
+  ltp: number | null;
+  change: number | null;
+  change_pct: number | null;
+  volume: number | null;
+  oi: number | null;
+  bid: number | null;
+  ask: number | null;
+  high: number | null;
+  low: number | null;
+  /** Implied volatility, in percent. */
+  iv: number | null;
+  delta: number | null;
+  gamma: number | null;
+  /** Rupees per unit per calendar day. */
+  theta: number | null;
+  /** Rupees per unit per one point of volatility. */
+  vega: number | null;
+}
+
+export interface ChainRow {
+  strike: number;
+  ce: ChainSide | null;
+  pe: ChainSide | null;
+}
+
+export interface ChainPayload {
+  available: boolean;
+  reason?: string;
+  ts?: string;
+  spot?: number;
+  expiry?: string;
+  dte?: number;
+  atm?: number;
+  lot?: number;
+  highlight?: {
+    tsym: string;
+    token: string;
+    source: "engine" | "account";
+    qty?: number | null;
+    strike?: number | null;
+    right?: "CE" | "PE" | null;
+    expiry?: string | null;
+  } | null;
+  rows?: ChainRow[];
+  model?: string;
+  age_seconds?: number | null;
+  stale?: boolean;
+}
