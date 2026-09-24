@@ -155,7 +155,8 @@ async def upload_algo(
     db.add_event(
         "warn" if not passed else "info",
         f"algorithm '{body.name}' v{version['version']} uploaded by {principal.subject} — "
-        f"acceptance gate {'PASSED' if passed else 'FAILED'}",
+        + ("standalone program, runs as written (no gate)" if kind == "program"
+           else f"acceptance gate {'PASSED' if passed else 'FAILED'}"),
         source="api", algo_id=algo_id,
     )
 

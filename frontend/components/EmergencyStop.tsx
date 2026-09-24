@@ -9,6 +9,9 @@ const PHRASE = "NUKE ALL";
 interface NukeResult {
   engines_stopped: { algo_id: string }[];
   had_open_positions: string[];
+  /** Standalone programs: they report no position, so it is unknown. Absent
+   *  from control planes older than this field. */
+  position_unknown?: string[];
   automation_disarmed: boolean;
   detail: string;
 }
@@ -130,6 +133,14 @@ export function EmergencyStop({ onDone }: { onDone?: () => void }) {
               Verify in the Angel One app that the exit filled for:{" "}
               <span className="font-mono">{result.had_open_positions.join(", ")}</span>.
               This queues market orders — it cannot guarantee they filled.
+            </p>
+          )}
+          {(result.position_unknown?.length ?? 0) > 0 && (
+            <p className="text-critical">
+              Standalone program{result.position_unknown!.length === 1 ? "" : "s"}{" "}
+              <span className="font-mono">{result.position_unknown!.join(", ")}</span> cannot report
+              a position to the desk. {result.position_unknown!.length === 1 ? "It was" : "They were"}{" "}
+              told to square off on stop — open the Angel One app and confirm nothing is left open.
             </p>
           )}
           <button

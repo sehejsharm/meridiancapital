@@ -34,6 +34,8 @@ class FakeState:
 
 
 class FakeSupervisor:
+    program = False  # set True to stand in for a standalone program
+
     def __init__(self, db, algo_id="gk50k", mode_provider=None, strategy_path=None):
         self.db = db
         self.algo_id = algo_id
@@ -55,6 +57,9 @@ class FakeSupervisor:
 
     def refresh(self):
         pass
+
+    def is_program(self, pid=None):
+        return self.program
 
     def start(self, trigger="manual"):
         if self.state.running:

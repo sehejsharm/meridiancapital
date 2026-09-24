@@ -296,6 +296,24 @@ def test_the_nuke_is_audited_as_critical(client, auth):
     assert "critical" in levels
 
 
+def test_the_nuke_never_reports_a_program_as_flat(client, auth):
+    """A standalone program publishes no position. Saying "no engine was holding
+    a position" while one was trading real money would send the operator home
+    with a live position open."""
+    from app.deps import ctx
+
+    client.post("/api/control/engine/start", headers=auth)
+    ctx().fleet.get("gk50k").program = True
+
+    body = client.post("/api/control/nuke", json={"confirm": "NUKE ALL"}, headers=auth).json()
+
+    assert body["position_unknown"] == ["gk50k"]
+    assert "No engine was holding a position" not in body["detail"]
+    assert "check the Angel One app" in body["detail"]
+    # Nothing is queued for a process that never reads the queue.
+    assert not [c for c in ctx().db.recent_commands() if c["action"] == "flatten"]
+
+
 def test_the_nuke_is_safe_with_nothing_running(client, auth):
     r = client.post("/api/control/nuke", json={"confirm": "NUKE ALL"}, headers=auth)
     assert r.status_code == 200

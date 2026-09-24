@@ -277,7 +277,16 @@ async def nuke(
     ]
 
     # 1. Queue an exit everywhere something is open, while the engines still live.
-    for algo_id, _sup in running:
+    for algo_id, sup in running:
+        if sup.is_program(sup.state.pid):
+            # A standalone program reads no command queue and publishes no
+            # snapshot: nothing can be queued for it, and whether it holds a
+            # position is unknown here — so it is never reported as flat. The
+            # stop below sends it SIGINT, on which it is expected to square off.
+            flattened.append(
+                {"algo_id": algo_id, "had_position": None, "command_id": None, "program": True}
+            )
+            continue
         snap = c.db.kv_get(snapshot_key(algo_id), None) or {}
         had_position = bool(snap.get("position"))
         try:
@@ -306,10 +315,13 @@ async def nuke(
         c.db.set_algo_fields(algo_id, enabled=0)
 
     held = [f["algo_id"] for f in flattened if f["had_position"]]
+    unknown = [f["algo_id"] for f in flattened if f["had_position"] is None]
     c.db.add_event(
         "critical",
         f"emergency stop complete — {len(stopped)} engine(s) down, "
-        f"{len(held)} had an open position, automation disarmed",
+        f"{len(held)} had an open position"
+        + (f", {len(unknown)} program(s) with unknown position" if unknown else "")
+        + ", automation disarmed",
         source="api",
     )
 
@@ -318,14 +330,20 @@ async def nuke(
         "engines_stopped": stopped,
         "exits_queued": flattened,
         "had_open_positions": held,
+        "position_unknown": unknown,
         "automation_disarmed": True,
-        "detail": (
-            f"{len(stopped)} engine(s) stopped and automation disarmed. "
+        "detail": " ".join(
+            [f"{len(stopped)} engine(s) stopped and automation disarmed."]
             + (
-                f"{len(held)} had an open position — verify in the Angel One app that "
-                f"every exit filled."
-                if held
-                else "No engine was holding a position."
+                [f"{len(held)} had an open position — verify in the Angel One app that "
+                 f"every exit filled."]
+                if held else []
             )
+            + (
+                [f"{len(unknown)} standalone program(s) cannot report a position here — "
+                 f"check the Angel One app that nothing is left open."]
+                if unknown else []
+            )
+            + ([] if held or unknown else ["No engine was holding a position."])
         ),
     }
