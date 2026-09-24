@@ -69,6 +69,40 @@ class LoadedStrategy:
         return dict(self.module.guards())
 
 
+def missing_members(source: str) -> list[str]:
+    """What the contract needs that this source does not define — read from the
+    syntax tree, never by running it.
+
+    Used before starting an upload: a file with no signal() cannot trade, and
+    importing one to find out would run its top-level code in the API process —
+    for a standalone trading script that can mean logging in to the broker.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as e:
+        return [f"valid Python (line {e.lineno}: {e.msg})"]
+    defined: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for t in targets:
+                for n in ast.walk(t):
+                    if isinstance(n, ast.Name):
+                        defined.add(n.id)
+    missing = [a for a in REQUIRED_ATTRS if a not in defined]
+    missing += [f"{c}()" for c in REQUIRED_CALLABLES if c not in defined]
+    return missing
+
+
+def looks_standalone(source: str) -> bool:
+    """A script that runs itself rather than answering the engine's questions."""
+    return "__main__" in source and ("argparse" in source or "placeOrder" in source)
+
+
 def load_module(source: str, module_name: str) -> ModuleType:
     """Execute source as a module. Screen it with sandbox.scan first."""
     spec = importlib.util.spec_from_loader(module_name, loader=None)

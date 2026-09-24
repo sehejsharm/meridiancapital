@@ -16,6 +16,7 @@ import threading
 
 from app.algo_store import materialise
 from app.supervisor import DEFAULT_ALGO, Supervisor
+from engine.contract import looks_standalone, missing_members
 from shared.db import Database
 
 
@@ -85,13 +86,48 @@ class Fleet:
         if not sup:
             return {"ok": False, "detail": "no such algorithm"}
 
+        # One algorithm on real money at a time. Angel reports positions and
+        # P&L per account, not per algorithm: two live engines on one account
+        # cannot tell their holdings apart, so one's exit or retry could sell
+        # the other's lots and each would book the other's P&L. Paper runs
+        # alongside freely.
+        if sup.desired_mode() == "live":
+            for other_id, other in self.all().items():
+                if other_id == algo_id:
+                    continue
+                other.refresh()
+                if other.state.running and other.state.mode == "live":
+                    name = (self.db.algo(other_id) or {}).get("name") or other_id
+                    return {
+                        "ok": False,
+                        "detail": f"'{name}' is already trading real money on this Angel account. "
+                        f"Two live algorithms on one account cannot tell their positions apart, so "
+                        f"one could close the other's. Stop it first, or run this one on paper.",
+                    }
+
         algo = self.db.algo(algo_id)
         # An uploaded algorithm runs its own source; the built-in runs the
         # engine's compiled-in strategy.
         if algo and algo.get("kind") != "builtin":
             version = self.db.version(algo.get("active_version")) if algo.get("active_version") else None
             if not version:
-                return {"ok": False, "detail": "no active version to run"}
+                return {
+                    "ok": False,
+                    "detail": "this algorithm has no active version — open it and activate one, "
+                    "or upload it again",
+                }
+            # Starting a file the engine cannot call would only crash-loop the
+            # engine; say why instead. This reads the source, it never runs it.
+            missing = missing_members(version["source"])
+            if missing:
+                detail = f"this file cannot run as a strategy — it does not define {', '.join(missing)}."
+                if looks_standalone(version["source"]):
+                    detail += (
+                        " It is a standalone trading program (it logs in and places its own "
+                        "orders), not a strategy module. The built-in GANESH KAVACH 50K runs "
+                        "this strategy under the engine's order handling."
+                    )
+                return {"ok": False, "detail": detail}
             sup.strategy_path = materialise(algo_id, version["version"], version["source"])
 
         return sup.start(trigger=trigger)

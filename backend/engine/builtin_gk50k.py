@@ -18,7 +18,7 @@ import math
 
 NAME = "GANESH KAVACH 50K"
 
-LOT_SIZE = 75
+LOT_SIZE = 65
 STRIKE_STEP = 50
 STRIKE_OFFSET = -1
 DONCHIAN_LB = 90
@@ -38,7 +38,7 @@ DAILY_LOSS_LIMIT_RS = 12_000.0
 WEEKLY_LOSS_LIMIT_RS = 25_000.0
 CONSEC_LOSS_HALT = 4
 MAX_DRAWDOWN_STOP = 0.45
-MIN_CAPITAL = 50_000.0
+MIN_CAPITAL = 0.0
 
 ENTRY_START = (10, 15)
 ENTRY_CUTOFF = (14, 0)
@@ -90,13 +90,18 @@ def effective_stop(peak_gain: float) -> float:
     return STOP_FRAC
 
 
-def size_position(equity: float, premium: float) -> int:
-    """Lots to buy, clamped by deploy fraction, equity cap, rupee risk and lot cap."""
+def size_position(equity: float, premium: float, lot: int | None = None) -> int:
+    """Lots to buy, clamped by deploy fraction, equity cap, rupee risk and lot cap.
+
+    `lot` is the exchange's lot for the contract being bought, when the engine
+    knows it; the constant is only the fallback.
+    """
     if not (math.isfinite(premium) and math.isfinite(equity)):
         return 0
     if premium <= 0 or equity <= 0:
         return 0
-    cost_per_lot = premium * LOT_SIZE
+    lot = LOT_SIZE if not lot or lot <= 0 else int(lot)
+    cost_per_lot = premium * lot
     if cost_per_lot > equity * PER_TRADE_EQUITY_CAP:
         return 0
     if cost_per_lot * STOP_FRAC > PER_TRADE_RISK_RS:

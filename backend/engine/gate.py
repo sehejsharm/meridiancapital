@@ -282,7 +282,9 @@ def _guards_values(s: LoadedStrategy) -> tuple[bool, str]:
         "weekly_loss_limit_rs": (500, 50_000_000),
         "consec_loss_halt": (1, 50),
         "max_drawdown_stop": (0.01, 0.95),
-        "min_capital": (1_000, 100_000_000),
+        # 0 is a deliberate "no floor": sizing still refuses any trade that
+        # breaches the equity or risk caps, so nothing is over-sized by it.
+        "min_capital": (0, 100_000_000),
     }
     for key, (lo, hi) in numeric.items():
         v = g.get(key)

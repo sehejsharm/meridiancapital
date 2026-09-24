@@ -18,16 +18,35 @@ from engine.state import State
 
 
 class FakeBroker:
+    """Angel One as the engine sees it: an order book and a position book.
+
+    `fills` False rejects every order. The failure modes that matter for real
+    money are switchable, one attempt at a time:
+      slow    — the order is accepted and fills, but not within the engine's
+                confirmation window, so place() reports it unconfirmed
+      dropped — the order reaches Angel and fills, but the call raises before
+                an order id comes back, as a timeout would
+      blind   — the order and position books cannot be read
+    """
+
     def __init__(self, premium=140.0, equity=500_000.0, realised=0.0, fills=True):
         self.dry_run = False
         self.premium = premium
         self._equity = equity
         self._realised = realised
         self.fills = fills
-        self.orders: list[tuple] = []
+        self.orders: list[tuple] = []          # (side, tsym, qty) for every order sent
+        self.book: dict[str, dict] = {}        # order id -> {tsym, side, qty, status, filled}
+        self.held: dict[str, int] = {}         # tsym -> net quantity
+        self.script: list[str] = []            # per-attempt failure modes, consumed in order
+        self.blind = False
+        self.last_order_id = None
         self.client_id = "TEST123"
         self.last_error = None
         self.rl = type("RL", (), {"stats": staticmethod(lambda: {"total_calls": 0})})()
+
+    def _fill(self, tsym, side, qty):
+        self.held[tsym] = self.held.get(tsym, 0) + (qty if side == "BUY" else -qty)
 
     def funds(self, force=False):
         return self._equity
@@ -43,24 +62,68 @@ class FakeBroker:
 
     def place(self, tsym, token, side, qty, product=C.PRODUCT_TYPE):
         self.orders.append((side, tsym, qty))
-        if not self.fills:
+        self.last_order_id = None
+        mode = self.script.pop(0) if self.script else ("ok" if self.fills else "reject")
+        oid = f"O{len(self.orders)}"
+        if mode == "reject":
+            self.book[oid] = dict(tsym=tsym, side=side, qty=qty, status="rejected", filled=0)
+            self.last_order_id = oid
             return False, None, "rejected: insufficient margin"
+        if mode == "dropped":
+            self.book[oid] = dict(tsym=tsym, side=side, qty=qty, status="complete", filled=qty)
+            self._fill(tsym, side, qty)
+            return False, None, "exception: read timed out"
+        if mode == "slow":
+            self.book[oid] = dict(tsym=tsym, side=side, qty=qty, status="complete", filled=qty)
+            self._fill(tsym, side, qty)
+            self.last_order_id = oid
+            return False, None, "pending: did not reach a terminal state in time"
+        self.book[oid] = dict(tsym=tsym, side=side, qty=qty, status="complete", filled=qty)
+        self._fill(tsym, side, qty)
+        self.last_order_id = oid
         return True, self.premium, "complete"
+
+    def order_status(self, order_id, tries=6, wait=1.5):
+        o = self.book.get(str(order_id))
+        if self.blind or o is None:
+            return "pending", 0.0, None, ""
+        return o["status"], float(o["filled"]), self.premium if o["filled"] else None, ""
+
+    def cancel_open(self, tsym):
+        if self.blind:
+            return None
+        n = 0
+        for o in self.book.values():
+            if o["tsym"] == tsym and o["status"] not in ("complete", "rejected", "cancelled"):
+                o["status"] = "cancelled"
+                n += 1
+        return n
+
+    def net_qty(self, tsym, token=None):
+        return None if self.blind else self.held.get(tsym, 0)
 
     def option_table(self):
         return {}
 
     def open_positions(self):
-        return []
+        if self.blind:
+            return None
+        return [{"tradingsymbol": k, "netqty": str(v)} for k, v in self.held.items() if v]
 
 
 @pytest.fixture
 def engine(tmp_path, monkeypatch):
+    return make_engine(tmp_path, monkeypatch)
+
+
+def make_engine(tmp_path, monkeypatch):
+    """A live-mode engine wired to the fake broker. Shared with test_order_safety."""
     monkeypatch.setattr(C, "DB_PATH", tmp_path / "engine.db")
     monkeypatch.setattr(C, "STATE_FILE", tmp_path / "state.json")
     monkeypatch.setattr(C, "TRADE_LOG", tmp_path / "trades.csv")
     monkeypatch.setattr("engine.state.STATE_FILE", tmp_path / "state.json")
 
+    monkeypatch.setattr("engine.runner.time.sleep", lambda *_: None)
     eng = Engine(mode="live")
     eng.br = FakeBroker()
     eng.equity = 500_000.0
@@ -164,6 +227,7 @@ def _open(engine, entry=140.0, peak=0.0):
         "entry": entry, "spot": 25000.0, "lots": 2, "peak": peak,
     }
     engine.st.position = engine.pos
+    engine.br.held["NIFTY15SEP2624950CE"] = 2 * C.LOT_SIZE
 
 
 def test_exit_books_angel_realised_pnl(engine):

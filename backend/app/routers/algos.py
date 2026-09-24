@@ -238,7 +238,10 @@ async def start_algo(
     if not algo:
         raise HTTPException(status_code=404, detail="no such algorithm")
     if algo.get("kind") != "builtin" and not algo.get("active_version"):
-        raise HTTPException(status_code=409, detail="no active version to run")
+        raise HTTPException(
+            status_code=409,
+            detail="this algorithm has no active version — open it and activate one, or upload it again",
+        )
 
     mode = (body.mode if body else None) or algo.get("mode") or "paper"
     if mode not in ("paper", "live"):

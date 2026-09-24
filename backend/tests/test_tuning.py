@@ -126,8 +126,8 @@ def test_a_shorter_lookback_is_riskier():
     assert "DONCHIAN_LB" in tuning.riskier_keys({"DONCHIAN_LB": 30})
 
 
-def test_a_lower_capital_floor_is_riskier():
-    assert "MIN_CAPITAL" in tuning.riskier_keys({"MIN_CAPITAL": 20_000})
+def test_raising_the_capital_floor_is_not_riskier():
+    assert "MIN_CAPITAL" not in tuning.riskier_keys({"MIN_CAPITAL": 50_000})
 
 
 def test_a_later_force_close_is_riskier():

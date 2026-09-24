@@ -17,11 +17,11 @@ BANNER = f"गणेश कवच  ·  {BUILD_NAME}  ·  {BUILD_VERSION}"
 
 # ── instrument ────────────────────────────────────────────────────────────────
 INDEX_TOKEN, INDEX_EXCH, INDEX_TSYM = "99926000", "NSE", "Nifty 50"
-LOT_SIZE, STRIKE_STEP = 75, 50
+LOT_SIZE, STRIKE_STEP = 65, 50   # NIFTY's lot per the operator's latest build; Angel's scrip master is authoritative at run time
 STRIKE_OFFSET = -1  # one strike (50 pts) in the money — the Rs50k-validated strike
 DONCHIAN_LB = 90
 ENTRY_START, ENTRY_CUTOFF, FORCE_CLOSE = (10, 15), (14, 0), (15, 10)
-MIN_DTE, MAX_DTE = 2, 6
+MIN_DTE, MAX_DTE = 2, 8
 
 MARKET_OPEN, MARKET_CLOSE = (9, 15), (15, 30)
 
@@ -77,7 +77,9 @@ CONSEC_LOSS_HALT = 4  # pause new entries for the day after this many losses in 
 DAILY_PROFIT_LOCK_RS = 20_000.0  # once up this much on the day, stop and bank it
 
 # ── portfolio guard (last line) ───────────────────────────────────────────────
-MIN_CAPITAL = 50_000.0  # tested floor; below this the account froze in backtest
+MIN_CAPITAL = 0.0  # per the operator's latest build. Sizing still skips any trade that
+#                    breaches the equity or risk caps, so a small account waits rather than
+#                    over-sizing; a floor that refused to start was a restart loop.
 MAX_DRAWDOWN_STOP = 0.45  # halt ALL new entries at -45% from peak equity
 
 # ── loop cadence ──────────────────────────────────────────────────────────────

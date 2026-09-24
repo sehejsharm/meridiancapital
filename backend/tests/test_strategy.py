@@ -7,7 +7,7 @@ is no longer the strategy that was validated.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, timedelta, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -27,6 +27,7 @@ from engine.config import (
     MAX_DRAWDOWN_STOP,
     MAX_LOTS,
     MAX_TRADES_DAY,
+    MAX_DTE,
     MIN_CAPITAL,
     PER_TRADE_EQUITY_CAP,
     PER_TRADE_RISK_RS,
@@ -238,7 +239,14 @@ def test_rejects_dte_below_minimum():
 
 
 def test_rejects_dte_above_maximum():
-    assert pick_contract(TABLE, 25010, "CE", date(2026, 9, 1)) is None
+    # Every expiry in the table is more than MAX_DTE days away from this date.
+    too_early = date(2026, 9, 9) - timedelta(days=MAX_DTE + 1)
+    assert pick_contract(TABLE, 25010, "CE", too_early) is None
+
+
+def test_accepts_dte_exactly_at_the_maximum():
+    at_limit = date(2026, 9, 9) - timedelta(days=MAX_DTE)
+    assert pick_contract(TABLE, 25010, "CE", at_limit) is not None
 
 
 # ── guard ladder constants ───────────────────────────────────────────────────
@@ -294,8 +302,14 @@ def test_deploy_fraction_is_40_percent():
     assert DEPLOY_FRACTION == pytest.approx(0.40)
 
 
-def test_capital_floor_is_50k():
-    assert MIN_CAPITAL == 50_000.0
+def test_capital_floor_matches_the_operators_build():
+    assert MIN_CAPITAL == 0.0
+
+
+def test_no_capital_floor_still_never_over_sizes_a_small_account():
+    """Dropping the floor means a small account waits, not that it over-bets:
+    one lot at Rs 140 costs more than the equity cap allows on Rs 10,000."""
+    assert size_position(10_000, 140) == 0
 
 
 def test_trail_and_breakeven_ordering():

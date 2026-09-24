@@ -157,8 +157,47 @@ class Engine:
             f"connecting to Angel One — mode {'LIVE (real orders)' if not self.dry_run else 'PAPER (no orders)'}",
             "warn" if not self.dry_run else "info",
         )
+        self.check_order_ip()
         self.br = Broker(creds, dry_run=self.dry_run, log=self.tm.as_broker_logger())
         self.tm.log(f"connected as {self.br.client_id}", "ok")
+
+    def check_order_ip(self) -> None:
+        """Refuse to trade live from an address Angel will reject.
+
+        Angel only accepts orders from the static IP whitelisted for the
+        SmartAPI app (error AG7002). ANGEL_PUBLIC_IP declares which address that
+        is; if this machine's traffic actually leaves from somewhere else, every
+        order — exits included — would bounce, so the engine will not start.
+        """
+        if self.dry_run:
+            return
+        from engine.broker import real_public_ip
+
+        real = real_public_ip()
+        declared = C.PUBLIC_IP
+        if real is None:
+            self.tm.log(
+                "could not determine this machine's public IP, so cannot confirm it is the one "
+                "whitelisted with Angel. Orders from any other IP are rejected (AG7002).",
+                "warn",
+            )
+            return
+        if declared and declared != real:
+            raise RuntimeError(
+                f"this machine's public IP is {real}, but ANGEL_PUBLIC_IP says {declared}. Angel "
+                f"rejects orders from an IP that is not whitelisted for your SmartAPI app (AG7002). "
+                f"Whitelist {real} at smartapi.angelone.in (My Apps, edit app), set "
+                f"ANGEL_PUBLIC_IP={real} in /etc/meridian/meridian.env, and restart."
+            )
+        if declared:
+            self.tm.log(f"order IP verified: {real} matches the whitelisted ANGEL_PUBLIC_IP", "ok")
+        else:
+            self.tm.log(
+                f"LIVE orders will be sent from public IP {real}. It must be the IP whitelisted "
+                f"for your SmartAPI app or Angel rejects every order (AG7002). Set "
+                f"ANGEL_PUBLIC_IP={real} in /etc/meridian/meridian.env to have this checked.",
+                "warn",
+            )
 
     def bootstrap(self) -> None:
         assert self.br is not None
@@ -181,8 +220,8 @@ class Engine:
                 )
             else:
                 raise RuntimeError(
-                    f"Capital {money(equity)} is below the {money(C.MIN_CAPITAL)} floor. "
-                    f"This build is validated for Rs 50,000+. Refusing to start."
+                    f"Capital {money(equity)} is below the configured {money(C.MIN_CAPITAL)} floor. "
+                    f"Refusing to start."
                 )
 
         if self.st.session_date == today:
@@ -193,12 +232,12 @@ class Engine:
                 "warn",
             )
         else:
-            t = now_ist()
-            wk = f"{t.isocalendar().year}-W{t.isocalendar().week:02d}"
-            self.st = State(
-                session_date=today, week_id=wk, start_equity=equity,
-                week_start_equity=equity, peak_equity=equity,
-            )
+            # A new day. The scheduler starts the engine fresh every morning,
+            # so this — not roll_session — is the normal day boundary, and it
+            # must carry forward what the in-loop rollover carries: the week's
+            # realised P&L (or the weekly loss limit resets daily and can only
+            # trip within a single day), and any position still open.
+            self.st = self._carry_into(self.st, now_ist(), equity)
             self.st.save(self.algo_id)
 
         self.check_clock(initial=True)
@@ -264,7 +303,30 @@ class Engine:
         assert self.br is not None
         if self.dry_run:
             return
-        live = self.br.open_positions()
+        live = None
+        for attempt in range(3):
+            live = self.br.open_positions()
+            if live is not None:
+                break
+            time.sleep(2.0)
+        if live is None:
+            # Not knowing is not the same as holding nothing. Keep what the
+            # state file says and manage it; dropping it would leave a real
+            # position with no stop and no 15:10 close.
+            if self.st.position:
+                self.tm.log(
+                    f"could not read Angel's position book at startup — keeping the recorded "
+                    f"position {self.st.position.get('tsym')} and managing it. Verify it in the "
+                    f"Angel app.",
+                    "critical",
+                )
+            else:
+                self.tm.log(
+                    "could not read Angel's position book at startup — cannot check for "
+                    "positions this engine does not know about. Verify in the Angel app.",
+                    "error",
+                )
+            return
         if not live:
             if self.st.position:
                 self.tm.log(
@@ -333,29 +395,48 @@ class Engine:
         return f"unknown action '{action}'"
 
     # ── session bookkeeping ──────────────────────────────────────────────────
+    def _carry_into(self, prev: State, t: datetime, equity: float) -> State:
+        """Today's state, carrying over what outlives a day.
+
+        Same ISO week: realised P&L for the week and its starting equity carry,
+        so the weekly loss limit sees every day of the week. The weekly halt
+        re-derives from that total on the first check. A position still open
+        from yesterday — CARRYFORWARD rolls if the 15:10 close did not happen —
+        is carried and managed (stop and today's force-close), never dropped.
+        """
+        wk = f"{t.isocalendar().year}-W{t.isocalendar().week:02d}"
+        same_week = bool(prev.week_id) and prev.week_id == wk
+        carried = dict(prev.position) if prev.position else {}
+        if carried:
+            self.tm.log(
+                f"position {carried.get('tsym')} carried over from {prev.session_date or 'a previous session'} "
+                f"— managing it today (stop-loss and the force-close apply). Check it in the Angel app.",
+                "critical",
+            )
+        return State(
+            session_date=t.strftime("%Y-%m-%d"),
+            week_id=wk,
+            start_equity=equity,
+            week_start_equity=(prev.week_start_equity or equity) if same_week else equity,
+            peak_equity=max(equity, 0.0),
+            realised_week=(prev.realised_week or 0.0) if same_week else 0.0,
+            position=carried,
+        )
+
     def roll_session(self, t: datetime) -> None:
         assert self.br is not None
         if not self.reported:
             self.emit_eod_report()
         self.equity = self.br.funds() or self.equity
-        wk = f"{t.isocalendar().year}-W{t.isocalendar().week:02d}"
-        new_week = wk != self.st.week_id
-        prev_week_real = 0.0 if new_week else self.st.realised_week
-        prev_week_start = self.equity if new_week else (self.st.week_start_equity or self.equity)
+        prev_week = self.st.week_id
         if self.pos is not None:
-            self.tm.log(
-                f"position {self.pos.get('tsym')} was still open at session rollover. It is NOT "
-                f"being managed anymore — check the Angel app and square off.",
-                "critical",
-            )
-        self.st = State(
-            session_date=t.strftime("%Y-%m-%d"), week_id=wk, start_equity=self.equity,
-            week_start_equity=prev_week_start, peak_equity=max(self.equity, 0.0),
-            realised_week=prev_week_real,
-        )
+            self.st.position = self.pos
+        self.st = self._carry_into(self.st, t, self.equity)
         self.st.save(self.algo_id)
-        self.pos = None
+        self.pos = self.st.position or None
         self.reported = False
+        wk = self.st.week_id
+        new_week = wk != prev_week
         self.tm.log(
             f"new session {t:%Y-%m-%d %a} — capital {money(self.equity)} "
             f"({'new week' if new_week else 'week ' + wk})",
@@ -517,20 +598,122 @@ class Engine:
         }
 
     # ── trade execution ──────────────────────────────────────────────────────
+    def execute(self, tsym: str, token: str, side: str, qty: int,
+                retries: int) -> tuple[bool, float | None, str, int]:
+        """Send an order and, if it does not confirm, reach the intended holding
+        without ever doubling up.
+
+        A market order that has not confirmed within the polling window is not
+        a failed order — it may be slow, or Angel may have accepted it just as
+        the connection dropped. Sending a fresh one on top is how a single entry
+        becomes three, or an exit sells into a short. So before any retry this
+        resolves the last order, cancels anything still working on the contract
+        and reads what Angel actually holds, and then sends only what is still
+        missing: a BUY never takes the holding past `qty`, a SELL never sells
+        more than is held. If Angel cannot be read, it stops rather than guess.
+
+        Returns (ok, average fill or None, detail, quantity now in the intended
+        state — the lots held after a BUY, the lots closed after a SELL).
+        """
+        br = self.br
+        assert br is not None
+        ok, px, detail = br.place(tsym, token, side, qty)
+        if ok:
+            return True, px, detail, qty
+        if br.dry_run:
+            return False, None, detail, 0
+
+        for attempt in range(1, retries + 1):
+            self.tm.log(
+                f"{side} {tsym} not confirmed ({detail}) — checking Angel before any retry "
+                f"({attempt}/{retries})",
+                "warn",
+            )
+            oid = br.last_order_id
+            if oid:
+                stat, filled, avg, _ = br.order_status(oid, tries=2, wait=1.0)
+                if stat == "complete" and filled >= qty:
+                    self.tm.log(f"{side} {tsym} filled after all (order {oid}) — no retry needed", "ok")
+                    return True, avg, "complete (confirmed late)", qty
+
+            if br.cancel_open(tsym) is None:
+                return False, None, "could not read Angel's order book — not risking a duplicate order", 0
+
+            # Angel's position book can trail a fill by a moment; two readings
+            # that agree are taken as settled.
+            held = self._settled_holding(tsym, token)
+            if held is None:
+                return False, None, "could not read Angel's position book — not risking a duplicate order", 0
+
+            if side == "BUY":
+                if held >= qty:
+                    self.tm.log(f"BUY {tsym} filled after all — Angel shows {held} held", "ok")
+                    return True, None, "filled (confirmed from Angel's position book)", held
+                if held > 0:
+                    self.tm.log(
+                        f"BUY {tsym} partly filled — Angel shows {held} of {qty}. Managing {held}; "
+                        f"not topping up.",
+                        "warn",
+                    )
+                    return True, None, f"partial fill: {held} of {qty}", held
+                need = qty
+            else:
+                if held < 0:
+                    self.tm.log(
+                        f"Angel shows {tsym} SHORT {held}. Not selling further — square it off in "
+                        f"the Angel app now.",
+                        "critical",
+                    )
+                    return False, None, f"short {held} — manual action required", 0
+                if held == 0:
+                    self.tm.log(f"SELL {tsym} filled after all — Angel shows the contract flat", "ok")
+                    return True, None, "flat (confirmed from Angel's position book)", qty
+                need = min(held, qty)
+
+            ok, px, detail = br.place(tsym, token, side, need)
+            if ok:
+                return True, px, detail, (need if side == "BUY" else qty)
+        return False, None, detail, 0
+
+    def _settled_holding(self, tsym: str, token: str, reads: int = 4, wait: float = 1.5) -> int | None:
+        """Net quantity once two consecutive readings agree, or None if unreadable."""
+        assert self.br is not None
+        last = None
+        for i in range(reads):
+            cur = self.br.net_qty(tsym, token)
+            if cur is None:
+                return None
+            if cur == last:
+                return cur
+            last = cur
+            if i < reads - 1:
+                time.sleep(wait)
+        return last
+
+    def _size(self, premium: float, lot_sz: int) -> int:
+        """Lots to buy, costed at the exchange's own lot size.
+
+        The built-in strategy costs a lot at the size it was written for; Angel's
+        scrip master is the authority on what a lot actually is today. Where the
+        strategy's size_position accepts a lot, it gets the real one.
+        """
+        fn = self.strat.size_position
+        try:
+            import inspect
+
+            if "lot" in inspect.signature(fn).parameters:
+                return int(fn(self.equity, premium, lot=lot_sz))
+        except (TypeError, ValueError):
+            pass
+        return int(fn(self.equity, premium))
+
     def exit_position(self, why: str, forced: bool = False, spot: float | None = None,
                       live_prem: float | None = None) -> bool:
         assert self.br is not None and self.pos is not None
         p = self.pos
         t = now_ist()
         qty = position_qty(p)
-        ok, fill_px, detail = self.br.place(p["tsym"], p["token"], "SELL", qty)
-        if not ok:
-            for attempt in range(C.ORDER_RETRIES + 2):
-                self.tm.log(f"EXIT ORDER FAILED ({detail}) — retry {attempt + 1}", "error")
-                time.sleep(2)
-                ok, fill_px, detail = self.br.place(p["tsym"], p["token"], "SELL", qty)
-                if ok:
-                    break
+        ok, fill_px, detail, _ = self.execute(p["tsym"], p["token"], "SELL", qty, C.ORDER_RETRIES + 2)
         if not ok:
             self.tm.log(
                 f"EXIT COULD NOT BE PLACED for {p['tsym']}: {detail}. POSITION IS STILL OPEN — "
@@ -637,7 +820,7 @@ class Engine:
         if prem is None or prem > C.MAX_PREMIUM:
             self.tm.log(f"signal {view} but {strike} unpriced or premium {prem} above cap", "warn")
             return
-        lots = self.strat.size_position(self.equity, prem)
+        lots = self._size(prem, lot_sz)
         if lots < 1:
             self.tm.log(
                 f"signal {view} but premium {prem:.2f} too large to size safely — skipped", "warn"
@@ -645,17 +828,14 @@ class Engine:
             return
 
         qty = lots * lot_sz
-        ok, fill_px, detail = self.br.place(tsym, token, "BUY", qty)
-        if not ok:
-            for attempt in range(C.ORDER_RETRIES):
-                self.tm.log(f"entry failed ({detail}) — retry {attempt + 1}/{C.ORDER_RETRIES}", "warn")
-                time.sleep(2)
-                ok, fill_px, detail = self.br.place(tsym, token, "BUY", qty)
-                if ok:
-                    break
+        ok, fill_px, detail, held = self.execute(tsym, token, "BUY", qty, C.ORDER_RETRIES)
         if not ok:
             self.tm.log(f"ENTRY ABANDONED for {tsym}: {detail}. No position opened.", "error")
             return
+        if held != qty:
+            # A partial fill: the position is what Angel holds, not what was asked.
+            qty = held
+            lots = max(1, held // lot_sz) if lot_sz else lots
         time.sleep(1.5)
         real_entry = fill_px if fill_px else (None if self.br.dry_run else self.br.last_fill(tsym))
         entry_px = real_entry if (real_entry is not None and real_entry > 0) else prem

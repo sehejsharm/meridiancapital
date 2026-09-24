@@ -179,6 +179,30 @@ def is_rate_limited(resp) -> bool:
     return ("rate" in txt and "limit" in txt) or "too many request" in txt or "access denied" in txt
 
 
+TERMINAL_ORDER_STATES = ("complete", "rejected", "cancelled")
+
+
+def _net_qty(row: dict) -> int:
+    try:
+        return int(float(row.get("netqty") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def real_public_ip(timeout: float = 5.0) -> str | None:
+    """The address this machine's traffic actually leaves from, or None."""
+    for url in ("https://api.ipify.org", "https://checkip.amazonaws.com"):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "meridian"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:  # nosec B310 - https pinned
+                ip = r.read().decode().strip()
+            if ip and len(ip) <= 45:
+                return ip
+        except Exception:
+            continue
+    return None
+
+
 def discover_public_ip(timeout: float = 5.0) -> str:
     """Angel's session headers want the outbound IP. Oracle VMs get theirs at boot."""
     if PUBLIC_IP:
@@ -228,6 +252,7 @@ class Broker:
         self._funds: dict = {"until": 0.0, "v": None}
         self._pos: dict = {"until": 0.0, "v": None}
         self.last_error: str | None = None
+        self.last_order_id: str | None = None
 
     # ── account ──────────────────────────────────────────────────────────────
     def funds(self, force: bool = False) -> float | None:
@@ -270,23 +295,82 @@ class Broker:
         except Exception:
             return None
 
-    def open_positions(self) -> list[dict]:
-        """Raw Angel position book rows with non-zero net quantity."""
+    def _position_rows(self) -> list[dict] | None:
+        """Angel's position book.
+
+        None means the book could not be read, and callers must never treat it
+        as "nothing held". Mistaking a failed read for an empty book is how an
+        engine forgets a live position after a restart — no stop, no 15:10
+        close, and on CARRYFORWARD it rolls into tomorrow.
+        """
         try:
             self.rl.acquire("position")
-            r = self.api.position() or {}
-            rows = r.get("data") or []
-            out = []
-            for p in rows:
-                try:
-                    net_qty = int(float(p.get("netqty") or 0))
-                except (TypeError, ValueError):
-                    net_qty = 0
-                if net_qty:
-                    out.append(p)
-            return out
-        except Exception:
-            return []
+            r = self.api.position()
+        except Exception as e:
+            self.log(f"position book read failed: {str(e)[:100]}", "warn")
+            return None
+        if is_rate_limited(r):
+            self.rl.penalise("position")
+            self.log("position book rate-limited — could not read it", "warn")
+            return None
+        if not (isinstance(r, dict) and r.get("status")):
+            return None
+        # A successful read with no positions comes back as data: null.
+        return r.get("data") or []
+
+    def open_positions(self) -> list[dict] | None:
+        """Position rows with a non-zero net quantity, or None if unreadable."""
+        rows = self._position_rows()
+        if rows is None:
+            return None
+        return [p for p in rows if _net_qty(p)]
+
+    def net_qty(self, tsym: str, token: str | None = None) -> int | None:
+        """What Angel says is held in one contract right now, or None if unreadable."""
+        rows = self._position_rows()
+        if rows is None:
+            return None
+        held = 0
+        for p in rows:
+            if str(p.get("tradingsymbol", "")) == tsym or (
+                token and str(p.get("symboltoken", "")) == str(token)
+            ):
+                held += _net_qty(p)
+        return held
+
+    def cancel_open(self, tsym: str) -> int | None:
+        """Cancel every still-working order on this contract.
+
+        Run before any retry, so a slow order that eventually fills cannot be
+        joined by its replacement. Returns how many were cancelled, or None if
+        the order book could not be read — in which case nothing is certain and
+        the caller must not send another order.
+        """
+        if self.dry_run:
+            return 0
+        try:
+            self.rl.acquire("orderbook")
+            r = self.api.orderBook()
+        except Exception as e:
+            self.log(f"order book read failed: {str(e)[:100]}", "warn")
+            return None
+        if not (isinstance(r, dict) and r.get("status")):
+            return None
+        n = 0
+        for o in r.get("data") or []:
+            if str(o.get("tradingsymbol", "")) != tsym:
+                continue
+            if str(o.get("status", "")).lower() in TERMINAL_ORDER_STATES:
+                continue
+            try:
+                self.rl.acquire("order")
+                self.api.cancelOrder(str(o.get("orderid")), str(o.get("variety") or "NORMAL"))
+                n += 1
+                self.log(f"cancelled working order {o.get('orderid')} on {tsym} before retrying", "warn")
+            except Exception as e:
+                self.log(f"cancel failed for order {o.get('orderid')}: {str(e)[:100]}", "error")
+                return None
+        return n
 
     def last_fill(self, tsym: str) -> float | None:
         try:
@@ -403,7 +487,7 @@ class Broker:
                         filled = float(o.get("filledshares") or 0)
                         avg = float(o.get("averageprice") or 0) or None
                         text = str(o.get("text") or "")
-                        if stat in ("complete", "rejected", "cancelled"):
+                        if stat in TERMINAL_ORDER_STATES:
                             return stat, filled, avg, text
                         break
             except Exception as e:
@@ -412,6 +496,7 @@ class Broker:
         return "pending", 0.0, None, "did not reach a terminal state in time"
 
     def place(self, tsym: str, token: str, side: str, qty: int, product: str = PRODUCT_TYPE):
+        self.last_order_id = None
         if self.dry_run:
             self.log(f"PAPER — would {side} {qty} x {tsym}", "debug")
             return True, None, "paper"
@@ -445,6 +530,13 @@ class Broker:
             order_id = data.get("orderid") or resp.get("orderid")
             msg = str(resp.get("message") or "")
             if resp.get("status") is False or (msg and "success" not in msg.lower() and not order_id):
+                if "AG7002" in str(resp) or "static ip" in str(resp).lower():
+                    self.log(
+                        f"ORDER REJECTED — this machine's IP {self.api._public_ip} is not the one "
+                        f"whitelisted for your SmartAPI app. Register it at smartapi.angelone.in "
+                        f"(My Apps → edit app) and restart. {msg[:120]}",
+                        "critical",
+                    )
                 self.log(f"ORDER REJECTED by Angel: {side} {qty} {tsym} — {msg[:160]}", "error")
                 return False, None, f"rejected: {msg[:120]}"
         elif isinstance(resp, str):
@@ -453,6 +545,7 @@ class Broker:
             self.log(f"ORDER returned no order id: {side} {qty} {tsym}", "error")
             return False, None, "no order id returned"
 
+        self.last_order_id = str(order_id)
         self.log(f"ORDER PLACED: id={order_id} — verifying fill…", "ok")
         stat, filled, avg, text = self.order_status(order_id)
         if stat == "complete" and filled > 0:

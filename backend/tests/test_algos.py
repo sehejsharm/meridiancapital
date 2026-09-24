@@ -173,10 +173,25 @@ def test_a_gate_failure_does_not_block_the_upload(client, auth):
 
 
 def test_a_gate_failure_can_still_be_started(client, auth):
-    body = upload(client, auth, "Rough Edges", "NAME='x'\n").json()
+    """A complete strategy the gate has doubts about: the operator's call."""
+    widening = REFERENCE.replace(
+        "    if peak_gain >= TRAIL_FRAC:\n        return -(peak_gain - TRAIL_FRAC)\n"
+        "    if peak_gain >= BE_TRIGGER:\n        return 0.0\n    return STOP_FRAC\n",
+        "    return STOP_FRAC + peak_gain\n",
+    )
+    assert widening != REFERENCE
+    body = upload(client, auth, "Rough Edges", widening).json()
     assert body["passed"] is False
     r = client.post(f"/api/algos/{body['algo_id']}/start", headers=auth)
     assert r.status_code == 200, r.json()
+
+
+def test_a_file_that_is_not_a_strategy_is_refused_with_the_reason(client, auth):
+    """Not the gate's opinion — a file with no signal() cannot trade at all."""
+    body = upload(client, auth, "Just A Name", "NAME='x'\n").json()
+    r = client.post(f"/api/algos/{body['algo_id']}/start", headers=auth)
+    assert r.status_code == 409
+    assert "signal()" in r.json()["detail"]
 
 
 def test_oversized_source_is_refused(client, auth):

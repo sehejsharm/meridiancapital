@@ -122,9 +122,10 @@ PARAMS: tuple[Param, ...] = (
 
     # ── portfolio guard ──────────────────────────────────────────────────────
     Param("MIN_CAPITAL", "Portfolio guard", "Minimum capital", "money",
-          C.MIN_CAPITAL, 10_000, 10_000_000,
-          "Refuse to trade below this equity. The backtested floor is Rs 50,000 — "
-          "under it the account froze.", riskier_up=False, step=5_000),
+          C.MIN_CAPITAL, 0, 10_000_000,
+          "Refuse to start below this equity. 0 is no floor: sizing still skips any "
+          "trade that breaches the equity or risk caps, so a small account waits "
+          "rather than over-betting.", riskier_up=False, step=5_000),
     Param("MAX_DRAWDOWN_STOP", "Portfolio guard", "Max drawdown", "pct",
           C.MAX_DRAWDOWN_STOP, 0.05, 0.90,
           "Halt all new entries at this drawdown from peak equity.",

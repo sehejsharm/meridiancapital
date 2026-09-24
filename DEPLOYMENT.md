@@ -126,11 +126,18 @@ curl -s https://api.your-host.example/health
 
 ### Angel One account prerequisites
 
+- **The VM's IP must be whitelisted.** Angel accepts orders only from the static IP
+  registered for your SmartAPI app, and rejects the rest with `AG7002` — exits included.
+  Get the VM's address with `curl -s https://api.ipify.org`, set it at
+  smartapi.angelone.in → My Apps → edit app, wait a few minutes, then put the same value
+  in `ANGEL_PUBLIC_IP` in `/etc/meridian/meridian.env`. A live engine then refuses to start
+  if its traffic ever leaves from a different address. Reserve the VM's public IP in
+  Oracle so a reboot does not change it.
 - **Historical Data API** must be enabled — the strategy needs 92+ one-minute candles and
   will log `candle feed empty` without it.
-- The account needs enough margin for `INTRADAY` NFO option buying.
-- Capital must be at or above ₹50,000. Below that the engine refuses to start; this build
-  was validated at ₹50k and the backtest froze below it.
+- The account needs enough margin for `CARRYFORWARD` NFO option buying.
+- There is no capital floor. Sizing skips any trade that breaches the equity or risk caps,
+  so an account too small for one lot simply waits.
 
 ## 5. The dashboard on Vercel
 
