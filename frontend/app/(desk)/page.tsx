@@ -145,10 +145,16 @@ export default function DeckPage() {
           value={fleet ? `${fleet.running} / ${fleet.total}` : "—"}
           hint={fleet ? `${fleet.live_running} on real money` : undefined}
         />
+        {/* The dashboard's link to the server — not a trading mode, so it no
+            longer says "Live" beside a desk that is trading paper. */}
         <StatTile
-          label="Feed"
-          value={connection === "live" ? "Live" : connection === "polling" ? "Polling" : "Offline"}
-          hint={snapshot?.engine.phase ?? "no engine reporting"}
+          label="Data link"
+          value={connection === "live" ? "Connected" : connection === "polling" ? "Polling" : "Offline"}
+          hint={
+            snapshot?.engine.phase
+              ? `engine ${snapshot.engine.phase.toLowerCase()}`
+              : "no engine running"
+          }
         />
       </div>
 
@@ -165,11 +171,7 @@ export default function DeckPage() {
         {!list.length ? (
           <Empty>No algorithms registered yet.</Empty>
         ) : (
-          <div
-            className={`grid gap-4 ${
-              single ? "grid-cols-1" : "sm:grid-cols-2 xl:grid-cols-3"
-            }`}
-          >
+          <div className={`grid gap-4 ${fleetColumns(list.length)}`}>
             {list.map((algo) => (
               <AlgoCard
                 key={algo.id}
@@ -179,6 +181,7 @@ export default function DeckPage() {
                 snapshot={snapshot?.engine.pid === algo.runtime.pid ? snapshot : null}
                 busy={busy === algo.id}
                 compact={!single && list.length > 4}
+                wide={single ? "md" : list.length === 2 ? "xl" : undefined}
                 onStart={() => setAsking(algo.id)}
                 onStop={() => void control(algo.id, "stop")}
               />
@@ -233,4 +236,19 @@ export default function DeckPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * Columns for the algorithm cards: as many as there are cards, up to what the
+ * screen can hold, so two algorithms fill a laptop's width instead of sitting
+ * in the left half of a four-column grid.
+ *
+ * grid-cols-1 on phones is load-bearing: without it the implicit column sizes
+ * to the longest line in a card and the whole page scrolls sideways.
+ */
+function fleetColumns(n: number): string {
+  if (n <= 1) return "grid-cols-1";
+  if (n === 2) return "grid-cols-1 sm:grid-cols-2";
+  if (n === 3) return "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3";
+  return "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
 }

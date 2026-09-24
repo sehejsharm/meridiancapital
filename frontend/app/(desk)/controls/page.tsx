@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { EmergencyStop } from "@/components/EmergencyStop";
+import { RunModeDialog } from "@/components/RunModeDialog";
 import { Badge, Button, Card, Empty, Field } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { istDateTime } from "@/lib/format";
@@ -34,12 +35,29 @@ export default function ControlsPage() {
   );
 
   const running = status?.engine.running ?? false;
-  const mode = status?.engine.mode ?? "paper";
+  const live = running && status?.engine.mode === "live";
   const schedule = status?.schedule;
   const hasPosition = Boolean(snapshot?.position);
+  // Starting asks paper or real money here too, exactly as the deck does.
+  const [asking, setAsking] = useState(false);
+  const builtinId = status?.fleet?.algos.find((a) => a.kind === "builtin")?.algo_id ?? "gk50k";
 
   return (
     <div className="space-y-5">
+      <RunModeDialog
+        name="the built-in engine"
+        open={asking}
+        busy={busy !== null}
+        onPick={(mode) => {
+          setAsking(false);
+          void run(
+            "start",
+            () => apiPost(`/algos/${builtinId}/start`, { mode }),
+            mode === "live" ? "started on real money" : "started on paper",
+          );
+        }}
+        onCancel={() => setAsking(false)}
+      />
       {notice && (
         <div
           role="status"
@@ -55,14 +73,28 @@ export default function ControlsPage() {
 
       <EmergencyStop onDone={refresh} />
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
         <Card
-          title="Engine"
-          subtitle="The trading process itself"
-          action={<Badge tone={running ? "good" : "warning"}>{running ? "Running" : "Stopped"}</Badge>}
+          title="Built-in engine"
+          subtitle="Ganesh Kavach 50K. Uploaded algorithms are started from the deck."
+          action={
+            <Badge tone={live ? "critical" : running ? "good" : "neutral"} dot={running}>
+              {live ? "Real money" : running ? "Paper" : "Stopped"}
+            </Badge>
+          }
         >
           <dl className="divide-y divide-hairline">
-            <Field label="Mode" value={mode === "live" ? "LIVE — real orders" : "Paper — no orders"} />
+            <Field
+              label="Trading"
+              value={
+                !running
+                  ? "Off — you pick paper or real money when you start it"
+                  : live
+                    ? "Real money — orders go to Angel One"
+                    : "Paper — simulated, no orders"
+              }
+              mono={false}
+            />
             <Field label="Process id" value={status?.engine.pid ?? "—"} />
             <Field
               label="Stopped by operator"
@@ -89,9 +121,7 @@ export default function ControlsPage() {
             <Button
               variant="primary"
               disabled={running || busy !== null}
-              onClick={() =>
-                void run("start", () => apiPost("/control/engine/start"), "engine started")
-              }
+              onClick={() => setAsking(true)}
             >
               {busy === "start" ? "Starting…" : "Start"}
             </Button>
@@ -124,13 +154,9 @@ export default function ControlsPage() {
           )}
         </Card>
 
-        <ModeCard running={running} mode={mode} busy={busy} onRun={run} />
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-2">
         <Card
           title="Automation"
-          subtitle="Starts at 09:05 and stops at 15:25 IST on NSE trading days"
+          subtitle="Master switch. When armed, every algorithm you have started comes up at 09:05 and stops at 15:25 IST on NSE trading days; when disarmed, nothing starts itself."
           action={
             <Badge tone={schedule?.enabled ? "good" : "warning"}>
               {schedule?.enabled ? "Armed" : "Disarmed"}
@@ -179,7 +205,7 @@ export default function ControlsPage() {
 
         <Card
           title="In-session risk"
-          subtitle="Takes effect on the engine's next loop, within seconds"
+          subtitle="For the built-in engine; takes effect on its next loop, within seconds"
         >
           <dl className="divide-y divide-hairline">
             <Field label="Entries halted" value={snapshot?.guards.halted ? "Yes" : "No"} />
@@ -222,81 +248,6 @@ export default function ControlsPage() {
 
       <HolidayCalendar onNotice={setNotice} />
     </div>
-  );
-}
-
-function ModeCard({
-  running,
-  mode,
-  busy,
-  onRun,
-}: {
-  running: boolean;
-  mode: string;
-  busy: string | null;
-  onRun: (k: string, a: () => Promise<{ detail?: string }>, s: string) => Promise<void>;
-}) {
-  const [confirming, setConfirming] = useState(false);
-
-  return (
-    <Card
-      title="Trading mode"
-      subtitle="Paper places no orders; live sends real orders to Angel One"
-      action={<Badge tone={mode === "live" ? "critical" : "neutral"}>{mode}</Badge>}
-    >
-      {running ? (
-        <Empty>
-          Stop the engine to change mode. A running engine holds its mode for the whole session, so
-          it can never flip from paper to live with a position open.
-        </Empty>
-      ) : mode === "live" ? (
-        <div className="space-y-3">
-          <p className="text-xs text-ink-secondary">
-            The engine is armed for real orders on your Angel One account.
-          </p>
-          <Button
-            disabled={busy !== null}
-            onClick={() =>
-              void onRun(
-                "mode",
-                () => apiPost("/control/mode", { mode: "paper" }),
-                "back to paper trading",
-              )
-            }
-          >
-            Switch to paper
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-xs text-ink-secondary">
-            Going live means real money on every fill.
-          </p>
-          <Button
-            variant="danger"
-            disabled={busy !== null}
-            onClick={() => {
-              if (!confirming) {
-                setConfirming(true);
-                return;
-              }
-              void onRun(
-                "mode",
-                () => apiPost("/control/mode", { mode: "live", confirm: true }),
-                "engine armed for LIVE trading",
-              ).then(() => setConfirming(false));
-            }}
-          >
-            {confirming ? "Tap again to arm real money" : "Arm live trading"}
-          </Button>
-          {confirming && (
-            <Button variant="ghost" disabled={busy !== null} onClick={() => setConfirming(false)}>
-              Cancel
-            </Button>
-          )}
-        </div>
-      )}
-    </Card>
   );
 }
 

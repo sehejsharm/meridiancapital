@@ -232,6 +232,7 @@ export interface CommandRow {
   issued_by: string | null;
   status: string;
   result: string | null;
+  algo_id?: string;
 }
 
 export interface LiveState {

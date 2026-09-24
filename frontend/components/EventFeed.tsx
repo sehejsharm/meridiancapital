@@ -25,10 +25,17 @@ export function EventFeed({
   events,
   limit = 40,
   title = "Event log",
+  subtitle,
+  algoNames,
+  emptyText = "Nothing logged at this level yet.",
 }: {
   events: EventRow[];
   limit?: number;
   title?: string;
+  subtitle?: string;
+  /** When given, each line is tagged with the strategy that wrote it. */
+  algoNames?: Record<string, string>;
+  emptyText?: string;
 }) {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("activity");
 
@@ -44,6 +51,7 @@ export function EventFeed({
   return (
     <Card
       title={title}
+      subtitle={subtitle}
       action={
         <div className="flex gap-1 rounded-md border border-hairline p-0.5">
           {FILTERS.map((f) => (
@@ -64,7 +72,7 @@ export function EventFeed({
       }
     >
       {shown.length === 0 ? (
-        <Empty>Nothing logged at this level yet.</Empty>
+        <Empty>{emptyText}</Empty>
       ) : (
         <ol className="max-h-[28rem] space-y-0 overflow-y-auto">
           {shown.map((event) => {
@@ -86,9 +94,14 @@ export function EventFeed({
                   <span className={`block break-words text-xs leading-relaxed ${style.text}`}>
                     {event.message}
                   </span>
-                  {event.source !== "engine" && (
-                    <span className="text-2xs uppercase tracking-[0.1em] text-ink-muted">
-                      {event.source}
+                  {(algoNames || event.source !== "engine") && (
+                    <span className="flex flex-wrap gap-x-2 text-2xs uppercase tracking-[0.1em] text-ink-muted">
+                      {algoNames && event.algo_id && (
+                        <span className="text-brand">
+                          {algoNames[event.algo_id] ?? event.algo_id}
+                        </span>
+                      )}
+                      {event.source !== "engine" && <span>{event.source}</span>}
                     </span>
                   )}
                 </span>

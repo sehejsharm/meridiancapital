@@ -2,12 +2,14 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 
+import { ModeBadge } from "@/components/AlgoCard";
 import { GateReport } from "@/components/GateReport";
 import { RunModeDialog } from "@/components/RunModeDialog";
 import { ShadowPanel } from "@/components/ShadowPanel";
 import { Badge, Button, Card, Empty, Field } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { fetchAlgo } from "@/lib/algos";
+import { useLiveFeed } from "@/lib/LiveContext";
 import { istDateTime } from "@/lib/format";
 import type { Algo, GateReport as Report } from "@/lib/types";
 
@@ -21,6 +23,7 @@ function gateLabel(status: string): string {
 
 export default function AlgoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { status } = useLiveFeed();
   const [algo, setAlgo] = useState<Algo | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
@@ -60,20 +63,18 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
     [load],
   );
 
-  /** Answer from the run dialog: start a stopped algorithm, or restate the
-   *  mode of one that is already stopped and staying that way. */
+  /** Answer from the run dialog, which only Start opens. */
   const pickMode = useCallback(
     async (mode: "paper" | "live") => {
       setAsking(false);
-      const running = algo?.runtime.running;
-      if (running) {
-        await act(() => apiPost(`/algos/${id}/mode`, { mode }), `Set to ${mode}.`);
-      } else {
-        await act(() => apiPost(`/algos/${id}/start`, { mode }), `Started in ${mode}.`);
-      }
+      await act(
+        () => apiPost(`/algos/${id}/start`, { mode }),
+        mode === "live" ? "Started on real money." : "Started on paper.",
+      );
     },
-    [act, algo?.runtime.running, id],
+    [act, id],
   );
+  const [confirmingLive, setConfirmingLive] = useState(false);
 
   const showReport = useCallback(
     async (versionId: number) => {
@@ -108,7 +109,11 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   const running = algo.runtime.running;
-  const live = algo.mode === "live";
+  // The mode of the run in progress; when stopped, the mode an armed algorithm
+  // will be started in at the open.
+  const liveNow = running && algo.runtime.mode === "live";
+  const autoLive = algo.mode === "live";
+  const automationOff = status?.schedule ? !status.schedule.enabled : false;
 
   return (
     <div className="space-y-5">
@@ -141,17 +146,25 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={live ? "critical" : "neutral"}>{live ? "Real money" : "Paper"}</Badge>
-          <Badge tone={running ? "good" : "neutral"} dot={running}>
-            {running ? `running · pid ${algo.runtime.pid}` : "stopped"}
-          </Badge>
+          <ModeBadge algo={algo} />
+          {running && <Badge tone="neutral">pid {algo.runtime.pid}</Badge>}
         </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="Control">
           <dl className="divide-y divide-hairline">
-            <Field label="Mode" value={live ? "LIVE — real orders" : "Paper — no orders"} />
+            <Field
+              label="Trading"
+              value={
+                !running
+                  ? "Off — you pick paper or real money when you start it"
+                  : liveNow
+                    ? "Real money — orders go to Angel One"
+                    : "Paper — simulated, no orders"
+              }
+              mono={false}
+            />
             <Field label="Active version" value={algo.active ? `v${algo.active.version}` : "none"} />
             <Field label="Gate" value={gateLabel(algo.gate.status)} />
           </dl>
@@ -166,12 +179,6 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
                 Start
               </Button>
             )}
-            <Button
-              disabled={busy || running || live}
-              onClick={() => act(() => apiPost(`/algos/${id}/mode`, { mode: "paper" }), "Set to paper.")}
-            >
-              Set to paper
-            </Button>
             {algo.kind !== "builtin" &&
               (confirmingDelete ? (
                 <>
@@ -197,33 +204,73 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </Card>
 
-        <Card title="Mode" subtitle="Which money this algorithm trades">
-          <p className="text-xs text-ink-secondary">
-            You are asked every time you start it, and the answer sticks until you
-            change it. It is currently set to{" "}
-            <strong className={live ? "text-critical" : "text-ink"}>
-              {live ? "real money" : "paper"}
-            </strong>
-            .
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              disabled={busy || running || !live}
-              onClick={() => act(() => apiPost(`/algos/${id}/mode`, { mode: "paper" }), "Set to paper.")}
-            >
-              Set to paper
-            </Button>
-            <Button
-              variant="danger"
-              disabled={busy || running || live || !!algo.shadow_of}
-              onClick={() => setAsking(true)}
-            >
-              Set to real money
-            </Button>
-          </div>
-          {running && (
-            <p className="mt-3 text-2xs text-ink-muted">
-              Stop it first — a running algorithm holds its mode for the session.
+        <Card title="Daily auto-start" subtitle="Starting it arms it; stopping it disarms it">
+          {running ? (
+            <p className="text-xs text-ink-secondary">
+              Running on{" "}
+              <strong className={liveNow ? "text-critical" : "text-ink"}>
+                {liveNow ? "real money" : "paper"}
+              </strong>
+              . It keeps that mode until it stops, then starts itself at 09:05 on every trading
+              day in the same mode until you press Stop.
+            </p>
+          ) : algo.enabled ? (
+            <>
+              {automationOff && (
+                <p className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-2xs text-warning">
+                  Automation is switched off on the Controls page, so this will not start itself
+                  until you arm it there.
+                </p>
+              )}
+              <p className="text-xs text-ink-secondary">
+                Armed. It starts itself at 09:05 on the next trading day on{" "}
+                <strong className={autoLive ? "text-critical" : "text-ink"}>
+                  {autoLive ? "real money" : "paper"}
+                </strong>
+                .
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {autoLive ? (
+                  <Button
+                    disabled={busy}
+                    onClick={() =>
+                      act(() => apiPost(`/algos/${id}/mode`, { mode: "paper" }), "It will start on paper.")
+                    }
+                  >
+                    Start it on paper instead
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      variant="danger"
+                      disabled={busy || !!algo.shadow_of}
+                      onClick={() => {
+                        if (!confirmingLive) {
+                          setConfirmingLive(true);
+                          return;
+                        }
+                        setConfirmingLive(false);
+                        void act(
+                          () => apiPost(`/algos/${id}/mode`, { mode: "live" }),
+                          "It will start on real money.",
+                        );
+                      }}
+                    >
+                      {confirmingLive ? "Tap again: real money at the open" : "Start it on real money instead"}
+                    </Button>
+                    {confirmingLive && (
+                      <Button variant="ghost" disabled={busy} onClick={() => setConfirmingLive(false)}>
+                        Cancel
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-ink-secondary">
+              Off. Press Start and pick paper or real money; from then on it starts itself at 09:05
+              on every trading day in that mode, until you press Stop.
             </p>
           )}
         </Card>

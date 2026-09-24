@@ -49,13 +49,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { snapshot, status, connection } = useLiveFeed();
 
-  const running = status?.engine.running ?? false;
-  const phase = running ? (snapshot?.engine.phase ?? "STARTING") : "STOPPED";
-  const liveCount = status?.fleet?.live_running ?? 0;
-  // The header speaks for the whole desk: any algorithm on real money makes it
-  // Live, not just the built-in engine whose status used to be the only input.
-  const builtinLive = running && (snapshot?.engine.mode ?? status?.engine.mode) === "live";
-  const mode = liveCount > 0 || builtinLive ? "live" : "paper";
+  const fleet = status?.fleet;
+  const liveCount = fleet?.live_running ?? 0;
 
   return (
     <div className="min-h-screen">
@@ -69,7 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <header className="pt-safe relative z-10 border-b border-hairline bg-surface/80 backdrop-blur">
-        <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-[2200px] items-center gap-3 px-4 py-3 sm:px-6 xl:px-8">
           <Link href="/" className="-my-1.5 shrink-0 py-1.5">
             <Wordmark />
           </Link>
@@ -93,16 +88,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="ml-auto flex min-w-0 items-center gap-2">
-            <Badge tone={mode === "live" ? "critical" : "neutral"}>
-              {mode === "live" ? "Live" : "Paper"}
-            </Badge>
-            <span className="hidden sm:inline-flex">
-              <Badge tone={running ? "good" : "warning"} dot={running}>
-                {phase}
-              </Badge>
-            </span>
-            <StalenessDot />
-            <ConnectionChip state={connection} ts={snapshot?.ts} />
+            {fleet && <FleetChip running={fleet.running} live={liveCount} />}
+            <DataLink state={connection} ts={snapshot?.ts} />
             <button
               type="button"
               onClick={() => void signOut()}
@@ -115,11 +102,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="h-px rule-gold" />
       </header>
 
-      <main className="relative z-10 mx-auto max-w-[1400px] px-4 py-5 sm:px-6">
+      {/* Wide enough to use a laptop or desktop screen edge to edge; the cap only
+          stops a 4K monitor stretching a table across a metre of glass. */}
+      <main className="relative z-10 mx-auto max-w-[2200px] px-4 py-5 sm:px-6 xl:px-8">
         {children}
       </main>
 
-      <footer className="pb-tabbar relative z-10 mx-auto max-w-[1400px] px-4 text-2xs text-ink-muted sm:px-6 lg:pb-8">
+      <footer className="pb-tabbar relative z-10 mx-auto max-w-[2200px] px-4 text-2xs text-ink-muted sm:px-6 lg:pb-8 xl:px-8">
         Meridian Capital · {snapshot?.engine.banner ?? "GANESH KAVACH 50K"} · all money figures
         read from Angel One
       </footer>
@@ -129,18 +118,66 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function ConnectionChip({ state, ts }: { state: string; ts?: string }) {
+/**
+ * What is running, in one badge.
+ *
+ * Paper or real money is a property of a running algorithm — it is picked each
+ * time one is started — so with nothing running there is no mode to show, and
+ * the header says so instead of a standing "Paper" that read as a setting.
+ */
+function FleetChip({ running, live }: { running: number; live: number }) {
+  if (live > 0) {
+    const paper = running - live;
+    return (
+      <span title="Algorithms placing real orders at Angel One right now">
+        <Badge tone="critical" dot>
+          {live} on real money{paper > 0 ? ` · ${paper} paper` : ""}
+        </Badge>
+      </span>
+    );
+  }
+  if (running > 0) {
+    return (
+      <span title="Running on paper: signals and fills are simulated, no orders reach Angel One">
+        <Badge tone="good" dot>
+          {running} running · paper
+        </Badge>
+      </span>
+    );
+  }
+  return (
+    <span title="No algorithm is running. Start one from the deck; it asks paper or real money.">
+      <Badge tone="neutral">All stopped</Badge>
+    </span>
+  );
+}
+
+/**
+ * The dashboard's own link to the server, not anything to do with trading:
+ * whether updates are pushed as they happen, fetched every few seconds, or not
+ * arriving at all — and how long since the last one.
+ */
+function DataLink({ state, ts }: { state: string; ts?: string }) {
   const copy = {
-    live: { tone: "good" as const, label: "Streaming" },
-    polling: { tone: "warning" as const, label: "Polling" },
-    connecting: { tone: "neutral" as const, label: "Connecting" },
-    offline: { tone: "critical" as const, label: "Offline" },
-  }[state] ?? { tone: "neutral" as const, label: state };
+    live: { label: "Live data", why: "updates are pushed from the server as they happen" },
+    polling: { label: "Slow data", why: "live push unavailable, re-reading every few seconds" },
+    connecting: { label: "Connecting", why: "opening the link to the server" },
+    offline: { label: "Offline", why: "the server cannot be reached — figures are not current" },
+  }[state] ?? { label: state, why: "" };
 
   return (
-    <span className="hidden items-center gap-2 md:inline-flex">
-      <Badge tone={copy.tone}>{copy.label}</Badge>
-      {ts && <span className="text-2xs tabular-nums text-ink-muted">{istTime(ts)} IST</span>}
+    <span
+      className="hidden items-center gap-2 rounded-full border border-hairline px-2.5 py-0.5 sm:inline-flex"
+      title={`Dashboard ↔ server: ${copy.why}${ts ? `. Last engine update ${istTime(ts)} IST` : ""}`}
+    >
+      <StalenessDot />
+      <span
+        className={`text-2xs font-medium uppercase tracking-[0.1em] ${
+          state === "live" ? "text-ink-secondary" : state === "offline" ? "text-critical" : "text-warning"
+        }`}
+      >
+        {copy.label}
+      </span>
     </span>
   );
 }

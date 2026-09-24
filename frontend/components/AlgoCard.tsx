@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { Badge, Button } from "@/components/ui";
 import { money, signedMoney, pnlClass } from "@/lib/format";
+import { useLiveFeed } from "@/lib/LiveContext";
 import type { Algo, Snapshot } from "@/lib/types";
 
 /**
@@ -20,6 +21,7 @@ export function AlgoCard({
   onStart,
   onStop,
   compact = false,
+  wide,
 }: {
   algo: Algo;
   snapshot?: Snapshot | null;
@@ -27,24 +29,26 @@ export function AlgoCard({
   onStart?: () => void;
   onStop?: () => void;
   compact?: boolean;
+  /** From which breakpoint the card is wide enough to lay its four figures
+   *  out in one line — earlier when it has the row to itself. */
+  wide?: "md" | "xl";
 }) {
   const running = algo.runtime?.running ?? false;
-  // A running algorithm is labelled with the mode its process is actually in;
-  // the saved setting only says what the next start will use.
-  const live = (running ? algo.runtime?.mode : algo.mode) === "live";
+  const live = running && algo.runtime?.mode === "live";
   const account = snapshot?.account;
   const position = snapshot?.position ?? null;
 
   return (
     <article
-      className={`flex flex-col rounded-lg border bg-surface transition-colors ${
+      className={`flex min-w-0 flex-col rounded-lg border bg-surface transition-colors ${
         live && running
           ? "border-critical/50 shadow-[0_0_0_1px_rgba(248,113,113,0.15)]"
           : "border-hairline"
       }`}
     >
-      <header className="flex items-start justify-between gap-3 border-b border-hairline px-4 py-3">
-        <div className="min-w-0">
+      {/* The badge wraps under the name rather than truncating it to a stub. */}
+      <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b border-hairline px-4 py-3">
+        <div className="min-w-[10rem] flex-1">
           <div className="flex items-center gap-2">
             <span
               className={`h-1.5 w-1.5 shrink-0 rounded-full ${
@@ -65,11 +69,15 @@ export function AlgoCard({
             {running ? `pid ${algo.runtime.pid}` : "stopped"}
           </p>
         </div>
-        <Badge tone={live ? "critical" : "neutral"}>{live ? "Real money" : "Paper"}</Badge>
+        <ModeBadge algo={algo} />
       </header>
 
       {!compact && (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3">
+        <div
+          className={`grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3 ${
+            wide === "md" ? "md:grid-cols-4" : wide === "xl" ? "xl:grid-cols-4" : ""
+          }`}
+        >
           <Figure label="Equity" value={account ? money(account.equity) : "—"} />
           <Figure
             label="Day P&L"
@@ -121,6 +129,49 @@ export function AlgoCard({
         )}
       </footer>
     </article>
+  );
+}
+
+/**
+ * Which money an algorithm is trading, said the same way on every page.
+ *
+ * Paper or real money belongs to a run — it is asked at every Start — so a
+ * running algorithm shows the mode its process is actually in, and a stopped
+ * one shows no mode unless it is armed: then the mode the scheduler will use
+ * when it brings it up before the open, which is the one worth knowing.
+ */
+export function ModeBadge({ algo }: { algo: Pick<Algo, "mode" | "enabled" | "runtime"> }) {
+  const { status } = useLiveFeed();
+  // Automation is the master switch: with it off, arming starts nothing.
+  const automationOff = status?.schedule ? !status.schedule.enabled : false;
+  const running = algo.runtime?.running ?? false;
+  if (running) {
+    const live = algo.runtime?.mode === "live";
+    return (
+      <Badge tone={live ? "critical" : "good"} dot>
+        {live ? "Real money" : "Paper"}
+      </Badge>
+    );
+  }
+  if (algo.enabled && automationOff) {
+    return (
+      <span title="Armed, but automation is switched off on the Controls page, so it will not start itself">
+        <Badge tone="warning">Armed · automation off</Badge>
+      </span>
+    );
+  }
+  if (algo.enabled) {
+    const live = algo.mode === "live";
+    return (
+      <span title={`Armed: starts itself at 09:05 on trading days, on ${live ? "real money" : "paper"}`}>
+        <Badge tone={live ? "critical" : "neutral"}>Auto · {live ? "real money" : "paper"}</Badge>
+      </span>
+    );
+  }
+  return (
+    <span title="Stopped. Press Start to run it; you will be asked paper or real money.">
+      <Badge tone="neutral">Off</Badge>
+    </span>
   );
 }
 

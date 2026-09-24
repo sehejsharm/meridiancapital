@@ -54,10 +54,7 @@ export function StalenessDot() {
   const seconds = ageMs === null ? "—" : `${(ageMs / 1000).toFixed(1)}s`;
 
   return (
-    <span
-      className="hidden items-center gap-1.5 sm:inline-flex"
-      title={`Time since the last update: ${seconds}`}
-    >
+    <span className="inline-flex items-center gap-1.5" title={`Last update ${seconds} ago`}>
       <span
         aria-hidden="true"
         className={`h-1.5 w-1.5 rounded-full ${

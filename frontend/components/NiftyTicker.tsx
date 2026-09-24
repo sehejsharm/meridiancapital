@@ -17,7 +17,7 @@ function Reading({
 }) {
   return (
     <div className="flex min-w-0 flex-col">
-      <span className="text-2xs uppercase tracking-[0.14em] text-ink-muted">{label}</span>
+      <span className="truncate text-2xs uppercase tracking-[0.14em] text-ink-muted">{label}</span>
       <span className={`truncate text-sm font-semibold tabular-nums ${tone ?? "text-ink"}`}>
         {value === null ? "—" : value.toLocaleString("en-IN", {
           minimumFractionDigits: digits,
@@ -82,7 +82,9 @@ export function NiftyTicker() {
         </span>
       </div>
 
-      <div className="grid flex-1 grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
+      {/* A row of their own on a phone: as a shrinkable flex item the grid
+          collapsed to nothing and its labels spilled across the status line. */}
+      <div className="grid w-full grid-cols-2 gap-x-6 gap-y-2 sm:w-auto sm:min-w-[24rem] sm:flex-1 sm:grid-cols-4">
         <Reading label="Bar close" value={data?.bar_close ?? null} />
         <Reading label="Channel high" value={data?.channel_high ?? null} />
         <Reading label="Channel low" value={data?.channel_low ?? null} />
@@ -93,7 +95,7 @@ export function NiftyTicker() {
         />
       </div>
 
-      <div className="ml-auto flex items-center gap-2 text-2xs text-ink-muted">
+      <div className="flex w-full min-w-0 items-center gap-2 text-2xs text-ink-muted sm:ml-auto sm:w-auto">
         <span
           className={`h-1.5 w-1.5 rounded-full ${
             data?.live ? "live-dot bg-good" : "bg-ink-muted"
