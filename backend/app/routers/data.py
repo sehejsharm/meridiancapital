@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from app.deps import ctx, system_status
 from app.security import Principal, require_auth
 from engine.clock import now_ist
-from shared.db import K_SNAPSHOT
+from shared.db import DEFAULT_ALGO, K_SNAPSHOT
 
 router = APIRouter(prefix="/api", tags=["data"], dependencies=[Depends(require_auth)])
 
@@ -42,8 +42,10 @@ async def events(
     limit: int = Query(200, ge=1, le=1000),
     after_id: int | None = None,
     level: list[str] | None = Query(None),
+    algo: str | None = Query(None, max_length=80),
 ) -> dict:
-    return {"events": ctx().db.events(limit=limit, after_id=after_id, levels=level)}
+    """The journal, optionally for one algorithm (or ``system`` for desk-wide events)."""
+    return {"events": ctx().db.events(limit=limit, after_id=after_id, levels=level, algo_id=algo)}
 
 
 @router.get("/equity")
@@ -59,19 +61,31 @@ async def equity(
 
 
 @router.get("/reports/eod")
-async def eod_report(date: str | None = None) -> dict:
-    key = f"report:eod:{date}" if date else "report:eod:latest"
-    return {"report": ctx().db.kv_get(key, None)}
+async def eod_report(date: str | None = None, algo: str | None = Query(None, max_length=80)) -> dict:
+    db = ctx().db
+    if not algo:
+        key = f"report:eod:{date}" if date else "report:eod:latest"
+        return {"report": db.kv_get(key, None)}
+    key = f"report:eod:{date}:{algo}" if date else f"report:eod:latest:{algo}"
+    report = db.kv_get(key, None)
+    if report is None and algo == DEFAULT_ALGO:
+        # The built-in's reports from before they were kept per algorithm.
+        report = db.kv_get(f"report:eod:{date}" if date else "report:eod:latest", None)
+    return {"report": report}
 
 
 @router.get("/runs")
-async def runs(limit: int = Query(25, ge=1, le=200)) -> dict:
-    return {"runs": ctx().db.recent_runs(limit)}
+async def runs(
+    limit: int = Query(25, ge=1, le=200), algo: str | None = Query(None, max_length=80)
+) -> dict:
+    return {"runs": ctx().db.recent_runs(limit, algo_id=algo)}
 
 
 @router.get("/commands")
-async def commands(limit: int = Query(50, ge=1, le=200)) -> dict:
-    return {"commands": ctx().db.recent_commands(limit)}
+async def commands(
+    limit: int = Query(50, ge=1, le=200), algo: str | None = Query(None, max_length=80)
+) -> dict:
+    return {"commands": ctx().db.recent_commands(limit, algo_id=algo)}
 
 
 @router.get("/audit")

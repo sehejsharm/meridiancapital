@@ -80,9 +80,12 @@ async def engine_start(request: Request, principal: Principal = Depends(require_
     c = ctx()
     _audit(request, principal, "engine.start")
     c.sup.state.manual_override = False
-    res = c.sup.start(trigger=f"manual:{principal.subject}")
+    # Through the fleet, which refuses a second algorithm on real money.
+    res = c.fleet.start(c.sup.algo_id, trigger=f"manual:{principal.subject}")
     if not res.get("ok"):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=res.get("detail"))
+    # Starting arms it for the daily open, as it does from the deck.
+    c.db.set_algo_fields(c.sup.algo_id, enabled=1)
     return res
 
 
@@ -94,8 +97,10 @@ async def engine_stop(
     _audit(request, principal, "engine.stop", f"force={body.force} reason={body.reason}")
     res = c.sup.stop(reason=body.reason, force=body.force, trigger=f"manual:{principal.subject}")
     if res.get("ok"):
-        # Keep the scheduler from immediately bringing it back up mid-session.
+        # Keep the scheduler from immediately bringing it back up mid-session,
+        # and from bringing it up tomorrow: a stop disarms it.
         c.sup.state.manual_override = True
+        c.db.set_algo_fields(c.sup.algo_id, enabled=0)
     else:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=res.get("detail"))
     return res
@@ -105,7 +110,10 @@ async def engine_stop(
 async def engine_restart(request: Request, principal: Principal = Depends(require_auth)) -> dict:
     c = ctx()
     _audit(request, principal, "engine.restart")
-    return c.sup.restart(trigger=f"manual:{principal.subject}")
+    trigger = f"manual:{principal.subject}"
+    if c.sup.state.running:
+        c.sup.stop(reason="restart", force=True, trigger=trigger)
+    return c.fleet.start(c.sup.algo_id, trigger=trigger)
 
 
 @router.post("/mode")
@@ -125,7 +133,10 @@ async def set_mode(
         )
     c.sup.set_mode(body.mode)
     _audit(request, principal, "mode.set", body.mode)
-    c.db.add_event("warn", f"trading mode set to {body.mode.upper()} by {principal.subject}", source="api")
+    c.db.add_event(
+        "warn", f"trading mode set to {body.mode.upper()} by {principal.subject}",
+        source="api", algo_id=c.sup.algo_id,
+    )
     return {"ok": True, "mode": body.mode}
 
 
@@ -169,7 +180,9 @@ async def flatten(
             detail="engine is not running — square off in the Angel One app directly",
         )
     cmd_id = c.db.enqueue_command("flatten", issued_by=principal.subject)
-    c.db.add_event("critical", f"FLATTEN requested by {principal.subject}", source="api")
+    c.db.add_event(
+        "critical", f"FLATTEN requested by {principal.subject}", source="api", algo_id=c.sup.algo_id
+    )
     return {"ok": True, "command_id": cmd_id, "detail": "market exit order queued"}
 
 

@@ -177,7 +177,8 @@ class Supervisor:
             self.state.adopted = True
             self.state.started_ts = self.pidfile.stat().st_mtime
             self.db.add_event(
-                "info", f"API adopted running engine pid {pid}", source="supervisor"
+                "info", f"API adopted running engine pid {pid}", source="supervisor",
+                algo_id=self.algo_id,
             )
         else:
             self.pidfile.unlink(missing_ok=True)
@@ -199,7 +200,7 @@ class Supervisor:
         pid = self.state.pid
         if self.state.run_id:
             self.db.end_run(self.state.run_id, code, reason)
-        self.db.expire_stale_commands()
+        self.db.expire_stale_commands(self.algo_id)
         self.state.running = False
         self.state.pid = None
         self.state.last_exit_code = code

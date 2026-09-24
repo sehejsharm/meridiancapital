@@ -472,6 +472,7 @@ class Engine:
         wins = [n for n in nets if n > 0]
         report = {
             "session_date": today,
+            "algo_id": self.algo_id,
             "mode": self.mode,
             "trades": len(rows),
             "wins": len(wins),
@@ -490,6 +491,9 @@ class Engine:
             else (self.equity - self.st.peak_equity) / self.st.peak_equity,
             "blotter": rows,
         }
+        # Kept per algorithm; the unkeyed "latest" is whichever closed last.
+        self.db.kv_set(f"report:eod:{today}:{self.algo_id}", report)
+        self.db.kv_set(f"report:eod:latest:{self.algo_id}", report)
         self.db.kv_set(f"report:eod:{today}", report)
         self.db.kv_set("report:eod:latest", report)
         self.tm.log(
@@ -1088,7 +1092,7 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(eng, "feed", None):
             eng.feed.stop()
         eng.publish_offline(eng.stop_reason or "exited")
-        eng.db.expire_stale_commands()
+        eng.db.expire_stale_commands(eng.algo_id)
 
 
 if __name__ == "__main__":

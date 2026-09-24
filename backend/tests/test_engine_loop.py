@@ -384,3 +384,6 @@ def test_end_of_day_report_summarises_the_session(engine):
     engine.emit_eod_report()
     report = engine.db.kv_get("report:eod:latest")
     assert report["trades"] == 1 and report["wins"] == 1 and report["net"] == 5_000.0
+    # Kept per algorithm too, so a second algorithm closing out cannot hide it.
+    assert engine.db.kv_get(f"report:eod:latest:{engine.algo_id}") == report
+    assert report["algo_id"] == engine.algo_id

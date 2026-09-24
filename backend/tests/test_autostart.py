@@ -249,3 +249,69 @@ def test_the_application_context_connects_the_scheduler_to_the_fleet(tmp_path, m
     monkeypatch.setattr(settings, "db_path", tmp_path / "wiring.db")
     context = deps.build_context()
     assert context.sched.fleet is context.fleet
+
+
+# ── the built-in follows the same rules ──────────────────────────────────────
+class ModeSupervisor(FakeSupervisor):
+    """A fake with a mode, built the way the real Fleet builds supervisors."""
+
+    def __init__(self, db=None, algo_id=DEFAULT_ALGO, mode_provider=None, strategy_path=None):
+        super().__init__()
+        self.db = db
+        self.algo_id = algo_id
+        self.state.mode = "paper"
+
+    def desired_mode(self):
+        return (self.db.algo(self.algo_id) or {}).get("mode") or "paper"
+
+    def start(self, trigger="manual"):
+        self.state.mode = self.desired_mode()
+        return super().start(trigger)
+
+
+def _builtin_desk(tmp_db, monkeypatch, *, armed: bool, mode: str = "paper"):
+    """A scheduler wired as deps.py wires it, at a moment inside the window."""
+    from datetime import datetime
+
+    import app.scheduler as scheduler_mod
+    from app.fleet import Fleet
+
+    tmp_db.upsert_algo(DEFAULT_ALGO, "GANESH KAVACH 50K", kind="builtin")
+    tmp_db.set_algo_fields(DEFAULT_ALGO, enabled=1 if armed else 0, mode=mode)
+    fleet = Fleet(tmp_db, supervisor_factory=ModeSupervisor)
+    builtin = fleet.get(DEFAULT_ALGO)
+    sched = Scheduler(tmp_db, builtin, fleet=fleet)
+    sched.set_enabled(True)
+    monkeypatch.setattr(
+        scheduler_mod, "now_ist", lambda: datetime.strptime(AFTER_WARMUP, "%Y-%m-%d %H:%M")
+    )
+    return sched, fleet, builtin
+
+
+def test_an_unarmed_builtin_does_not_start_itself(tmp_db, monkeypatch):
+    sched, _, builtin = _builtin_desk(tmp_db, monkeypatch, armed=False)
+    sched.tick()
+    assert builtin.starts == 0, "the built-in started although nobody pressed Start"
+    assert "not armed" in sched.last_decision
+
+
+def test_an_armed_builtin_starts_at_the_open(tmp_db, monkeypatch):
+    sched, _, builtin = _builtin_desk(tmp_db, monkeypatch, armed=True)
+    sched.tick()
+    assert builtin.starts == 1
+
+
+def test_the_builtin_cannot_come_up_live_beside_another_live_algorithm(tmp_db, monkeypatch):
+    """Two live engines on one Angel account cannot tell their positions apart."""
+    sched, fleet, builtin = _builtin_desk(tmp_db, monkeypatch, armed=True, mode="live")
+    tmp_db.upsert_algo("og-real", "OG Real", kind="uploaded")
+    tmp_db.set_algo_fields("og-real", mode="live")
+    fleet.sync()
+    other = fleet.get("og-real")
+    other.state.running = True
+    other.state.mode = "live"
+
+    sched.tick()
+
+    assert builtin.starts == 0, "the scheduler went around the one-live-algorithm guard"
+    assert "already trading real money" in sched.last_decision

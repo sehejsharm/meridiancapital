@@ -107,7 +107,7 @@ async def save_tuning(
         c.db.add_event(
             "warn",
             f"strategy parameters changed by {principal.subject}: {'; '.join(diff)}",
-            source="api",
+            source="api", algo_id=c.sup.algo_id,
         )
     return {"ok": True, "applied_on_restart": True, **_payload()}
 
@@ -123,6 +123,6 @@ async def reset_tuning(request: Request, principal: Principal = Depends(require_
         c.db.add_event(
             "warn",
             f"strategy parameters reset to backtested defaults by {principal.subject}",
-            source="api",
+            source="api", algo_id=c.sup.algo_id,
         )
     return {"ok": True, **_payload()}

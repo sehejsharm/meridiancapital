@@ -97,6 +97,15 @@ class Scheduler:
             if self.sup.state.manual_override:
                 self.last_decision = "in session window but stopped by operator"
                 return
+            # The same rule as every other algorithm: it comes up at the open
+            # only once the operator has started it, and a Stop disarms it. It
+            # used to start every morning regardless, in whatever mode it last
+            # had — so a built-in once run on real money came back live beside
+            # the algorithm actually meant to trade.
+            builtin = self.db.algo(DEFAULT_ALGO)
+            if builtin is not None and not builtin.get("enabled"):
+                self.last_decision = "built-in not armed — start it from the deck to arm it"
+                return
             crashed = self.sup.state.last_exit_code not in (0, None)
             if crashed:
                 if self.sup.state.restarts_this_session >= settings.max_restarts_per_session:
@@ -110,9 +119,9 @@ class Scheduler:
                     "warn",
                     f"engine is down mid-session (exit {self.sup.state.last_exit_code}) — "
                     f"restarting (attempt {self.sup.state.restarts_this_session})",
-                    source="scheduler",
+                    source="scheduler", algo_id=self.sup.algo_id,
                 )
-            res = self.sup.start(trigger="schedule")
+            res = self._start_builtin()
             self.last_decision = f"start: {res.get('detail') or 'started'}"
             return
 
@@ -123,6 +132,13 @@ class Scheduler:
             return
 
         self.last_decision = "engine state matches schedule"
+
+    def _start_builtin(self) -> dict:
+        """Through the fleet when it owns this supervisor, so the built-in is held
+        to the one-live-algorithm-per-account rule like everything else."""
+        if self.fleet is not None and self.fleet.get(DEFAULT_ALGO) is self.sup:
+            return self.fleet.start(DEFAULT_ALGO, trigger="schedule")
+        return self.sup.start(trigger="schedule")
 
     # ── the rest of the fleet ────────────────────────────────────────────────
     def tick_fleet(self, want: bool) -> None:

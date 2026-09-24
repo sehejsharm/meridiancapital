@@ -17,6 +17,7 @@ from app import shadow
 from app.security import Principal, client_ip, require_auth
 from engine import versions
 from engine.gate import check_catalogue
+from shared.db import SYSTEM_ALGO
 
 router = APIRouter(prefix="/api/algos", tags=["algos"], dependencies=[Depends(require_auth)])
 
@@ -108,6 +109,9 @@ async def upload_algo(
     algo_id = (body.algo_id or slugify(body.name)).strip()
     if not algo_id:
         raise HTTPException(status_code=400, detail="could not derive an id from that name")
+    if algo_id == SYSTEM_ALGO:
+        # The journal files desk-wide events under this id.
+        raise HTTPException(status_code=400, detail="'system' is reserved; pick another name")
 
     existing = db.algo(algo_id)
     if existing and existing.get("kind") == "builtin":
@@ -332,7 +336,10 @@ async def delete_algo(
     ctx().fleet.sync()
 
     _audit(request, principal, "algo.delete", ", ".join(removed))
-    db.add_event("warn", f"algorithm '{algo['name']}' removed by {principal.subject}", source="api")
+    db.add_event(
+        "warn", f"algorithm '{algo['name']}' removed by {principal.subject}",
+        source="api", algo_id=algo_id,
+    )
     return {"ok": True, "deleted": removed}
 
 

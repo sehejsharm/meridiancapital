@@ -160,6 +160,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 # Everything written before multi-algo belongs to the built-in build.
 DEFAULT_ALGO = "gk50k"
+# Events that belong to the desk rather than to one algorithm: the API starting,
+# the scheduler, an emergency stop. They used to default to the built-in's id,
+# which filed every one of them in its journal.
+SYSTEM_ALGO = "system"
 
 _init_lock = threading.Lock()
 _initialised: set[str] = set()
@@ -261,7 +265,7 @@ class Database:
         message: str,
         extra: dict | None = None,
         source: str = "engine",
-        algo_id: str = DEFAULT_ALGO,
+        algo_id: str = SYSTEM_ALGO,
     ) -> int:
         with self.conn() as c:
             cur = c.execute(
@@ -462,19 +466,32 @@ class Database:
                 (status, now_ist().isoformat(timespec="seconds"), result[:500], command_id),
             )
 
-    def recent_commands(self, limit: int = 50) -> list[dict]:
+    def recent_commands(self, limit: int = 50, algo_id: str | None = None) -> list[dict]:
+        sql, args = "SELECT * FROM commands", []
+        if algo_id:
+            sql += " WHERE algo_id = ?"
+            args.append(algo_id)
         with self.conn() as c:
-            rows = c.execute("SELECT * FROM commands ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            rows = c.execute(sql + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
         return [dict(r) for r in rows]
 
-    def expire_stale_commands(self) -> int:
-        """Commands left claimed by an engine that died never re-run."""
+    def expire_stale_commands(self, algo_id: str | None = None) -> int:
+        """Commands left claimed by an engine that died never re-run.
+
+        Scoped to the engine that stopped. Unscoped, one algorithm stopping
+        expired every other algorithm's queue — including a flatten the
+        emergency stop had just queued for an engine still holding a position.
+        """
+        sql = (
+            "UPDATE commands SET status='expired', done_ts=?, result='engine stopped before execution' "
+            "WHERE status IN ('pending','claimed')"
+        )
+        args: list[Any] = [now_ist().isoformat(timespec="seconds")]
+        if algo_id:
+            sql += " AND algo_id = ?"
+            args.append(algo_id)
         with self.conn() as c:
-            cur = c.execute(
-                "UPDATE commands SET status='expired', done_ts=?, result='engine stopped before execution' "
-                "WHERE status IN ('pending','claimed')",
-                (now_ist().isoformat(timespec="seconds"),),
-            )
+            cur = c.execute(sql, args)
         return cur.rowcount or 0
 
     # ── engine runs ──────────────────────────────────────────────────────────
@@ -494,9 +511,13 @@ class Database:
                 (now_ist().isoformat(timespec="seconds"), exit_code, reason[:300], run_id),
             )
 
-    def recent_runs(self, limit: int = 25) -> list[dict]:
+    def recent_runs(self, limit: int = 25, algo_id: str | None = None) -> list[dict]:
+        sql, args = "SELECT * FROM engine_runs", []
+        if algo_id:
+            sql += " WHERE algo_id = ?"
+            args.append(algo_id)
         with self.conn() as c:
-            rows = c.execute("SELECT * FROM engine_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            rows = c.execute(sql + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
         return [dict(r) for r in rows]
 
     # ── holiday calendar ─────────────────────────────────────────────────────
