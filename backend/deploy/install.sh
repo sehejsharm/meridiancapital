@@ -127,16 +127,26 @@ netfilter-persistent save >/dev/null
 log "Starting services"
 systemctl restart meridian-api
 [[ -n "$DOMAIN" ]] && systemctl restart caddy || true
-sleep 2
 
 log "Status"
+# The API takes several seconds to import the engine; checking once after a
+# fixed pause reported a healthy restart as "Couldn't connect to server".
+healthy=""
+for _ in $(seq 1 30); do
+    if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then healthy=1; break; fi
+    sleep 1
+done
 systemctl --no-pager --lines=5 status meridian-api || true
-curl -fsS http://127.0.0.1:8080/health && echo
+if [[ -n "$healthy" ]]; then
+    echo "API healthy: $(curl -fsS http://127.0.0.1:8080/health)"
+else
+    warn "API did not answer within 30s — see: journalctl -u meridian-api -n 50 --no-pager"
+fi
 
 cat <<EOF
 
 ────────────────────────────────────────────────────────────────────────
-Installed. Remaining steps:
+Installed. On a FIRST install only, the remaining steps are:
 
   1. Fill in $ENV_FILE (Angel One credentials + dashboard secrets).
   2. sudo systemctl restart meridian-api
