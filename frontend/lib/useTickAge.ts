@@ -2,8 +2,12 @@
 
 import { useEffect, useState } from "react";
 
-/** Beyond this the feed is treated as stale and the desk says so loudly. */
-export const STALE_MS = 1500;
+/** Beyond this the feed is treated as stale and the desk says so loudly. The
+ *  server sends at least one message every second (a heartbeat when nothing
+ *  else changes), so 3.5s is three missed beats — not a phone network's jitter. */
+export const STALE_MS = 3500;
+/** Beyond this it is dead. */
+export const DEAD_MS = 15_000;
 
 export type Freshness = "fresh" | "stale" | "dead";
 
@@ -30,6 +34,6 @@ export function useTickAge(lastUpdate: number | null): {
 
   const ageMs = Math.max(0, now - lastUpdate);
   const state: Freshness =
-    ageMs > STALE_MS * 8 ? "dead" : ageMs > STALE_MS ? "stale" : "fresh";
+    ageMs > DEAD_MS ? "dead" : ageMs > STALE_MS ? "stale" : "fresh";
   return { ageMs, state };
 }

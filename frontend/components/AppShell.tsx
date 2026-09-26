@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui";
 import { signOut } from "@/lib/client-api";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { istTime } from "@/lib/format";
+import { useLinkView } from "@/lib/link";
 
 const NAV = [
   { href: "/", label: "Deck", short: "Deck", Icon: IconDeck },
@@ -47,7 +48,7 @@ function isActive(pathname: string, href: string): boolean {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { snapshot, status, connection } = useLiveFeed();
+  const { snapshot, status } = useLiveFeed();
 
   const fleet = status?.fleet;
   const liveCount = fleet?.live_running ?? 0;
@@ -89,7 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <div className="ml-auto flex min-w-0 items-center gap-2">
             {fleet && <FleetChip running={fleet.running} live={liveCount} />}
-            <DataLink state={connection} ts={snapshot?.ts} />
+            <DataLink ts={snapshot?.ts} />
             <button
               type="button"
               onClick={() => void signOut()}
@@ -157,13 +158,17 @@ function FleetChip({ running, live }: { running: number; live: number }) {
  * whether updates are pushed as they happen, fetched every few seconds, or not
  * arriving at all — and how long since the last one.
  */
-function DataLink({ state, ts }: { state: string; ts?: string }) {
-  const copy = {
-    live: { label: "Live data", why: "updates are pushed from the server as they happen" },
-    polling: { label: "Slow data", why: "live push unavailable, re-reading every few seconds" },
-    connecting: { label: "Connecting", why: "opening the link to the server" },
-    offline: { label: "Offline", why: "the server cannot be reached — figures are not current" },
-  }[state] ?? { label: state, why: "" };
+function DataLink({ ts }: { ts?: string }) {
+  const { connection } = useLiveFeed();
+  const view = useLinkView();
+  const why = {
+    live: "updates are pushed from the server as they happen",
+    polling: "live push unavailable, re-reading every few seconds",
+    connecting: "opening the link to the server",
+    offline: "the server cannot be reached — figures are not current",
+  }[connection];
+  const state = view.tone === "good" ? "live" : view.tone === "critical" ? "offline" : "polling";
+  const copy = { label: view.label ?? "", why };
 
   return (
     <span
@@ -171,13 +176,15 @@ function DataLink({ state, ts }: { state: string; ts?: string }) {
       title={`Dashboard ↔ server: ${copy.why}${ts ? `. Last engine update ${istTime(ts)} IST` : ""}`}
     >
       <StalenessDot />
-      <span
-        className={`text-2xs font-medium uppercase tracking-[0.1em] ${
-          state === "live" ? "text-ink-secondary" : state === "offline" ? "text-critical" : "text-warning"
-        }`}
-      >
-        {copy.label}
-      </span>
+      {copy.label && (
+        <span
+          className={`text-2xs font-medium uppercase tracking-[0.1em] ${
+            state === "live" ? "text-ink-secondary" : state === "offline" ? "text-critical" : "text-warning"
+          }`}
+        >
+          {copy.label}
+        </span>
+      )}
     </span>
   );
 }

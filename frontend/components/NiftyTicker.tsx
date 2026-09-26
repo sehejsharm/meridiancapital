@@ -3,6 +3,11 @@
 import { useCountUp, useDirection } from "@/lib/useCountUp";
 import { useTicker } from "@/lib/useDeskFeeds";
 import { istTime } from "@/lib/format";
+import { istAgeMs } from "@/lib/link";
+import { useLiveFeed } from "@/lib/LiveContext";
+
+/** A published price older than this is not shown as the engine's live one. */
+const LIVE_PRICE_MS = 90_000;
 
 function Reading({
   label,
@@ -36,7 +41,20 @@ function Reading({
  * than displaying a stale number as though it were live.
  */
 export function NiftyTicker() {
-  const { data, error } = useTicker();
+  // The running engine's price arrives on the live socket every second; the
+  // HTTP read is only the fallback when the socket does not carry one.
+  const { snapshot } = useLiveFeed();
+  const sig = snapshot?.signal;
+  const pushedAge = istAgeMs(snapshot?.ts);
+  const pushed = sig?.spot != null && pushedAge !== null && pushedAge < LIVE_PRICE_MS;
+  const { data: polled, error } = useTicker(!pushed);
+  const data = pushed
+    ? {
+        spot: sig!.spot, bar_close: sig!.bar_close, channel_high: sig!.channel_high,
+        channel_low: sig!.channel_low, ts: snapshot!.ts, live: true, delayed: false,
+        source_algo: "engine", label: null,
+      }
+    : polled;
   const spot = data?.spot ?? null;
   const eased = useCountUp(spot);
   const direction = useDirection(spot);
@@ -102,11 +120,13 @@ export function NiftyTicker() {
           }`}
           aria-hidden="true"
         />
-        {error
-          ? "ticker unreachable"
-          : data?.live
-            ? `${istTime(data.ts)} · via ${data.source_algo}`
-            : "no engine publishing a price"}
+        {data?.live
+          ? `${istTime(data.ts)} · live from the engine`
+          : data?.delayed
+            ? "public feed · about a minute behind"
+            : error
+              ? "price unavailable"
+              : "no price yet"}
       </div>
     </section>
   );

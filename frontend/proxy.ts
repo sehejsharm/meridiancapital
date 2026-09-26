@@ -30,9 +30,12 @@ export function proxy(request: NextRequest) {
 // Everything a browser or home screen fetches *without* the session cookie has
 // to bypass the sign-in redirect. A manifest is requested with credentials
 // omitted, and iOS fetches the touch icon the same way — redirected to /login
-// they receive HTML instead of an image, and the installed app shows no logo.
+// they receive HTML instead of an image, and the installed app shows a letter
+// instead of the logo. iOS also probes /apple-touch-icon.png and
+// /apple-touch-icon-precomposed.png at the root on its own, whatever the page
+// declares, so any static image or manifest by extension is let through too.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|manifest.webmanifest|icons/|robots.txt).*)",
+    "/((?!_next/static|_next/image|icons/|.*\\.(?:png|ico|svg|webmanifest|txt)$).*)",
   ],
 };

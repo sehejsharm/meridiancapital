@@ -81,7 +81,7 @@ async def engine_start(request: Request, principal: Principal = Depends(require_
     _audit(request, principal, "engine.start")
     c.sup.state.manual_override = False
     # Through the fleet, which refuses a second algorithm on real money.
-    res = c.fleet.start(c.sup.algo_id, trigger=f"manual:{principal.subject}")
+    res = await asyncio.to_thread(c.fleet.start, c.sup.algo_id, trigger=f"manual:{principal.subject}")
     if not res.get("ok"):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=res.get("detail"))
     # Starting arms it for the daily open, as it does from the deck.
@@ -95,7 +95,8 @@ async def engine_stop(
 ) -> dict:
     c = ctx()
     _audit(request, principal, "engine.stop", f"force={body.force} reason={body.reason}")
-    res = c.sup.stop(reason=body.reason, force=body.force, trigger=f"manual:{principal.subject}")
+    res = await asyncio.to_thread(c.sup.stop, reason=body.reason, force=body.force,
+                                  trigger=f"manual:{principal.subject}")
     if res.get("ok"):
         # Keep the scheduler from immediately bringing it back up mid-session,
         # and from bringing it up tomorrow: a stop disarms it.
@@ -112,8 +113,8 @@ async def engine_restart(request: Request, principal: Principal = Depends(requir
     _audit(request, principal, "engine.restart")
     trigger = f"manual:{principal.subject}"
     if c.sup.state.running:
-        c.sup.stop(reason="restart", force=True, trigger=trigger)
-    return c.fleet.start(c.sup.algo_id, trigger=trigger)
+        await asyncio.to_thread(c.sup.stop, reason="restart", force=True, trigger=trigger)
+    return await asyncio.to_thread(c.fleet.start, c.sup.algo_id, trigger=trigger)
 
 
 @router.post("/mode")
@@ -310,7 +311,10 @@ async def nuke(
     # 3. Bring the fleet down and keep it down.
     c.sched.set_enabled(False)
     for algo_id, _sup in running:
-        result = c.fleet.stop(algo_id, reason=f"emergency stop by {principal.subject}", force=True)
+        # Off the event loop, so the desk keeps updating through an emergency.
+        result = await asyncio.to_thread(
+            c.fleet.stop, algo_id, reason=f"emergency stop by {principal.subject}", force=True
+        )
         stopped.append({"algo_id": algo_id, **result})
         c.db.set_algo_fields(algo_id, enabled=0)
 

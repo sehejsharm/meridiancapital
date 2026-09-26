@@ -394,6 +394,11 @@ export interface TickerPayload {
   source_algo: string | null;
   server_time: string;
   live: boolean;
+  /** "engine", or the chart's public feed when no engine is running. */
+  source?: string | null;
+  /** True when the price is the public feed's, a minute or so behind. */
+  delayed?: boolean;
+  label?: string | null;
 }
 
 // ── reports ──────────────────────────────────────────────────────────────────

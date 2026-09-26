@@ -8,13 +8,16 @@ import { useLiveFeed } from "@/lib/LiveContext";
  *
  * Silence is the failure this catches. Everything on the deck still renders a
  * plausible number after the socket dies, so the danger is acting on a price
- * that stopped being true — the bar goes red the moment the gap passes 1.5s.
+ * that stopped being true — the bar appears the moment the gap passes 3.5s.
  */
 export function StalenessMonitor() {
-  const { lastUpdate, connection } = useLiveFeed();
+  const { lastUpdate, connection, settlingUntil } = useLiveFeed();
   const { ageMs, state } = useTickAge(lastUpdate);
 
   if (state === "fresh") return null;
+  // Opening the app, or coming back to it, takes a moment to reconnect; the
+  // alarm is for a feed that has stopped, not one that is starting.
+  if (Date.now() < settlingUntil && connection !== "live") return null;
 
   const seconds = ageMs === null ? null : (ageMs / 1000).toFixed(1);
 
@@ -49,9 +52,11 @@ export function StalenessMonitor() {
 
 /** Compact form for the header — a dot that turns red and pulses. */
 export function StalenessDot() {
-  const { lastUpdate } = useLiveFeed();
-  const { ageMs, state } = useTickAge(lastUpdate);
-  const seconds = ageMs === null ? "—" : `${(ageMs / 1000).toFixed(1)}s`;
+  const { lastUpdate, connection, settlingUntil } = useLiveFeed();
+  const { ageMs, state: raw } = useTickAge(lastUpdate);
+  const settling = Date.now() < settlingUntil && connection !== "live";
+  const state = settling && raw !== "fresh" ? "fresh" : raw;
+  const seconds = ageMs === null || settling ? "" : `${(ageMs / 1000).toFixed(1)}s`;
 
   return (
     <span className="inline-flex items-center gap-1.5" title={`Last update ${seconds} ago`}>

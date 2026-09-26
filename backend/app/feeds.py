@@ -105,15 +105,27 @@ class NewsFeed:
         self.ttl = ttl
         self._cache = _Cache()
         self._lock = threading.Lock()
+        self._refreshing = False
 
     def _refresh(self) -> None:
         items: list[dict] = []
         errors: list[str] = []
-        for source, url in self.feeds:
+
+        def one(source_url):
+            source, url = source_url
             try:
-                items.extend(_parse_rss(source, _fetch(url)))
+                return _parse_rss(source, _fetch(url)), None
             except (urllib.error.URLError, OSError, ValueError) as exc:
-                errors.append(f"{source}: {type(exc).__name__}")
+                return [], f"{source}: {type(exc).__name__}"
+
+        # All sources at once: the slowest one sets the wait, not their sum.
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=max(1, len(self.feeds))) as pool:
+            for got, err in pool.map(one, self.feeds):
+                items.extend(got)
+                if err:
+                    errors.append(err)
 
         seen: set[str] = set()
         deduped = []
@@ -143,12 +155,38 @@ class NewsFeed:
     # interval a "force" is served from cache like any other request.
     MIN_FORCE_INTERVAL = 30.0
 
+    def _refresh_in_background(self) -> None:
+        with self._lock:
+            if self._refreshing:
+                return
+            self._refreshing = True
+
+        def run():
+            try:
+                previous = self._cache
+                try:
+                    self._refresh()
+                except Exception as exc:  # never let the news take anything down
+                    self._cache = _Cache(items=previous.items, fetched_at=time.time(),
+                                         errors=[f"refresh failed: {type(exc).__name__}: {exc}"])
+            finally:
+                self._refreshing = False
+
+        threading.Thread(target=run, name="news-refresh", daemon=True).start()
+
     def get(self, force: bool = False) -> dict:
         with self._lock:
             since = time.time() - self._cache.fetched_at
             if force and since < self.MIN_FORCE_INTERVAL and self._cache.items:
                 force = False
             stale = time.time() - self._cache.fetched_at > self.ttl
+            if stale and not force and self._cache.items:
+                # Serve what is cached now and refresh behind it: a reader never
+                # waits on the publishers once there is anything to show.
+                stale = False
+                background = True
+            else:
+                background = False
             if force or stale or not self._cache.items:
                 # A failed refresh keeps whatever was cached; an empty panel is
                 # worse than a slightly old one.
@@ -162,6 +200,8 @@ class NewsFeed:
                         errors=[f"refresh failed: {type(exc).__name__}: {exc}"],
                     )
             cache = self._cache
+        if background:
+            self._refresh_in_background()
         age = time.time() - cache.fetched_at
         return {
             "items": cache.items,

@@ -7,6 +7,8 @@ paper or real money. The choice is made when an algorithm is started.
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
@@ -142,7 +144,7 @@ async def upload_algo(
         passed = True
         db.set_version_status(version_id, versions.STATUS_PROGRAM, report)
     else:
-        report = run_gate(body.source)
+        report = await asyncio.to_thread(run_gate, body.source)
         passed = bool(report.get("passed"))
         db.set_version_status(
             version_id, versions.STATUS_PASSED if passed else versions.STATUS_FAILED, report
@@ -284,7 +286,7 @@ async def start_algo(
     ctx().fleet.set_mode(algo_id, mode)
 
     _audit(request, principal, "algo.start", f"{algo_id} mode={mode}")
-    res = ctx().fleet.start(algo_id, trigger=f"manual:{principal.subject}")
+    res = await asyncio.to_thread(ctx().fleet.start, algo_id, trigger=f"manual:{principal.subject}")
     if not res.get("ok"):
         raise HTTPException(status_code=409, detail=res.get("detail"))
     db.set_algo_fields(algo_id, enabled=1)
@@ -304,7 +306,9 @@ async def stop_algo(
     if not ctx().db.algo(algo_id):
         raise HTTPException(status_code=404, detail="no such algorithm")
     _audit(request, principal, "algo.stop", algo_id)
-    res = ctx().fleet.stop(algo_id, reason=f"manual:{principal.subject}")
+    # Off the event loop: a program gets up to 75s to square off, and the whole
+    # desk (every request, the live feed) used to freeze while it did.
+    res = await asyncio.to_thread(ctx().fleet.stop, algo_id, reason=f"manual:{principal.subject}")
     ctx().db.set_algo_fields(algo_id, enabled=0)
     if not res.get("ok"):
         raise HTTPException(status_code=409, detail=res.get("detail"))
@@ -330,7 +334,7 @@ async def delete_algo(
         if not db.algo(target):
             continue
         if ctx().fleet.is_running(target):
-            ctx().fleet.stop(target, reason=f"removed by {principal.subject}", force=True)
+            await asyncio.to_thread(ctx().fleet.stop, target, reason=f"removed by {principal.subject}", force=True)
         db.delete_algo(target)
         removed.append(target)
     # Drops the supervisors that no longer have a registration behind them.

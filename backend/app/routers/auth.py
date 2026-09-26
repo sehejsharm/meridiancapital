@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import json
 
 from typing import Any
@@ -36,7 +38,7 @@ class TokenResponse(BaseModel):
 async def login(body: LoginRequest, request: Request) -> TokenResponse:
     ip = client_ip(request)
     login_throttle.check(ip)
-    if not verify_password(body.password, settings.password_hash):
+    if not await asyncio.to_thread(verify_password, body.password, settings.password_hash):
         login_throttle.fail(ip)
         ctx().db.audit(settings.operator, "login.failed", "bad password", ip)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid password")

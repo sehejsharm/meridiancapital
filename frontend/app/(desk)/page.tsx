@@ -18,6 +18,7 @@ import { Badge, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
 import { fetchAlgos } from "@/lib/algos";
 import { money, signedMoney } from "@/lib/format";
+import { useLinkView } from "@/lib/link";
 import { useLiveFeed } from "@/lib/LiveContext";
 import type { AlgoList, EquityPoint, TradeRow } from "@/lib/types";
 
@@ -29,7 +30,7 @@ import type { AlgoList, EquityPoint, TradeRow } from "@/lib/types";
  * strategies and a desk running one should not be read the same way.
  */
 export default function DeckPage() {
-  const { snapshot, status, events, connection } = useLiveFeed();
+  const { snapshot, status, events } = useLiveFeed();
   const [algos, setAlgos] = useState<AlgoList | null>(null);
   const [equity, setEquity] = useState<EquityPoint[]>([]);
   const [trades, setTrades] = useState<TradeRow[]>([]);
@@ -53,20 +54,29 @@ export default function DeckPage() {
     return () => clearInterval(t);
   }, [loadAlgos]);
 
+  // Re-read when a position opens or closes, and every half minute besides.
+  // It used to re-read on every engine snapshot — two relay calls a second
+  // while an engine ran — for a chart that changes a few times a day.
+  const positionKey = snapshot?.position?.tsym ?? "flat";
   useEffect(() => {
-    void (async () => {
+    const load = async () => {
       try {
         const [e, t] = await Promise.all([
-          apiGet<{ curve: EquityPoint[] }>("/equity?limit=600"),
+          // The control plane returns today's samples as "intraday"; this read
+          // "curve", which never existed, so the chart was always empty.
+          apiGet<{ intraday?: EquityPoint[] }>("/equity?limit=600"),
           apiGet<{ trades: TradeRow[] }>("/trades?limit=80"),
         ]);
-        setEquity(e.curve ?? []);
+        setEquity(e.intraday ?? []);
         setTrades(t.trades ?? []);
       } catch {
         /* chart falls back to its empty state */
       }
-    })();
-  }, [snapshot?.ts]);
+    };
+    void load();
+    const t = setInterval(() => void load(), 30_000);
+    return () => clearInterval(t);
+  }, [positionKey]);
 
   const control = useCallback(
     async (algoId: string, action: "start" | "stop", mode?: "paper" | "live") => {
@@ -147,9 +157,7 @@ export default function DeckPage() {
         />
         {/* The dashboard's link to the server — not a trading mode, so it no
             longer says "Live" beside a desk that is trading paper. */}
-        <StatTile
-          label="Data link"
-          value={connection === "live" ? "Connected" : connection === "polling" ? "Polling" : "Offline"}
+        <LinkTile
           hint={
             snapshot?.engine.phase
               ? `engine ${snapshot.engine.phase.toLowerCase()}`
@@ -246,6 +254,12 @@ export default function DeckPage() {
  * grid-cols-1 on phones is load-bearing: without it the implicit column sizes
  * to the longest line in a card and the whole page scrolls sideways.
  */
+/** Its own component so only this tile re-renders as the link ages. */
+function LinkTile({ hint }: { hint: string }) {
+  const v = useLinkView();
+  return <StatTile label="Data link" value={v.tone === "good" ? "Connected" : (v.label ?? "—")} hint={hint} />;
+}
+
 function fleetColumns(n: number): string {
   if (n <= 1) return "grid-cols-1";
   if (n === 2) return "grid-cols-1 sm:grid-cols-2";

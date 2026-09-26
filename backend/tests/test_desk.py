@@ -150,23 +150,86 @@ def test_news_keeps_the_last_good_payload_when_a_refresh_fails(monkeypatch):
 
 
 # ── ticker ───────────────────────────────────────────────────────────────────
-def test_ticker_is_empty_before_any_engine_publishes(client, auth):
+def _no_chart(monkeypatch, bars=None):
+    from app import market
+
+    monkeypatch.setattr(market, "nifty_chart", lambda db, fetch=None: {
+        "source": "yahoo" if bars else None, "label": "Yahoo Finance (public feed, may lag a minute)" if bars else None,
+        "bars": bars or []})
+
+
+def test_ticker_is_empty_before_any_engine_publishes(client, auth, monkeypatch):
+    _no_chart(monkeypatch)
     body = client.get("/api/ticker", headers=auth).json()
     assert body["live"] is False and body["spot"] is None
     assert body["server_time"]
 
 
-def test_ticker_reads_the_latest_engine_snapshot(client, auth):
+def test_ticker_reads_the_spot_where_the_engine_publishes_it(client, auth):
+    """The engine puts the index under "signal"; reading "market" showed no
+    price at all while the engine was running."""
     from app.deps import ctx
+    from engine.clock import now_ist
     from shared.db import snapshot_key
 
     ctx().db.kv_set(snapshot_key("gk50k"), {
-        "ts": "2026-09-14T11:00:00",
+        "ts": now_ist().isoformat(timespec="seconds"),
+        "market": {"open": True, "session_date": "2026-09-14"},
+        "signal": {"spot": 24981.5, "channel_high": 25100.0, "channel_low": 24800.0, "bar_close": 24979.0},
+    })
+    body = client.get("/api/ticker", headers=auth).json()
+    assert body["spot"] == 24981.5 and body["live"] is True and body["delayed"] is False
+    assert body["channel_high"] == 25100.0 and body["bar_close"] == 24979.0
+    assert body["source_algo"] == "gk50k"
+
+
+def test_ticker_still_reads_older_snapshots(client, auth):
+    from app.deps import ctx
+    from engine.clock import now_ist
+    from shared.db import snapshot_key
+
+    ctx().db.kv_set(snapshot_key("gk50k"), {
+        "ts": now_ist().isoformat(timespec="seconds"),
         "market": {"spot": 24981.5, "channel_high": 25100.0, "channel_low": 24800.0},
     })
     body = client.get("/api/ticker", headers=auth).json()
     assert body["spot"] == 24981.5 and body["live"] is True
-    assert body["source_algo"] == "gk50k"
+
+
+def test_with_no_engine_the_strip_shows_the_delayed_public_price(client, auth, monkeypatch):
+    """An empty strip read as broken; the chart's public feed has the index."""
+    _no_chart(monkeypatch, bars=[{"t": 1, "o": 1, "h": 1, "l": 1, "c": 25012.35}])
+    body = client.get("/api/ticker", headers=auth).json()
+    assert body["spot"] == 25012.35 and body["delayed"] is True and body["live"] is False
+    assert body["source"] == "yahoo" and "Yahoo" in body["label"]
+    assert body["channel_high"] is None, "the channel belongs to an engine, never to the public feed"
+
+
+def test_an_old_engine_price_is_not_shown_as_live(client, auth, monkeypatch):
+    from datetime import timedelta
+
+    from app.deps import ctx
+    from engine.clock import now_ist
+    from shared.db import snapshot_key
+
+    _no_chart(monkeypatch)
+    ctx().db.kv_set(snapshot_key("gk50k"), {
+        "ts": (now_ist() - timedelta(hours=2)).isoformat(timespec="seconds"),
+        "signal": {"spot": 24000.0},
+    })
+    body = client.get("/api/ticker", headers=auth).json()
+    assert body["live"] is False
+
+
+def test_age_reads_naive_timestamps_as_ist():
+    """On a UTC server a naive IST timestamp used to measure 5.5 hours in the future."""
+    from datetime import timedelta
+
+    from app.market import _age
+    from engine.clock import now_ist
+
+    assert abs(_age(now_ist().isoformat(timespec="seconds"))) < 2
+    assert 7190 < _age((now_ist() - timedelta(hours=2)).isoformat(timespec="seconds")) < 7210
 
 
 # ── reports ──────────────────────────────────────────────────────────────────

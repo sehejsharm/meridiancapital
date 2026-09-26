@@ -46,9 +46,16 @@ function usePoll<T>(path: string, intervalMs: number, enabled = true) {
   return { data, error, updatedAt, refresh: tick };
 }
 
-/** The index ticker moves every second, so it polls every second. */
-export function useTicker() {
-  return usePoll<TickerPayload>("/ticker", 1000);
+/**
+ * The index for the strip, when the live feed does not carry it.
+ *
+ * A running built-in engine's price arrives on the socket every second, so
+ * this only runs when that is missing — an uploaded program, or no engine and
+ * the public delayed price instead. It used to poll every second regardless,
+ * each call a round trip through the relay.
+ */
+export function useTicker(enabled = true) {
+  return usePoll<TickerPayload>("/ticker", 5000, enabled);
 }
 
 export function useHealth() {

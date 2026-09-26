@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import time
 from typing import Any
 
 from fastapi import WebSocket
@@ -17,7 +18,11 @@ from fastapi import WebSocket
 from shared.db import K_SNAPSHOT, Database
 
 POLL_SECONDS = 1.0
-HEARTBEAT_SECONDS = 20.0
+# Every quiet second carries a heartbeat. The dashboard judges the link by the
+# time since its last message, so with nothing running (no snapshots, no
+# events) a 20-second heartbeat made a healthy connection read as stale after
+# 1.5s and dead after 12s. A ping is a few dozen bytes.
+HEARTBEAT_SECONDS = 1.0
 
 
 class Hub:
@@ -44,7 +49,10 @@ class Hub:
     async def connect(self, ws: WebSocket) -> None:
         async with self._lock:
             self.clients.add(ws)
-        await self._send(ws, {"type": "hello", "data": await self._full_state()})
+        # The heartbeat is announced so the dashboard can tell a silent, dead
+        # socket (a phone back from the background) from a quiet one.
+        await self._send(ws, {"type": "hello", "heartbeat": HEARTBEAT_SECONDS,
+                              "data": await self._full_state()})
 
     async def disconnect(self, ws: WebSocket) -> None:
         async with self._lock:
@@ -79,12 +87,14 @@ class Hub:
         while True:
             try:
                 if self.clients:
+                    sent = False
                     rev = await asyncio.to_thread(self.db.kv_rev, K_SNAPSHOT)
                     if rev != self._last_rev:
                         self._last_rev = rev
                         snap = await asyncio.to_thread(self.db.kv_get, K_SNAPSHOT, None)
                         if snap:
                             await self.broadcast({"type": "snapshot", "data": snap})
+                            sent = True
 
                     new_events = await asyncio.to_thread(
                         self.db.events, 100, self._last_event_id
@@ -92,17 +102,19 @@ class Hub:
                     if new_events:
                         self._last_event_id = max(e["id"] for e in new_events)
                         await self.broadcast({"type": "events", "data": list(reversed(new_events))})
+                        sent = True
 
                     status = await asyncio.to_thread(self.status_provider)
                     encoded = json.dumps(status, default=str, sort_keys=True)
                     if encoded != self._last_status:
                         self._last_status = encoded
                         await self.broadcast({"type": "status", "data": status})
+                        sent = True
 
-                    idle += POLL_SECONDS
+                    idle = 0.0 if sent else idle + POLL_SECONDS
                     if idle >= HEARTBEAT_SECONDS:
                         idle = 0.0
-                        await self.broadcast({"type": "ping"})
+                        await self.broadcast({"type": "ping", "ts": time.time()})
             except asyncio.CancelledError:
                 raise
             except Exception:

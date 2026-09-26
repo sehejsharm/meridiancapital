@@ -18,6 +18,7 @@ import time
 import urllib.request
 from datetime import datetime
 
+from engine.clock import now_ist
 from engine.market_feed import K_BARS, K_CHAIN
 
 YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI?interval=1m&range=1d"
@@ -31,12 +32,21 @@ _yahoo_lock = threading.Lock()
 
 
 def _age(ts: str | None) -> float | None:
+    """Seconds since ``ts``. A naive timestamp is IST, as every engine writes it.
+
+    It used to be read as the server's local time — UTC on the VM — which put
+    a fresh timestamp 5.5 hours in the future: new data measured -19,800s old,
+    and data up to 5.5 hours stale still passed as fresh.
+    """
     if not ts:
         return None
     try:
-        return (datetime.now().astimezone() - datetime.fromisoformat(ts).astimezone()).total_seconds()
+        t = datetime.fromisoformat(ts)
     except ValueError:
         return None
+    if t.tzinfo is None:
+        return (now_ist() - t).total_seconds()
+    return (datetime.now(t.tzinfo) - t).total_seconds()
 
 
 def _yahoo_bars(fetch=None) -> tuple[list[dict] | None, str | None]:

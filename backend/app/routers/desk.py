@@ -4,6 +4,8 @@ and the downloadable reports.
 
 from __future__ import annotations
 
+import asyncio
+
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -28,7 +30,7 @@ async def health_detail() -> dict:
 
 @router.get("/news")
 async def news(force: bool = Query(default=False)) -> dict:
-    return _news.get(force=force)
+    return await asyncio.to_thread(_news.get, force)
 
 
 @router.get("/market/nifty")
@@ -47,36 +49,61 @@ async def market_chain() -> dict:
 
 @router.get("/ticker")
 async def ticker() -> dict:
-    """Latest spot, taken from whichever engine most recently published one.
+    """Latest NIFTY spot for the deck's strip.
 
-    The engines already poll Angel for the index; re-polling it here would
-    spend rate-limit budget the trading loop needs, so the ticker reads their
-    published snapshots instead.
+    First choice is whichever engine most recently published one: the engines
+    already poll Angel for the index, and re-polling here would spend rate-limit
+    budget the trading loop needs. The engine publishes the index under
+    ``signal`` (the older ``market`` key is still read, for snapshots written
+    before). With no engine running the strip falls back to the chart's public
+    feed, labelled as delayed — never used for a trading decision.
     """
+    import asyncio
+
     c = ctx()
     best = None
-    for algo in c.db.algos():
-        from shared.db import snapshot_key
+    from shared.db import snapshot_key
 
+    for algo in c.db.algos():
         snap = c.db.kv_get(snapshot_key(algo["id"]), None)
         if not snap:
             continue
-        market = snap.get("market") or {}
-        if market.get("spot") is None:
+        sig = snap.get("signal") or {}
+        legacy = snap.get("market") or {}
+        spot = sig.get("spot") if sig.get("spot") is not None else legacy.get("spot")
+        if spot is None:
             continue
         if best is None or (snap.get("ts") or "") > (best.get("ts") or ""):
-            best = {**market, "ts": snap.get("ts"), "algo_id": algo["id"]}
+            pick = sig if sig.get("spot") is not None else legacy
+            best = {"spot": spot, "bar_close": pick.get("bar_close"),
+                    "channel_high": pick.get("channel_high"), "channel_low": pick.get("channel_low"),
+                    "ts": snap.get("ts"), "algo_id": algo["id"]}
 
+    fresh = best is not None and (market._age(best.get("ts")) or 0) < TICKER_FRESH_SEC
+    if fresh:
+        return {**{k: best.get(k) for k in ("spot", "bar_close", "channel_high", "channel_low", "ts")},
+                "source_algo": best["algo_id"], "source": "engine", "delayed": False,
+                "server_time": now_ist().isoformat(timespec="seconds"), "live": True}
+
+    # Nothing live: the last price on the chart's public feed, clearly labelled.
+    chart = await asyncio.to_thread(market.nifty_chart, c.db)
+    bars = chart.get("bars") or []
+    last = bars[-1] if bars else None
     return {
-        "spot": (best or {}).get("spot"),
-        "bar_close": (best or {}).get("bar_close"),
-        "channel_high": (best or {}).get("channel_high"),
-        "channel_low": (best or {}).get("channel_low"),
+        "spot": last["c"] if last else (best or {}).get("spot"),
+        "bar_close": None, "channel_high": None, "channel_low": None,
         "ts": (best or {}).get("ts"),
-        "source_algo": (best or {}).get("algo_id"),
+        "source_algo": None,
+        "source": chart.get("source") if last else None,
+        "delayed": bool(last),
+        "label": chart.get("label") if last else None,
         "server_time": now_ist().isoformat(timespec="seconds"),
-        "live": best is not None,
+        "live": False,
     }
+
+
+# A published spot older than this is not shown as live.
+TICKER_FRESH_SEC = 90.0
 
 
 def _payload(algo_id: str | None, start: str, end: str, title: str) -> dict:
