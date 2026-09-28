@@ -115,12 +115,16 @@ fi
 
 log "Firewall"
 # Oracle's Ubuntu image ships an iptables chain that drops everything except SSH,
-# and it is NOT managed by ufw. Insert the rules above that catch-all REJECT.
+# and it is NOT managed by ufw. The rules must sit above that catch-all REJECT.
+# They used to go in at position 6, which is above it on some images and below
+# it on others (Ubuntu 26.04): there they did nothing, Let's Encrypt could not
+# reach port 80, and HTTPS never came up. Each run now removes any copy of its
+# own rule and puts it back at the top, wherever the REJECT is.
 for port in 80 443; do
-    if ! iptables -C INPUT -p tcp --dport "$port" -j ACCEPT 2>/dev/null; then
-        iptables -I INPUT 6 -p tcp --dport "$port" -m conntrack --ctstate NEW -j ACCEPT
-        echo "    opened TCP $port"
-    fi
+    rule=(-p tcp --dport "$port" -m conntrack --ctstate NEW -j ACCEPT)
+    while iptables -D INPUT "${rule[@]}" 2>/dev/null; do :; done
+    iptables -I INPUT 1 "${rule[@]}"
+    echo "    TCP $port open"
 done
 netfilter-persistent save >/dev/null
 
