@@ -1,11 +1,15 @@
 # API control plane
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-pydantic==2.10.4
+pydantic==2.12.5
 webauthn==3.0.0  # Face ID / Touch ID sign-in (WebAuthn verification)
 
 # Trading engine
-pandas==2.2.3
+# Every package here must have a prebuilt wheel for the VM's Python: the VM
+# has no compiler, and too little memory to build pandas if it had one.
+# pandas 2.3.3 and pydantic 2.12.5 are the first with wheels for Python 3.14
+# (Ubuntu 26.04); they also cover 3.12 and 3.13 on x86 and ARM.
+pandas==2.3.3
 pyotp==2.9.0
 smartapi-python==1.5.5
 # smartapi-python imports logzero at the top of smartConnect.py but does not
