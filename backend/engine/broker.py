@@ -26,7 +26,6 @@ from engine.config import (
     INDEX_EXCH,
     INDEX_TOKEN,
     LOCAL_IP,
-    MAC_ADDR,
     POSITION_CACHE_SEC,
     PRODUCT_TYPE,
     PUBLIC_IP,
@@ -220,6 +219,21 @@ def real_public_ip(timeout: float = 5.0) -> str | None:
     return None
 
 
+def pin_client_ips(api, public_ip: str, local_ip: str = LOCAL_IP):
+    """Make every Angel request carry this machine's whitelisted IP.
+
+    SmartConnect builds its X-ClientPublicIP / X-ClientLocalIP headers from
+    clientPublicIp and clientLocalIp. Left alone it sends 106.193.147.98, a
+    placeholder hard-coded in the library, from every machine that uses it;
+    the attributes set here before (_public_ip, _local_ip, _mac) were never
+    read by it. The MAC header stays the library's own reading of this host.
+    """
+    api.clientPublicIp = public_ip
+    api.clientLocalIp = local_ip
+    api._public_ip = public_ip  # quoted in our own rejection messages
+    return api
+
+
 def discover_public_ip(timeout: float = 5.0) -> str:
     """Angel's session headers want the outbound IP. Oracle VMs get theirs at boot."""
     if PUBLIC_IP:
@@ -246,9 +260,7 @@ class Broker:
         from SmartApi import SmartConnect
 
         self.api = SmartConnect(api_key=creds.api_key)
-        self.api._local_ip = LOCAL_IP
-        self.api._public_ip = discover_public_ip()
-        self.api._mac = MAC_ADDR
+        pin_client_ips(self.api, discover_public_ip())
         sess = self.api.generateSession(
             creds.client_id, creds.password, pyotp.TOTP(creds.totp_secret).now()
         )

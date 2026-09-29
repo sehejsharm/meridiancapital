@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.config import settings
+from app.program_output import redact
 from engine.config import DATA_DIR
 from shared.db import K_MODE, Database
 
@@ -217,7 +218,7 @@ class Supervisor:
         self.state.stdout_tail = _tail(self.outfile) if crashed else []
         # The last line of a traceback is the exception itself, which is the one
         # line an operator needs to see without opening a shell on the box.
-        cause = f" — last output: {self.state.stdout_tail[-1][:300]}" if self.state.stdout_tail else ""
+        cause = f" — last output: {redact(self.state.stdout_tail[-1])[:300]}" if self.state.stdout_tail else ""
         level = "error" if crashed else "info"
         self.db.add_event(
             level, f"engine stopped (pid {pid}, exit {code}): {reason}{cause}",

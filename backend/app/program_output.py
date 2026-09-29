@@ -16,6 +16,21 @@ POLL_SECONDS = 2.0
 MAX_LINES_PER_POLL = 200
 MAX_BYTES_PER_POLL = 256 * 1024
 
+# Angel's library logs its request headers when a call fails, so a program's
+# output can carry the session's bearer token and the API key. Neither belongs
+# in the journal, on the live tape, or in a screenshot of either.
+_BEARER = re.compile(r"(Bearer\s+)[A-Za-z0-9._~+/=-]+")
+_SECRET_FIELD = re.compile(
+    r"""(['"]?(?:X-PrivateKey|privateKey|api_key|jwtToken|refreshToken|feedToken|totp|password)['"]?\s*[:=]\s*['"]?)[^'",\s}]+""",
+    re.I,
+)
+
+
+def redact(line: str) -> str:
+    line = _BEARER.sub(r"\1[redacted]", line)
+    return _SECRET_FIELD.sub(r"\1[redacted]", line)
+
+
 _ERROR = re.compile(r"REJECT|ERROR|CRITICAL|FAIL|MISMATCH|Traceback|Exception|Refusing", re.I)
 _WARN = re.compile(r"WARN|throttl|backing off|stale|retry|NOT CONFIRMED", re.I)
 _OK = re.compile(r"FILLED|\bENTER\b|\bEXIT\b|\bOK\b|connected", re.I)
@@ -66,7 +81,7 @@ class ProgramOutput:
             text = self._partial.get(algo_id, "") + chunk.decode("utf-8", "replace")
             *lines, self._partial[algo_id] = text.split("\n")
             for raw in lines[-MAX_LINES_PER_POLL:]:
-                line = ANSI.sub("", raw).strip()
+                line = redact(ANSI.sub("", raw).strip())
                 if not line:
                     continue
                 self.db.add_event(classify(line), line[:500], source="program", algo_id=algo_id)
