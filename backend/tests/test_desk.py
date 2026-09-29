@@ -408,3 +408,23 @@ def test_an_empty_day_still_produces_a_file(client, auth):
 
 def test_logs_need_a_token(client):
     assert client.get("/api/logs.csv").status_code == 401
+
+
+def test_the_option_chain_explains_itself_while_a_program_trades(client, auth):
+    from pathlib import Path
+
+    from app.deps import ctx
+
+    idle = client.get("/api/market/chain", headers=auth).json()
+    assert idle["available"] is False and "Start" in idle["reason"]
+
+    sup = ctx().fleet.get(next(iter(ctx().fleet.all())))
+    sup.state.running = True
+    sup.program_path = Path("/var/lib/meridian/programs/og/og.py")
+    try:
+        out = client.get("/api/market/chain", headers=auth).json()
+    finally:
+        sup.state.running = False
+        sup.program_path = None
+    assert out["available"] is False
+    assert "Your program" in out["reason"] and "rate budget" in out["reason"]

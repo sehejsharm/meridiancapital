@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from app.config import settings
 from app.fleet import Fleet
 from app.hub import Hub
+from app.program_status import live_snapshot_key
 from app.scheduler import Scheduler
 from app.supervisor import Supervisor
 from shared.db import K_MODE, Database
@@ -56,7 +57,11 @@ def build_context() -> Context:
     fleet._sups[BUILTIN_ID] = sup
     # And the scheduler drives the rest of the fleet through the same window.
     sched.fleet = fleet
-    hub = Hub(db, status_provider=lambda: system_status(db, sup, sched, fleet))
+    hub = Hub(
+        db,
+        status_provider=lambda: system_status(db, sup, sched, fleet),
+        snapshot_key=lambda: live_snapshot_key(db, fleet),
+    )
     _ctx = Context(db=db, sup=sup, sched=sched, hub=hub, fleet=fleet)
     return _ctx
 

@@ -44,7 +44,20 @@ async def market_nifty() -> dict:
 @router.get("/market/chain")
 async def market_chain() -> dict:
     """The option chain around the traded contract, with volume, OI and Greeks."""
-    return market.option_chain(ctx().db)
+    c = ctx()
+    out = market.option_chain(c.db)
+    programs_running = any(
+        sup.state.running and getattr(sup, "program_path", None) is not None
+        for sup in c.fleet.all().values()
+    )
+    if not out.get("available") and programs_running:
+        # "Start an engine" is wrong advice while a program is trading.
+        out["reason"] = (
+            "Your program trades through its own Angel session and does not publish the "
+            "option chain. Fetching it separately would spend the same Angel rate budget "
+            "the program trades on, so it is left off."
+        )
+    return out
 
 
 @router.get("/ticker")

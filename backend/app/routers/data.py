@@ -3,9 +3,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 
 from app.deps import ctx, system_status
+from app.program_status import live_snapshot_key
 from app.security import Principal, require_auth
 from engine.clock import now_ist
-from shared.db import DEFAULT_ALGO, K_SNAPSHOT
+from shared.db import DEFAULT_ALGO
 
 router = APIRouter(prefix="/api", tags=["data"], dependencies=[Depends(require_auth)])
 
@@ -20,7 +21,7 @@ async def status() -> dict:
 async def snapshot() -> dict:
     c = ctx()
     return {
-        "snapshot": c.db.kv_get(K_SNAPSHOT, None),
+        "snapshot": c.db.kv_get(live_snapshot_key(c.db, c.fleet), None),
         "status": system_status(c.db, c.sup, c.sched, c.fleet),
     }
 

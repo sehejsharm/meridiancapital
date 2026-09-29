@@ -26,13 +26,16 @@ HEARTBEAT_SECONDS = 1.0
 
 
 class Hub:
-    def __init__(self, db: Database, status_provider):
+    def __init__(self, db: Database, status_provider, snapshot_key=None):
         self.db = db
         self.status_provider = status_provider
+        # Which kv key holds the snapshot to show: the built-in's by default,
+        # a running program's when only a program is trading.
+        self.snapshot_key = snapshot_key or (lambda: K_SNAPSHOT)
         self.clients: set[WebSocket] = set()
         self._lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
-        self._last_rev = -1
+        self._last_rev: tuple = ("", -1)
         self._last_event_id = 0
         self._last_status: str = ""
 
@@ -59,7 +62,8 @@ class Hub:
             self.clients.discard(ws)
 
     async def _full_state(self) -> dict:
-        snapshot = await asyncio.to_thread(self.db.kv_get, K_SNAPSHOT, None)
+        key = await asyncio.to_thread(self.snapshot_key)
+        snapshot = await asyncio.to_thread(self.db.kv_get, key, None)
         status = await asyncio.to_thread(self.status_provider)
         events = await asyncio.to_thread(self.db.events, 60)
         return {"snapshot": snapshot, "status": status, "events": list(reversed(events))}
@@ -88,10 +92,11 @@ class Hub:
             try:
                 if self.clients:
                     sent = False
-                    rev = await asyncio.to_thread(self.db.kv_rev, K_SNAPSHOT)
+                    key = await asyncio.to_thread(self.snapshot_key)
+                    rev = (key, await asyncio.to_thread(self.db.kv_rev, key))
                     if rev != self._last_rev:
                         self._last_rev = rev
-                        snap = await asyncio.to_thread(self.db.kv_get, K_SNAPSHOT, None)
+                        snap = await asyncio.to_thread(self.db.kv_get, key, None)
                         if snap:
                             await self.broadcast({"type": "snapshot", "data": snap})
                             sent = True
