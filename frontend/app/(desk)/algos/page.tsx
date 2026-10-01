@@ -9,7 +9,17 @@ import { Badge, Button, Card, Empty } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { fetchAlgos } from "@/lib/algos";
 import { istDateTime } from "@/lib/format";
-import type { AlgoList, GateCheck, GateReport as Report } from "@/lib/types";
+import type { Algo, AlgoList, GateCheck, GateReport as Report } from "@/lib/types";
+
+/** The id the control plane gives a name — the same rule as its slugify. */
+function slugOf(name: string): string {
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug.slice(0, 40) || "algo";
+}
+
+function nextVersion(algo: Algo): number {
+  return Math.max(0, ...algo.versions.map((v) => v.version), algo.active?.version ?? 0) + 1;
+}
 
 interface UploadResult {
   ok: boolean;
@@ -25,6 +35,10 @@ export default function AlgosPage() {
   const [data, setData] = useState<AlgoList | null>(null);
   const [catalogue, setCatalogue] = useState<GateCheck[] | null>(null);
   const [name, setName] = useState("");
+  // "" uploads a new algorithm; an id uploads a new version of that one,
+  // whatever the file is called — a browser saving "file (4).py" used to turn
+  // an update into a new algorithm with no history.
+  const [target, setTarget] = useState("");
   const [source, setSource] = useState("");
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -41,19 +55,31 @@ export default function AlgosPage() {
   }, []);
 
   useEffect(() => {
+    const update = new URLSearchParams(window.location.search).get("update");
+    if (update) setTarget(update);
+  }, []);
+
+  useEffect(() => {
     void load();
     void apiGet<{ checks: GateCheck[] }>("/algos/gate-catalogue")
       .then((c) => setCatalogue(c.checks))
       .catch(() => setCatalogue(null));
   }, [load]);
 
+  const updatable = (data?.algos ?? []).filter((a) => a.kind !== "builtin");
+  const updating = updatable.find((a) => a.id === target) ?? null;
+  const sameName = !updating && name.trim() ? updatable.find((a) => a.id === slugOf(name)) ?? null : null;
+
   const submit = useCallback(async () => {
-    if (!name.trim() || !source.trim()) return;
+    if ((!updating && !name.trim()) || !source.trim()) return;
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      const out = await apiPost<UploadResult>("/algos", { name, source });
+      const out = await apiPost<UploadResult>(
+        "/algos",
+        updating ? { name: updating.name, algo_id: updating.id, source } : { name, source },
+      );
       setResult(out);
       await load();
     } catch (e) {
@@ -61,7 +87,7 @@ export default function AlgosPage() {
     } finally {
       setBusy(false);
     }
-  }, [name, source, load]);
+  }, [name, source, load, updating]);
 
   const remove = useCallback(
     async (algoId: string) => {
@@ -82,8 +108,8 @@ export default function AlgosPage() {
 
   const onFile = useCallback(async (file: File) => {
     setSource(await file.text());
-    if (!name.trim()) setName(file.name.replace(/\.py$/i, ""));
-  }, [name]);
+    if (!target && !name.trim()) setName(file.name.replace(/\.py$/i, ""));
+  }, [name, target]);
 
   return (
     <div className="space-y-5">
@@ -104,7 +130,30 @@ export default function AlgosPage() {
       <div className="grid gap-5 xl:grid-cols-[3fr_2fr]">
         <Card title="Upload an algorithm" subtitle="Paste a strategy module, or choose a .py file">
           <div className="space-y-3">
+            <label className="block text-2xs uppercase tracking-[0.14em] text-ink-muted">
+              Upload as
+              <select
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                className="mt-1.5 block w-full rounded-md border border-hairline bg-surface-raised px-3 py-2 text-xs normal-case tracking-normal text-ink outline-none focus:border-brand"
+              >
+                <option value="">A new algorithm</option>
+                {updatable.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    A new version of {a.name} (becomes v{nextVersion(a)})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="text-2xs leading-relaxed text-ink-muted">
+              {updating
+                ? `Replaces ${updating.name}'s code with this file as v${nextVersion(updating)}. Its trades, reports, journal and the program's saved state are all kept. Uploading switches off its automatic start, so press Start afterwards.`
+                : sameName
+                  ? `An algorithm called ${sameName.name} already exists: this upload becomes its v${nextVersion(sameName)} and keeps its history.`
+                  : "Creates a new algorithm with its own, empty history."}
+            </p>
             <div className="flex flex-wrap items-center gap-3">
+              {!updating && (
               <input
                 aria-label="Algorithm name"
                 value={name}
@@ -112,6 +161,7 @@ export default function AlgosPage() {
                 placeholder="Strategy name"
                 className="min-w-0 flex-1 rounded-md border border-hairline bg-surface-raised px-3 py-2 text-xs text-ink outline-none focus:border-brand"
               />
+              )}
               <input
                 ref={fileInput}
                 type="file"
@@ -141,7 +191,7 @@ export default function AlgosPage() {
               <span className="text-2xs text-ink-muted">
                 {new Blob([source]).size.toLocaleString()} bytes
               </span>
-              <Button variant="primary" onClick={submit} disabled={busy || !name.trim() || !source.trim()}>
+              <Button variant="primary" onClick={submit} disabled={busy || (!updating && !name.trim()) || !source.trim()}>
                 {busy ? "Running the gate…" : "Upload and run the gate"}
               </Button>
             </div>

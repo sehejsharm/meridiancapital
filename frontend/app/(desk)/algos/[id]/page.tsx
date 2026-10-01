@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
 
 import { ModeBadge } from "@/components/AlgoCard";
@@ -178,6 +179,14 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
               <Button variant="primary" disabled={busy} onClick={() => setAsking(true)}>
                 Start
               </Button>
+            )}
+            {algo.kind !== "builtin" && (
+              <Link
+                href={`/algos?update=${encodeURIComponent(id)}`}
+                className="inline-flex items-center rounded-md border border-hairline px-3 py-2 text-2xs font-semibold uppercase tracking-[0.12em] text-ink hover:border-brand hover:text-brand"
+              >
+                Upload a new version
+              </Link>
             )}
             {algo.kind !== "builtin" &&
               (confirmingDelete ? (
