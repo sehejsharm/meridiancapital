@@ -77,7 +77,12 @@ async def ticker() -> dict:
     best = None
     from shared.db import snapshot_key
 
+    # Only a running algorithm's price is live: a snapshot a few seconds old
+    # from one that has just stopped is a record, not a feed.
+    running = {aid for aid, sup in c.fleet.all().items() if sup.state.running}
     for algo in c.db.algos():
+        if algo["id"] not in running:
+            continue
         snap = c.db.kv_get(snapshot_key(algo["id"]), None)
         if not snap:
             continue

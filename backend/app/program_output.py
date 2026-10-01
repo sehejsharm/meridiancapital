@@ -12,7 +12,9 @@ import asyncio
 import re
 import time
 
+from app import programs
 from app.program_status import program_snapshot, read_status
+from app.program_trades import TradeLogs
 from shared.db import snapshot_key
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -37,6 +39,16 @@ def redact(line: str) -> str:
     return _SECRET_FIELD.sub(r"\1[redacted]", line)
 
 
+# A program's periodic status board — framed by rows of "═", printed every
+# minute — is what the deck's boxes now show. Logged line by line it buried the
+# journal (1,900 of a day's 2,000 rows) and its "N REJECTED by Angel" counter
+# was filed as an error every minute. Real messages are printed outside it.
+_BORDER = re.compile(r"^═{20,}$")
+_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} IST\b")
+MAX_BOARD_LINES = 80  # a "board" longer than this was not one: stop skipping
+OPEN_LOOKAHEAD = 3    # lines after a border before its header must have shown
+
+
 _ERROR = re.compile(r"REJECT|ERROR|CRITICAL|FAIL|MISMATCH|Traceback|Exception|Refusing", re.I)
 _WARN = re.compile(r"WARN|throttl|backing off|stale|retry|NOT CONFIRMED", re.I)
 _OK = re.compile(r"FILLED|\bENTER\b|\bEXIT\b|\bOK\b|connected", re.I)
@@ -59,12 +71,15 @@ class ProgramOutput:
         self._offsets: dict[str, int] = {}
         self._partial: dict[str, str] = {}
         self._status_ts: dict[str, str] = {}
+        self._board: dict[str, dict] = {}  # algo -> where in a status board it is
+        self.trade_logs = TradeLogs(db)
         self._sampled: dict[str, float] = {}
         self._task: asyncio.Task | None = None
 
     def pump(self) -> int:
         """Move any new complete lines into the event log. Returns lines moved."""
         moved = 0
+        self.ingest_trades()
         for algo_id, sup in self.fleet.all().items():
             if not (sup.state.running and sup.is_program(sup.state.pid)):
                 continue
@@ -93,9 +108,75 @@ class ProgramOutput:
                 line = redact(ANSI.sub("", raw).strip())
                 if not line:
                     continue
-                self.db.add_event(classify(line), line[:500], source="program", algo_id=algo_id)
-                moved += 1
+                for keep in self._filter(algo_id, line):
+                    self.db.add_event(classify(keep), keep[:500], source="program", algo_id=algo_id)
+                    moved += 1
         return moved
+
+    def _filter(self, algo_id: str, line: str) -> list[str]:
+        """The lines worth logging, with a periodic status board taken out.
+
+        A board is a border, a banner, a timestamped header line, a second
+        border, the body, and a closing border. Reading can start part way
+        through one (after an API restart), so a line is only treated as part
+        of a board once the board's timestamp line confirms it; the few lines
+        seen before that are held, and logged if no confirmation comes.
+        """
+        board = self._board.get(algo_id)
+        if _BORDER.match(line):
+            if board is None:
+                self._board[algo_id] = {"state": "open", "held": [], "n": 0}
+                return []
+            if board["state"] == "open":
+                # No header since the last border: that one opened nothing.
+                self._board[algo_id] = {"state": "open", "held": [], "n": 0}
+                return board["held"]
+            if board["state"] == "header":
+                board["state"] = "body"
+                return []
+            del self._board[algo_id]  # the closing border
+            return []
+        if board is None:
+            if _STAMP.match(line):
+                # Started reading inside a board's header: rejoin it there.
+                self._board[algo_id] = {"state": "header", "held": [], "n": 0}
+                return []
+            return [line]
+        if board["state"] == "open":
+            if _STAMP.match(line):
+                board["state"], board["held"] = "header", []
+                return []
+            board["held"].append(line)
+            if len(board["held"]) > OPEN_LOOKAHEAD:
+                del self._board[algo_id]
+                return board["held"]
+            return []
+        board["n"] += 1
+        if board["n"] > MAX_BOARD_LINES:
+            del self._board[algo_id]
+            return [line]
+        return []
+
+    def ingest_trades(self) -> int:
+        """Carry every program's trade log into the trades table, running or not."""
+        added = 0
+        for algo in self.db.algos():
+            if algo.get("kind") == "builtin":
+                continue
+            folder = programs.program_path(algo["id"]).parent
+            if not folder.is_dir():
+                continue
+            try:
+                n = self.trade_logs.ingest(algo["id"], folder)
+            except Exception as e:  # a bad file must not stop the follower
+                self.db.add_event("warn", f"could not read {algo['id']}'s trade log: {e}",
+                                  source="api", algo_id=algo["id"])
+                continue
+            if n:
+                added += n
+                self.db.add_event("info", f"{n} trade{'s' if n != 1 else ''} recorded from the program's trade log",
+                                  source="api", algo_id=algo["id"])
+        return added
 
     def publish_status(self, algo_id: str, sup) -> bool:
         """Turn the program's own status file into the desk's snapshot.

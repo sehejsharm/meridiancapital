@@ -37,7 +37,11 @@ export default function ControlsPage() {
   const running = status?.engine.running ?? false;
   const live = running && status?.engine.mode === "live";
   const schedule = status?.schedule;
-  const hasPosition = Boolean(snapshot?.position);
+  // The desk's snapshot can be a program's, or the last one recorded after
+  // everything stopped. This page acts on the built-in engine, so it reads
+  // only the built-in's live snapshot.
+  const own = running && snapshot?.engine.pid === status?.engine.pid ? snapshot : null;
+  const hasPosition = Boolean(own?.position);
   // Starting asks paper or real money here too, exactly as the deck does.
   const [asking, setAsking] = useState(false);
   const builtinId = status?.fleet?.algos.find((a) => a.kind === "builtin")?.algo_id ?? "gk50k";
@@ -208,9 +212,9 @@ export default function ControlsPage() {
           subtitle="For the built-in engine; takes effect on its next loop, within seconds"
         >
           <dl className="divide-y divide-hairline">
-            <Field label="Entries halted" value={snapshot?.guards.halted ? "Yes" : "No"} />
-            <Field label="Weekly kill active" value={snapshot?.guards.week_halted ? "Yes" : "No"} />
-            <Field label="Open position" value={snapshot?.position?.tsym ?? "flat"} />
+            <Field label="Entries halted" value={own ? (own.guards.halted ? "Yes" : "No") : "—"} />
+            <Field label="Weekly kill active" value={own ? (own.guards.week_halted ? "Yes" : "No") : "—"} />
+            <Field label="Open position" value={own ? (own.position?.tsym ?? "flat") : "—"} />
           </dl>
 
           <div className="mt-4 flex flex-wrap gap-2">

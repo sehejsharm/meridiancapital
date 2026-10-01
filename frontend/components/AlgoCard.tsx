@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Badge, Button } from "@/components/ui";
 import { money, signedMoney, pnlClass } from "@/lib/format";
 import { useLiveFeed } from "@/lib/LiveContext";
-import type { Algo, Snapshot } from "@/lib/types";
+import { recordedAt } from "@/lib/recorded";
+import type { Algo, AlgoLast, Snapshot } from "@/lib/types";
 
 /**
  * One algorithm on the deck.
@@ -17,6 +18,7 @@ import type { Algo, Snapshot } from "@/lib/types";
 export function AlgoCard({
   algo,
   snapshot,
+  recorded,
   busy,
   onStart,
   onStop,
@@ -25,6 +27,8 @@ export function AlgoCard({
 }: {
   algo: Algo;
   snapshot?: Snapshot | null;
+  /** Shown when there is no live snapshot: the figures it last recorded. */
+  recorded?: AlgoLast | null;
   busy?: boolean;
   onStart?: () => void;
   onStop?: () => void;
@@ -35,8 +39,9 @@ export function AlgoCard({
 }) {
   const running = algo.runtime?.running ?? false;
   const live = running && algo.runtime?.mode === "live";
-  const account = snapshot?.account;
-  const position = snapshot?.position ?? null;
+  const fromRecord = !snapshot && Boolean(recorded);
+  const account = snapshot?.account ?? recorded?.account ?? null;
+  const position = snapshot ? snapshot.position : (recorded?.position ?? null);
 
   return (
     <article
@@ -78,11 +83,11 @@ export function AlgoCard({
             wide === "md" ? "md:grid-cols-4" : wide === "xl" ? "xl:grid-cols-4" : ""
           }`}
         >
-          <Figure label="Equity" value={account ? money(account.equity) : "—"} />
+          <Figure label="Equity" value={account?.equity != null ? money(account.equity) : "—"} />
           <Figure
             label="Day P&L"
-            value={account ? signedMoney(account.day_pl) : "—"}
-            tone={account ? pnlClass(account.day_pl) : undefined}
+            value={account?.day_pl != null ? signedMoney(account.day_pl) : "—"}
+            tone={account?.day_pl != null ? pnlClass(account.day_pl) : undefined}
           />
           <Figure
             label="Position"
@@ -95,14 +100,23 @@ export function AlgoCard({
           <Figure
             label="Contract price"
             value={
-              position
-                ? `Rs ${(position.live_premium ?? position.entry_premium).toFixed(2)}`
+              position && (position.live_premium ?? position.entry_premium) != null
+                ? `Rs ${(position.live_premium ?? position.entry_premium)!.toFixed(2)}`
                 : "—"
             }
             tone={
               position?.gain_pct != null ? pnlClass(position.gain_pct) : undefined
             }
           />
+          {fromRecord && recorded && (
+            <p className="col-span-full text-2xs text-ink-muted">
+              {running
+                ? `As of ${recordedAt(recorded.ts)} IST`
+                : `Last recorded ${recordedAt(recorded.ts)} IST${
+                    recorded.position ? " — in a position when it stopped" : ""
+                  }`}
+            </p>
+          )}
         </div>
       )}
 

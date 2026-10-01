@@ -55,8 +55,18 @@ async def equity(
     limit: int = Query(1000, ge=1, le=5000),
 ) -> dict:
     c = ctx()
+    today = now_ist().strftime("%Y-%m-%d")
+    day = session_date or today
+    curve = c.db.equity_curve(limit=limit, session_date=day)
+    if not curve and not session_date:
+        # Before today's first mark (or on a day off) the chart shows the last
+        # session it has, labelled as such, rather than an empty box.
+        day = c.db.latest_equity_session() or today
+        curve = c.db.equity_curve(limit=limit, session_date=day) if day != today else []
     return {
-        "intraday": c.db.equity_curve(limit=limit, session_date=session_date or now_ist().strftime("%Y-%m-%d")),
+        "intraday": curve,
+        "session_date": day,
+        "recorded": day != today,
         "daily": c.db.daily_equity(),
     }
 

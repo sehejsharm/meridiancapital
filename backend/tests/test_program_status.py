@@ -16,7 +16,7 @@ import os
 import pytest
 
 from app.program_status import live_snapshot_key, program_snapshot, read_status
-from shared.db import K_SNAPSHOT, snapshot_key
+from shared.db import snapshot_key
 
 from tests.test_programs import fleet, register, wait_for  # noqa: F401  (fixture)
 
@@ -190,4 +190,5 @@ def test_a_running_program_feeds_the_desk(fleet, tmp_db):  # noqa: F811
     assert ws.sent[0]["data"]["snapshot"]["engine"]["pid"] == pid
 
     fleet.stop("og", force=True)
-    assert live_snapshot_key(tmp_db, fleet) == K_SNAPSHOT, "nothing running: back to the built-in's"
+    # Nothing running: the desk keeps the last recorded snapshot, labelled as such.
+    assert live_snapshot_key(tmp_db, fleet) == snapshot_key("og")

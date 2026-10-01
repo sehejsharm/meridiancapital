@@ -20,6 +20,7 @@ import { fetchAlgos } from "@/lib/algos";
 import { money, signedMoney } from "@/lib/format";
 import { useLinkView } from "@/lib/link";
 import { useLiveFeed } from "@/lib/LiveContext";
+import { recordedAt, useDeskSnapshot } from "@/lib/recorded";
 import type { AlgoList, EquityPoint, TradeRow } from "@/lib/types";
 
 /**
@@ -30,9 +31,13 @@ import type { AlgoList, EquityPoint, TradeRow } from "@/lib/types";
  * strategies and a desk running one should not be read the same way.
  */
 export default function DeckPage() {
-  const { snapshot, status, events } = useLiveFeed();
+  const { status, events } = useLiveFeed();
+  // With nothing running this is the last snapshot any algorithm recorded;
+  // \`live\` says whether its process still runs, and every box labels it.
+  const { snapshot, live } = useDeskSnapshot();
   const [algos, setAlgos] = useState<AlgoList | null>(null);
   const [equity, setEquity] = useState<EquityPoint[]>([]);
+  const [equityDay, setEquityDay] = useState<{ date: string; recorded: boolean } | null>(null);
   const [trades, setTrades] = useState<TradeRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   // TradingView's free widget does not reliably carry NSE's NIFTY, so the
@@ -64,10 +69,13 @@ export default function DeckPage() {
         const [e, t] = await Promise.all([
           // The control plane returns today's samples as "intraday"; this read
           // "curve", which never existed, so the chart was always empty.
-          apiGet<{ intraday?: EquityPoint[] }>("/equity?limit=600"),
+          apiGet<{ intraday?: EquityPoint[]; session_date?: string; recorded?: boolean }>(
+            "/equity?limit=600",
+          ),
           apiGet<{ trades: TradeRow[] }>("/trades?limit=80"),
         ]);
         setEquity(e.intraday ?? []);
+        setEquityDay(e.session_date ? { date: e.session_date, recorded: Boolean(e.recorded) } : null);
         setTrades(t.trades ?? []);
       } catch {
         /* chart falls back to its empty state */
@@ -109,6 +117,7 @@ export default function DeckPage() {
   const list = algos?.algos ?? [];
   const single = list.length <= 1;
   const account = snapshot?.account;
+  const asOf = snapshot && !live ? `last recorded ${recordedAt(snapshot.ts)} IST` : null;
 
   return (
     <div className="space-y-5">
@@ -142,13 +151,14 @@ export default function DeckPage() {
         <StatTile
           label="Equity"
           value={account ? money(account.equity) : "—"}
-          hint={account ? `peak ${money(account.peak_equity)}` : undefined}
+          hint={account ? (asOf ?? `peak ${money(account.peak_equity)}`) : undefined}
           tone="brand"
         />
         <StatTile
           label="Day P&L"
           value={account ? signedMoney(account.day_pl) : "—"}
           delta={account ? { text: `${account.day_pl_pct.toFixed(2)}%`, value: account.day_pl } : undefined}
+          hint={asOf && account ? `session of ${recordedAt(snapshot!.ts).split(" ").slice(0, -1).join(" ")}` : undefined}
         />
         <StatTile
           label="Engines running"
@@ -159,7 +169,7 @@ export default function DeckPage() {
             longer says "Live" beside a desk that is trading paper. */}
         <LinkTile
           hint={
-            snapshot?.engine.phase
+            live && snapshot?.engine.phase
               ? `engine ${snapshot.engine.phase.toLowerCase()}`
               : "no engine running"
           }
@@ -186,7 +196,12 @@ export default function DeckPage() {
                 algo={algo}
                 // The shared snapshot belongs to whichever engine published it;
                 // only attribute it to that algorithm.
-                snapshot={snapshot?.engine.pid === algo.runtime.pid ? snapshot : null}
+                snapshot={live && snapshot?.engine.pid === algo.runtime.pid ? snapshot : null}
+                // Otherwise its own last figures: after it stops, or while
+                // another algorithm holds the desk's live snapshot.
+                recorded={
+                  live && snapshot?.engine.pid === algo.runtime.pid ? null : (algo.last ?? null)
+                }
                 busy={busy === algo.id}
                 compact={!single && list.length > 4}
                 wide={single ? "md" : list.length === 2 ? "xl" : undefined}
@@ -229,7 +244,11 @@ export default function DeckPage() {
 
           <Card
             title="Equity and fills"
-            subtitle="Arrows mark entries, circles mark exits coloured by outcome"
+            subtitle={
+              equityDay?.recorded
+                ? `Last session, ${recordedAt(`${equityDay.date}T`).trim()} · arrows mark entries, circles mark exits`
+                : "Arrows mark entries, circles mark exits coloured by outcome"
+            }
           >
             <LazyMarkedChart equity={equity} trades={trades} height={280} />
           </Card>
@@ -237,7 +256,7 @@ export default function DeckPage() {
 
         <div className="space-y-5">
           <HealthStrip />
-          <RateGauges api={snapshot?.health?.api} />
+          <RateGauges api={snapshot?.health?.api} recordedAt={live ? null : (snapshot?.ts ?? null)} />
           <LiveTape events={events.slice(0, 60)} height={300} />
           <NewsPanel limit={10} />
         </div>

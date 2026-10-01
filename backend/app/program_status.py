@@ -267,22 +267,42 @@ def program_snapshot(raw: dict, *, name: str, mode: str, pid: int | None,
 def live_snapshot_key(db, fleet) -> str:
     """Which algorithm's snapshot the desk shows.
 
-    The built-in's while it runs, or when nothing runs — as before. Otherwise
-    the running algorithm that published most recently, so a desk running only
-    an uploaded program shows that program's numbers instead of the built-in's
-    last, stale ones.
+    The built-in's while it runs. Otherwise the running algorithm that
+    published most recently. With nothing running, the most recent snapshot
+    any algorithm left — the last recorded state, which the desk labels as
+    such — rather than blank boxes or the built-in's months-old one.
     """
     from shared.db import DEFAULT_ALGO, K_SNAPSHOT, snapshot_key
 
     if fleet is None:
         return K_SNAPSHOT
     running = [aid for aid, sup in fleet.all().items() if sup.state.running]
-    if not running or DEFAULT_ALGO in running:
+    if DEFAULT_ALGO in running:
         return K_SNAPSHOT
+    candidates = running or [a["id"] for a in db.algos()]
     best, best_ts = None, ""
-    for aid in running:
+    for aid in candidates:
         snap = db.kv_get(snapshot_key(aid), None) or {}
         ts = str(snap.get("ts") or "")
         if ts > best_ts:
             best, best_ts = aid, ts
     return snapshot_key(best) if best else K_SNAPSHOT
+
+
+def compact_snapshot(snap: dict | None) -> dict | None:
+    """What an algorithm card shows from its last snapshot, kept with the algorithm."""
+    if not isinstance(snap, dict) or not snap.get("ts"):
+        return None
+    acct = snap.get("account") or {}
+    pos = snap.get("position") or None
+    eng = snap.get("engine") or {}
+    return {
+        "ts": snap.get("ts"),
+        "pid": eng.get("pid"),
+        "mode": eng.get("mode"),
+        "phase": eng.get("phase"),
+        "account": {k: acct.get(k) for k in ("equity", "day_pl", "day_pl_pct", "peak_equity",
+                                              "realised_today", "realised_week")} if acct else None,
+        "position": {k: pos.get(k) for k in ("tsym", "side", "strike", "lots", "qty", "entry_premium",
+                                             "live_premium", "gain_pct", "unrealised")} if pos else None,
+    }

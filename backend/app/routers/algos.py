@@ -13,13 +13,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from app.algo_store import MAX_SOURCE_BYTES, run_gate, sha256, slugify
+from app.program_status import compact_snapshot
 from app.programs import mode_arguments, runtime_of
 from app.deps import ctx
 from app import shadow
 from app.security import Principal, client_ip, require_auth
 from engine import versions
 from engine.gate import check_catalogue
-from shared.db import SYSTEM_ALGO
+from shared.db import SYSTEM_ALGO, snapshot_key
 
 router = APIRouter(prefix="/api/algos", tags=["algos"], dependencies=[Depends(require_auth)])
 
@@ -64,6 +65,8 @@ def _algo_view(db, algo: dict) -> dict:
     history = db.versions(algo["id"], limit=20)
     active = db.version(algo["active_version"]) if algo.get("active_version") else None
     sup = ctx().fleet.snapshot(algo["id"]) if hasattr(ctx(), "fleet") else {}
+    # The card keeps showing the algorithm's last recorded figures once it stops.
+    last = compact_snapshot(db.kv_get(snapshot_key(algo["id"]), None))
     return {
         **algo,
         "enabled": bool(algo.get("enabled")),
@@ -75,6 +78,7 @@ def _algo_view(db, algo: dict) -> dict:
             else runtime_of(active["source"]) if active else "none"
         ),
         "runtime": sup,
+        "last": last,
         "shadow_of": algo.get("shadow_of"),
     }
 

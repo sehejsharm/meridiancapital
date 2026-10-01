@@ -4,7 +4,7 @@ import { useCountUp, useDirection } from "@/lib/useCountUp";
 import { useTicker } from "@/lib/useDeskFeeds";
 import { istTime } from "@/lib/format";
 import { istAgeMs } from "@/lib/link";
-import { useLiveFeed } from "@/lib/LiveContext";
+import { recordedAt, useDeskSnapshot } from "@/lib/recorded";
 
 /** A published price older than this is not shown as the engine's live one. */
 const LIVE_PRICE_MS = 90_000;
@@ -43,10 +43,12 @@ function Reading({
 export function NiftyTicker() {
   // The running engine's price arrives on the live socket every second; the
   // HTTP read is only the fallback when the socket does not carry one.
-  const { snapshot } = useLiveFeed();
+  // Live only while the process that published it still runs: a snapshot
+  // a few seconds old from an algorithm just stopped is a record, not a feed.
+  const { snapshot, live } = useDeskSnapshot();
   const sig = snapshot?.signal;
   const pushedAge = istAgeMs(snapshot?.ts);
-  const pushed = sig?.spot != null && pushedAge !== null && pushedAge < LIVE_PRICE_MS;
+  const pushed = live && sig?.spot != null && pushedAge !== null && pushedAge < LIVE_PRICE_MS;
   const { data: polled, error } = useTicker(!pushed);
   const data = pushed
     ? {
@@ -66,10 +68,18 @@ export function NiftyTicker() {
         ? "text-critical"
         : "text-ink";
 
+  // No engine publishing: the channel it last recorded, labelled with its time,
+  // rather than dashes. Room to break is measured from the price recorded with
+  // it, so the four readings stay one consistent set.
+  const kept = !pushed && sig?.channel_high != null && sig?.channel_low != null ? sig : null;
+  const levels = kept
+    ? { bar_close: kept.bar_close, channel_high: kept.channel_high, channel_low: kept.channel_low }
+    : { bar_close: data?.bar_close ?? null, channel_high: data?.channel_high ?? null, channel_low: data?.channel_low ?? null };
+  const ref = kept ? kept.spot : spot;
   const room =
-    data?.channel_high != null && spot != null ? data.channel_high - spot : null;
+    levels.channel_high != null && ref != null ? levels.channel_high - ref : null;
   const roomDown =
-    data?.channel_low != null && spot != null ? spot - data.channel_low : null;
+    levels.channel_low != null && ref != null ? ref - levels.channel_low : null;
 
   return (
     <section
@@ -103,9 +113,9 @@ export function NiftyTicker() {
       {/* A row of their own on a phone: as a shrinkable flex item the grid
           collapsed to nothing and its labels spilled across the status line. */}
       <div className="grid w-full grid-cols-2 gap-x-6 gap-y-2 sm:w-auto sm:min-w-[24rem] sm:flex-1 sm:grid-cols-4">
-        <Reading label="Bar close" value={data?.bar_close ?? null} />
-        <Reading label="Channel high" value={data?.channel_high ?? null} />
-        <Reading label="Channel low" value={data?.channel_low ?? null} />
+        <Reading label="Bar close" value={levels.bar_close} />
+        <Reading label="Channel high" value={levels.channel_high} />
+        <Reading label="Channel low" value={levels.channel_low} />
         <Reading
           label="Room to break"
           value={room != null && roomDown != null ? Math.min(room, roomDown) : null}
@@ -127,6 +137,7 @@ export function NiftyTicker() {
             : error
               ? "price unavailable"
               : "no price yet"}
+        {kept && snapshot?.ts ? ` · channel as of ${recordedAt(snapshot.ts)}` : ""}
       </div>
     </section>
   );

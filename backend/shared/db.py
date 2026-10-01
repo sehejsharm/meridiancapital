@@ -329,6 +329,30 @@ class Database:
             )
         return int(cur.lastrowid)
 
+    def has_trade(self, algo_id: str, entry_ts: str, side: str | None, strike: int | None,
+                  mode: str) -> bool:
+        """Whether this trade is already recorded — so a program's trade log can
+        be read again without doubling its trades."""
+        with self.conn() as c:
+            row = c.execute(
+                """SELECT 1 FROM trades WHERE algo_id = ? AND entry_ts = ? AND side IS ?
+                   AND strike IS ? AND mode = ? LIMIT 1""",
+                (algo_id, entry_ts, side, strike, mode),
+            ).fetchone()
+        return row is not None
+
+    def latest_equity_session(self, algo_id: str | None = None) -> str | None:
+        """The most recent session that has equity marks."""
+        sql = "SELECT session_date FROM equity_samples"
+        args: list = []
+        if algo_id:
+            sql += " WHERE algo_id = ?"
+            args.append(algo_id)
+        sql += " ORDER BY id DESC LIMIT 1"
+        with self.conn() as c:
+            row = c.execute(sql, args).fetchone()
+        return row[0] if row else None
+
     def trades(
         self,
         limit: int = 500,

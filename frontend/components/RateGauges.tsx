@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, Empty } from "@/components/ui";
+import { recordedAt as when } from "@/lib/recorded";
 import type { ApiStats } from "@/lib/types";
 
 function tone(u: number): { bar: string; text: string } {
@@ -17,7 +18,14 @@ function tone(u: number): { bar: string; text: string } {
  * account number is available it is the one shown, and the engine's own rate
  * sits beside it.
  */
-export function RateGauges({ api }: { api: ApiStats | null | undefined }) {
+export function RateGauges({
+  api,
+  recordedAt = null,
+}: {
+  api: ApiStats | null | undefined;
+  /** Set when these figures are the last session's, not live. */
+  recordedAt?: string | null;
+}) {
   if (!api?.endpoints?.length) {
     return (
       <Card title="Angel One rate budget" subtitle="Requests against the published caps">
@@ -32,9 +40,11 @@ export function RateGauges({ api }: { api: ApiStats | null | undefined }) {
     <Card
       title="Angel One rate budget"
       subtitle={
-        api.shared_budget
-          ? "One budget shared by every running engine"
-          : "This engine only — the shared budget is unavailable"
+        recordedAt
+          ? `Last session, recorded ${when(recordedAt)} IST — nothing is calling Angel now`
+          : api.shared_budget
+            ? "One budget shared by every running engine"
+            : "This engine only — the shared budget is unavailable"
       }
       action={
         <span className={`text-xs font-semibold tabular-nums ${tone(peak).text}`}>

@@ -343,8 +343,36 @@ export interface Algo {
    *  standalone program started as its own process. */
   runtime_kind?: "builtin" | "strategy" | "program" | "invalid" | "none";
   runtime: { running: boolean; pid: number | null; mode: string };
+  /** The algorithm's last recorded figures, kept after it stops. */
+  last?: AlgoLast | null;
   /** Set when this registration is the paper twin of another algorithm. */
   shadow_of: string | null;
+}
+
+export interface AlgoLast {
+  ts: string;
+  pid: number | null;
+  mode: TradingMode | null;
+  phase: EnginePhase | null;
+  account: {
+    equity: number | null;
+    day_pl: number | null;
+    day_pl_pct: number | null;
+    peak_equity: number | null;
+    realised_today: number | null;
+    realised_week: number | null;
+  } | null;
+  position: {
+    tsym: string | null;
+    side: "CE" | "PE" | null;
+    strike: number | null;
+    lots: number | null;
+    qty: number | null;
+    entry_premium: number | null;
+    live_premium: number | null;
+    gain_pct: number | null;
+    unrealised: number | null;
+  } | null;
 }
 
 export interface AlgoList {

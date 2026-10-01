@@ -37,9 +37,15 @@ def auth(client):
 
 
 @pytest.fixture
-def seeded(client, auth):
-    from app.deps import ctx
+def seeded(client, auth, monkeypatch):
+    from datetime import datetime
 
+    from app.deps import ctx
+    from shared import db as dbmod
+
+    # Equity marks and events are stamped with the clock; pin it inside the
+    # September the report tests ask for, so they do not depend on today's date.
+    monkeypatch.setattr(dbmod, "now_ist", lambda: datetime(2026, 9, 2, 11, 0, 0))
     db = ctx().db
     for i in range(4):
         db.add_trade({
@@ -177,6 +183,7 @@ def test_ticker_reads_the_spot_where_the_engine_publishes_it(client, auth):
         "market": {"open": True, "session_date": "2026-09-14"},
         "signal": {"spot": 24981.5, "channel_high": 25100.0, "channel_low": 24800.0, "bar_close": 24979.0},
     })
+    ctx().fleet.get("gk50k").state.running = True
     body = client.get("/api/ticker", headers=auth).json()
     assert body["spot"] == 24981.5 and body["live"] is True and body["delayed"] is False
     assert body["channel_high"] == 25100.0 and body["bar_close"] == 24979.0
@@ -192,8 +199,25 @@ def test_ticker_still_reads_older_snapshots(client, auth):
         "ts": now_ist().isoformat(timespec="seconds"),
         "market": {"spot": 24981.5, "channel_high": 25100.0, "channel_low": 24800.0},
     })
+    ctx().fleet.get("gk50k").state.running = True
     body = client.get("/api/ticker", headers=auth).json()
     assert body["spot"] == 24981.5 and body["live"] is True
+
+
+def test_a_just_stopped_engines_price_is_not_live(client, auth, monkeypatch):
+    """Seconds after a stop its snapshot is still fresh, but it is a record now."""
+    from app.deps import ctx
+    from engine.clock import now_ist
+    from shared.db import snapshot_key
+
+    _no_chart(monkeypatch)
+    ctx().db.kv_set(snapshot_key("gk50k"), {
+        "ts": now_ist().isoformat(timespec="seconds"),
+        "signal": {"spot": 24981.5, "channel_high": 25100.0, "channel_low": 24800.0},
+    })
+    ctx().fleet.get("gk50k").state.running = False
+    body = client.get("/api/ticker", headers=auth).json()
+    assert body["live"] is False
 
 
 def test_with_no_engine_the_strip_shows_the_delayed_public_price(client, auth, monkeypatch):
