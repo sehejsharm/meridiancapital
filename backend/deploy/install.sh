@@ -156,7 +156,7 @@ Installed. On a FIRST install only, the remaining steps are:
   2. sudo systemctl restart meridian-api
   3. Point ${DOMAIN:-your hostname} at this VM's public IP.
   4. Add TCP 80 and 443 ingress in the OCI console Security List.
-  5. Load the NSE holiday calendar from the dashboard's Controls page.
+  5. Check the NSE holiday calendar on the dashboard's Controls page (it loads itself).
   6. Leave MERIDIAN_TRADING_MODE=paper until a full session has run clean.
 
 Logs:    journalctl -u meridian-api -f

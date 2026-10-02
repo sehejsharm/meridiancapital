@@ -21,6 +21,7 @@ from engine.clock import now_ist
 from shared.db import K_SCHEDULE, Database
 from shared.market_calendar import (
     calendar_configured,
+    closures,
     is_trading_day,
     next_transition,
     should_be_running,
@@ -50,6 +51,9 @@ class Scheduler:
 
     def holiday_set(self) -> set[str]:
         return {h["day"] for h in self.db.holidays()}
+
+    def holiday_names(self) -> dict[str, str]:
+        return {h["day"]: h.get("label") or "" for h in self.db.holidays()}
 
     # ── loop ─────────────────────────────────────────────────────────────────
     async def start(self) -> None:
@@ -199,7 +203,8 @@ class Scheduler:
     # ── status for the dashboard ─────────────────────────────────────────────
     def status(self) -> dict:
         now = now_ist()
-        holidays = self.holiday_set()
+        names = self.holiday_names()
+        holidays = set(names)
         return {
             "enabled": self.enabled(),
             "now_ist": now.isoformat(timespec="seconds"),
@@ -208,6 +213,7 @@ class Scheduler:
             "next": next_transition(now, holidays),
             "holiday_count": len(holidays),
             "calendar_configured": calendar_configured(holidays, now.year),
+            "closures": closures(now.date(), names),
             "last_tick": self.last_tick_ts,
             "last_decision": self.last_decision,
             "manual_override": self.sup.state.manual_override,

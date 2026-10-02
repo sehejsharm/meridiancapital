@@ -1,10 +1,11 @@
 """NSE session calendar used by the auto start/stop scheduler.
 
-Holidays are operator-maintained in the database rather than hardcoded, because
-the NSE list changes every year and a stale hardcoded list would silently start
-the engine on a closed day. An unconfigured calendar is not a safety problem —
-the engine's own staleness guards refuse to trade on a dead feed — it only costs
-an idle broker session, so the dashboard surfaces it as a warning, not an error.
+Holidays live in the database. NSE's published list is loaded into it at
+startup (``shared.nse_holidays``) and the operator can add a closure NSE
+declares at short notice, or remove one it calls off. A year with no holidays
+loaded is not a safety problem — the engine's own staleness guards refuse to
+trade on a dead feed — it only costs an idle broker session, so the dashboard
+surfaces it as a warning, not an error.
 """
 
 from __future__ import annotations
@@ -68,3 +69,33 @@ def next_transition(now: datetime, holidays: set[str]) -> dict:
 def calendar_configured(holidays: set[str], year: int) -> bool:
     prefix = f"{year}-"
     return any(h.startswith(prefix) for h in holidays)
+
+
+def closures(today: date, holidays: dict[str, str]) -> dict:
+    """The closures worth telling the operator about, for the deck's banner.
+
+    ``holidays`` maps each closed day to its name. ``today`` is set on a
+    holiday. ``ahead`` lists every holiday between today and the next session,
+    so the last session before a closure announces it — Friday's included, for
+    a Monday holiday — and so does every day of the weekend before one.
+    """
+
+    def named(d: str) -> dict:
+        return {"day": d, "label": holidays.get(d) or "Exchange holiday"}
+
+    days = set(holidays)
+    nxt = next_trading_day(today, days)
+    ahead = []
+    cur = today + timedelta(days=1)
+    while nxt is not None and cur < nxt:
+        if cur.isoformat() in days and not is_weekend(cur):
+            ahead.append(named(cur.isoformat()))
+        cur += timedelta(days=1)
+    t = today.isoformat()
+    upcoming = sorted(d for d in days if d > t and not is_weekend(date.fromisoformat(d)))
+    return {
+        "today": named(t) if t in days and not is_weekend(today) else None,
+        "ahead": ahead,
+        "next_session": nxt.isoformat() if nxt else None,
+        "next_holiday": named(upcoming[0]) if upcoming else None,
+    }

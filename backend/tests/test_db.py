@@ -98,9 +98,35 @@ def test_daily_equity_keeps_last_reading_per_session(tmp_db):
 def test_holidays_upsert_and_delete(tmp_db):
     tmp_db.add_holiday("2026-10-21", "Diwali")
     tmp_db.add_holiday("2026-10-21", "Diwali Laxmi Pujan")
-    assert tmp_db.holidays() == [{"day": "2026-10-21", "label": "Diwali Laxmi Pujan"}]
+    assert tmp_db.holidays() == [{"day": "2026-10-21", "label": "Diwali Laxmi Pujan", "source": "operator"}]
     tmp_db.remove_holiday("2026-10-21")
     assert tmp_db.holidays() == []
+
+
+def test_a_published_holiday_is_loaded_once(tmp_db):
+    published = {"2026-10-02": "Mahatma Gandhi Jayanti", "2026-10-20": "Dussehra"}
+    assert tmp_db.seed_holidays(published, source="NSE") == ["2026-10-02", "2026-10-20"]
+    assert {h["day"]: h["source"] for h in tmp_db.holidays()} == {"2026-10-02": "NSE", "2026-10-20": "NSE"}
+    assert tmp_db.seed_holidays(published, source="NSE") == [], "nothing is loaded twice"
+    # A closure the operator removes (say NSE called it off) stays removed...
+    tmp_db.remove_holiday("2026-10-20")
+    assert tmp_db.seed_holidays(published, source="NSE") == []
+    assert [h["day"] for h in tmp_db.holidays()] == ["2026-10-02"]
+    # ...while a date new to the list, next year's say, is picked up.
+    assert tmp_db.seed_holidays({**published, "2027-01-26": "Republic Day"}, source="NSE") == ["2027-01-26"]
+
+
+def test_an_older_calendar_gains_the_source_column(tmp_path):
+    import sqlite3
+
+    from shared.db import Database
+
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as c:
+        c.execute("CREATE TABLE holidays (day TEXT PRIMARY KEY, label TEXT)")
+        c.execute("INSERT INTO holidays VALUES ('2026-10-21', 'Diwali')")
+    db = Database(path)
+    assert db.holidays() == [{"day": "2026-10-21", "label": "Diwali", "source": "operator"}]
 
 
 def test_engine_run_lifecycle_is_recorded(tmp_db):

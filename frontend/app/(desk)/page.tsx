@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AlgoCard } from "@/components/AlgoCard";
 import { HealthStrip } from "@/components/HealthStrip";
+import { HolidayNotice } from "@/components/HolidayNotice";
 import { LiveTape } from "@/components/LiveTape";
 import { LazyMarkedChart } from "@/components/LazyMarkedChart";
 import { NewsPanel } from "@/components/NewsPanel";
@@ -129,6 +130,7 @@ export default function DeckPage() {
         onCancel={() => setAsking(null)}
       />
 
+      <HolidayNotice />
       <StalenessMonitor />
       <NiftyTicker />
 

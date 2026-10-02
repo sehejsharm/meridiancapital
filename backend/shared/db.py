@@ -108,7 +108,8 @@ CREATE TABLE IF NOT EXISTS engine_runs (
 
 CREATE TABLE IF NOT EXISTS holidays (
     day     TEXT PRIMARY KEY,
-    label   TEXT
+    label   TEXT,
+    source  TEXT NOT NULL DEFAULT 'operator'
 );
 
 CREATE TABLE IF NOT EXISTS algos (
@@ -188,6 +189,7 @@ _ADDED_COLUMNS = (
     ("commands", "algo_id", "TEXT NOT NULL DEFAULT 'gk50k'"),
     ("engine_runs", "algo_id", "TEXT NOT NULL DEFAULT 'gk50k'"),
     ("algos", "shadow_of", "TEXT"),
+    ("holidays", "source", "TEXT NOT NULL DEFAULT 'operator'"),
 )
 
 
@@ -547,16 +549,31 @@ class Database:
     # ── holiday calendar ─────────────────────────────────────────────────────
     def holidays(self) -> list[dict]:
         with self.conn() as c:
-            rows = c.execute("SELECT day, label FROM holidays ORDER BY day").fetchall()
+            rows = c.execute("SELECT day, label, source FROM holidays ORDER BY day").fetchall()
         return [dict(r) for r in rows]
 
-    def add_holiday(self, day: str, label: str = "") -> None:
+    def add_holiday(self, day: str, label: str = "", source: str = "operator") -> None:
         with self.conn() as c:
             c.execute(
-                "INSERT INTO holidays(day, label) VALUES(?,?) "
-                "ON CONFLICT(day) DO UPDATE SET label=excluded.label",
-                (day, label),
+                "INSERT INTO holidays(day, label, source) VALUES(?,?,?) "
+                "ON CONFLICT(day) DO UPDATE SET label=excluded.label, source=excluded.source",
+                (day, label, source),
             )
+
+    def seed_holidays(self, days: dict[str, str], source: str) -> list[str]:
+        """Load a published holiday list, each date once. Returns the dates added.
+
+        A date already loaded is not loaded again, so one the operator removed
+        (say, a closure the exchange called off) stays removed, while dates
+        new to the list are added on the next start.
+        """
+        loaded = set(self.kv_get(K_HOLIDAYS_SEEDED, []) or [])
+        fresh = sorted(d for d in days if d not in loaded)
+        for day in fresh:
+            self.add_holiday(day, days[day], source=source)
+        if fresh:
+            self.kv_set(K_HOLIDAYS_SEEDED, sorted(loaded | set(fresh)))
+        return fresh
 
     def remove_holiday(self, day: str) -> None:
         with self.conn() as c:
@@ -715,3 +732,4 @@ K_MODE = "settings:mode"  # "paper" | "live"
 K_SCHEDULE = "settings:schedule_enabled"  # bool
 K_TUNING = "settings:tuning"  # dashboard overrides of the strategy parameters
 K_SUPERVISOR = "supervisor:state"
+K_HOLIDAYS_SEEDED = "calendar:seeded_days"  # published holidays already loaded once

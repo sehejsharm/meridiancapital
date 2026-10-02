@@ -58,8 +58,9 @@ strategy's own 15:10 forced square-off.
 
 Because it reconciles rather than fires cron jobs, a reboot, a redeploy, or a crash
 mid-session self-heals instead of leaving the engine down until tomorrow. Weekends and
-NSE holidays are skipped; holidays are operator-maintained from the dashboard rather than
-hardcoded, so a stale list can never silently start the engine on a closed day.
+NSE holidays are skipped. NSE's published list ships with the code and loads itself at
+startup; the Controls page shows it, and a closure NSE declares at short notice can be
+added there. The deck warns the session before a closure and on the day itself.
 
 ## Quick start
 

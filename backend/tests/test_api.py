@@ -228,8 +228,21 @@ def test_schedule_can_be_armed_and_disarmed(client, auth):
 
 def test_holidays_can_be_added_and_removed(client, auth):
     r = client.post("/api/control/holidays", json={"day": "2026-10-21", "label": "Diwali"}, headers=auth)
-    assert r.json()["holidays"] == [{"day": "2026-10-21", "label": "Diwali"}]
-    assert client.delete("/api/control/holidays/2026-10-21", headers=auth).json()["holidays"] == []
+    added = {"day": "2026-10-21", "label": "Diwali", "source": "operator"}
+    assert added in r.json()["holidays"]
+    after = client.delete("/api/control/holidays/2026-10-21", headers=auth).json()["holidays"]
+    assert added not in after
+
+
+def test_nse_holidays_are_loaded_without_anyone_typing_them(client, auth):
+    body = client.get("/api/control/holidays", headers=auth).json()
+    nse = {h["day"]: h["label"] for h in body["holidays"] if h["source"] == "NSE"}
+    assert nse["2026-10-02"] == "Mahatma Gandhi Jayanti"
+    assert nse["2026-10-20"] == "Dussehra"
+    assert 2026 in body["published_years"]
+    sched = client.get("/api/status", headers=auth).json()["schedule"]
+    assert sched["calendar_configured"] or not sched["now_ist"].startswith("2026-")
+    assert {"today", "ahead", "next_session", "next_holiday"} <= set(sched["closures"])
 
 
 def test_bad_holiday_date_is_rejected(client, auth):

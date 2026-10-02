@@ -88,8 +88,11 @@ Two brakes stop it fighting the operator:
 
 ### The holiday calendar
 
-Operator-maintained in the database, not hardcoded. The NSE list changes yearly and a
-stale hardcoded list would silently start the engine on a closed day.
+NSE's published list ships in `shared/nse_holidays.py` and is loaded into the database at
+startup, each date once: a closure the operator removes (one NSE called off) stays removed,
+and a year added to the file later is picked up on the next restart. The operator can add
+a closure NSE declares at short notice. The deck announces a closure on the last day
+before it (Friday's included, for a Monday holiday) and on the day itself.
 
 An unconfigured calendar is a cost, not a risk: on a holiday the candle feed goes stale,
 and the engine's own `MAX_BAR_AGE_SEC` guard refuses to trade a stale feed. So the

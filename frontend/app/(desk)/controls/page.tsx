@@ -7,6 +7,7 @@ import { RunModeDialog } from "@/components/RunModeDialog";
 import { Badge, Button, Card, Empty, Field } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { istDateTime } from "@/lib/format";
+import { calendarDay } from "@/lib/holidays";
 import { useLiveFeed } from "@/lib/LiveContext";
 import type { Holiday } from "@/lib/types";
 
@@ -168,7 +169,16 @@ export default function ControlsPage() {
           }
         >
           <dl className="divide-y divide-hairline">
-            <Field label="Today is a trading day" value={schedule?.is_trading_day ? "Yes" : "No"} />
+            <Field
+              label="Today is a trading day"
+              value={
+                schedule?.is_trading_day
+                  ? "Yes"
+                  : schedule?.closures?.today
+                    ? `No — ${schedule.closures.today.label}`
+                    : "No"
+              }
+            />
             <Field label="Inside session window" value={schedule?.in_session_window ? "Yes" : "No"} />
             <Field
               label="Next transition"
@@ -200,9 +210,10 @@ export default function ControlsPage() {
 
           {schedule && !schedule.calendar_configured && (
             <p className="mt-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-2xs text-warning">
-              No NSE holidays are loaded for this year. The engine will boot on exchange holidays
-              and idle — its staleness guards refuse to trade a dead feed, so this costs a broker
-              session rather than risking a trade. Add the dates below to stop it.
+              NSE&apos;s holidays for {schedule.now_ist.slice(0, 4)} are not loaded yet — NSE
+              publishes each year&apos;s list in December and it arrives with the next server
+              update. Until then an algorithm would boot on a holiday and idle: its guards will not
+              trade a dead feed.
             </p>
           )}
         </Card>
@@ -250,7 +261,7 @@ export default function ControlsPage() {
         </Card>
       </div>
 
-      <HolidayCalendar onNotice={setNotice} />
+      <HolidayCalendar onNotice={setNotice} today={schedule?.now_ist?.slice(0, 10)} />
     </div>
   );
 }
@@ -308,16 +319,23 @@ function FlattenControl({
   );
 }
 
-function HolidayCalendar({ onNotice }: { onNotice: (n: Notice) => void }) {
-  const [holidays, setHolidays] = useState<Holiday[]>([]);
+function HolidayCalendar({ onNotice, today }: { onNotice: (n: Notice) => void; today?: string }) {
+  const [holidays, setHolidays] = useState<Holiday[] | null>(null);
+  const [years, setYears] = useState<number[]>([]);
   const [day, setDay] = useState("");
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showPast, setShowPast] = useState(false);
+
+  type Calendar = { holidays: Holiday[]; published_years?: number[] };
+  const take = (data: Calendar) => {
+    setHolidays(data.holidays);
+    setYears(data.published_years ?? []);
+  };
 
   const load = useCallback(async () => {
     try {
-      const data = await apiGet<{ holidays: Holiday[] }>("/control/holidays");
-      setHolidays(data.holidays);
+      take(await apiGet<Calendar>("/control/holidays"));
     } catch {
       /* the page already reports connection problems */
     }
@@ -331,11 +349,10 @@ function HolidayCalendar({ onNotice }: { onNotice: (n: Notice) => void }) {
     if (!day) return;
     setBusy(true);
     try {
-      const data = await apiPost<{ holidays: Holiday[] }>("/control/holidays", { day, label });
-      setHolidays(data.holidays);
+      take(await apiPost<Calendar>("/control/holidays", { day, label }));
       setDay("");
       setLabel("");
-      onNotice({ tone: "good", text: `${day} added to the holiday calendar` });
+      onNotice({ tone: "good", text: `${calendarDay(day, true)} added to the holiday calendar` });
     } catch (e) {
       onNotice({ tone: "critical", text: e instanceof Error ? e.message : "could not add" });
     } finally {
@@ -343,72 +360,129 @@ function HolidayCalendar({ onNotice }: { onNotice: (n: Notice) => void }) {
     }
   };
 
-  const remove = async (d: string) => {
+  const remove = async (h: Holiday) => {
+    const what = `${calendarDay(h.day, true)}${h.label ? ` (${h.label})` : ""}`;
+    if (!window.confirm(`Remove ${what}? Armed algorithms would start that day.`)) return;
     try {
-      const data = await apiDelete<{ holidays: Holiday[] }>(`/control/holidays/${d}`);
-      setHolidays(data.holidays);
+      take(await apiDelete<Calendar>(`/control/holidays/${h.day}`));
+      onNotice({ tone: "good", text: `${what} removed — that day now trades` });
     } catch (e) {
       onNotice({ tone: "critical", text: e instanceof Error ? e.message : "could not remove" });
     }
   };
 
+  const now = today ?? new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+  const all = holidays ?? [];
+  const upcoming = all.filter((h) => h.day >= now);
+  const past = all.filter((h) => h.day < now);
+  const next = upcoming.find((h) => h.day > now) ?? null;
+  const shown = showPast ? all : upcoming;
+  const published = years.length ? years.join(", ") : null;
+
   return (
     <Card
       title="NSE holiday calendar"
-      subtitle="Days the scheduler keeps the engine down. Copy them from the NSE circular each year."
-      action={<Badge tone="neutral">{holidays.length} dates</Badge>}
+      subtitle={
+        published
+          ? `NSE's published list for ${published}, loaded automatically. The scheduler keeps every algorithm off on these days.`
+          : "Days the scheduler keeps every algorithm off."
+      }
+      action={
+        <Badge tone={upcoming.length ? "good" : "neutral"}>
+          {upcoming.length} ahead{past.length ? ` · ${past.length} past` : ""}
+        </Badge>
+      }
     >
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="w-full min-w-0 text-2xs uppercase tracking-[0.12em] text-ink-muted sm:w-auto sm:flex-1">
-          Date
-          <input
-            type="date"
-            value={day}
-            onChange={(e) => setDay(e.target.value)}
-            className="mt-1 w-full rounded-md border border-hairline bg-surface-raised px-3 py-2 text-sm text-ink outline-none focus:border-brand"
-          />
-        </label>
-        <label className="w-full min-w-0 text-2xs uppercase tracking-[0.12em] text-ink-muted sm:w-auto sm:flex-[2]">
-          Label
-          <input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="Diwali Laxmi Pujan"
-            className="mt-1 w-full rounded-md border border-hairline bg-surface-raised px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-brand"
-          />
-        </label>
-        <Button variant="primary" onClick={() => void add()} disabled={!day || busy}>
-          Add
-        </Button>
-      </div>
+      {next && (
+        <p className="mb-3 text-xs text-ink-secondary">
+          Next closure{" "}
+          <span className="font-semibold text-ink">{calendarDay(next.day, true)}</span>
+          {next.label ? ` — ${next.label}` : ""}
+        </p>
+      )}
 
-      {holidays.length === 0 ? (
-        <div className="mt-4">
-          <Empty>No holidays loaded.</Empty>
-        </div>
+      {holidays === null ? (
+        <Empty>Loading the calendar…</Empty>
+      ) : shown.length === 0 ? (
+        <Empty>
+          {all.length
+            ? "No closures left this year."
+            : "No holidays loaded — the server predates the built-in NSE list. Update it and they load themselves."}
+        </Empty>
       ) : (
-        <ul className="mt-4 grid gap-1.5 sm:grid-cols-2">
-          {holidays.map((h) => (
-            <li
-              key={h.day}
-              className="flex items-center justify-between gap-3 rounded-md border border-hairline px-3 py-2"
-            >
-              <span className="min-w-0 text-xs">
-                <span className="tabular-nums text-ink">{h.day}</span>
-                {h.label && <span className="ml-2 text-ink-muted">{h.label}</span>}
-              </span>
-              <button
-                type="button"
-                onClick={() => void remove(h.day)}
-                aria-label={`Remove ${h.day}`}
-                className="shrink-0 text-2xs uppercase tracking-[0.1em] text-ink-muted transition-colors hover:text-critical"
+        <ul className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+          {shown.map((h) => {
+            const isToday = h.day === now;
+            const isPast = h.day < now;
+            return (
+              <li
+                key={h.day}
+                className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${
+                  isToday ? "border-warning/60 bg-warning/10" : "border-hairline"
+                } ${isPast ? "opacity-55" : ""}`}
               >
-                Remove
-              </button>
-            </li>
-          ))}
+                <span className="min-w-0 text-xs">
+                  <span className="block tabular-nums font-medium text-ink">
+                    {calendarDay(h.day, true)}
+                    {isToday && <span className="ml-2 text-2xs uppercase tracking-[0.1em] text-warning">today</span>}
+                  </span>
+                  <span className="block truncate text-ink-muted">
+                    {h.label || "Exchange holiday"}
+                    {h.source && h.source !== "NSE" && " · added by you"}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void remove(h)}
+                  aria-label={`Remove ${h.day}`}
+                  className="shrink-0 text-2xs uppercase tracking-[0.1em] text-ink-muted transition-colors hover:text-critical"
+                >
+                  Remove
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
+
+      {past.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowPast((v) => !v)}
+          className="mt-3 text-2xs uppercase tracking-[0.1em] text-ink-muted transition-colors hover:text-ink"
+        >
+          {showPast ? "Hide past closures" : `Show ${past.length} past closure${past.length === 1 ? "" : "s"}`}
+        </button>
+      )}
+
+      <details className="mt-4 rounded-md border border-hairline px-3 py-2">
+        <summary className="cursor-pointer text-2xs uppercase tracking-[0.12em] text-ink-muted">
+          Add a closure NSE announces at short notice
+        </summary>
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="w-full min-w-0 text-2xs uppercase tracking-[0.12em] text-ink-muted sm:w-auto sm:flex-1">
+            Date
+            <input
+              type="date"
+              value={day}
+              onChange={(e) => setDay(e.target.value)}
+              className="mt-1 w-full rounded-md border border-hairline bg-surface-raised px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+            />
+          </label>
+          <label className="w-full min-w-0 text-2xs uppercase tracking-[0.12em] text-ink-muted sm:w-auto sm:flex-[2]">
+            Reason
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="e.g. Election in Maharashtra"
+              className="mt-1 w-full rounded-md border border-hairline bg-surface-raised px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-brand"
+            />
+          </label>
+          <Button variant="primary" onClick={() => void add()} disabled={!day || busy}>
+            Add
+          </Button>
+        </div>
+      </details>
     </Card>
   );
 }

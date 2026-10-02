@@ -81,3 +81,59 @@ def test_next_transition_after_close_rolls_to_next_day():
 def test_calendar_configured_detects_year():
     assert calendar_configured(HOLIDAYS, 2026)
     assert not calendar_configured(HOLIDAYS, 2027)
+
+
+# ── the shipped NSE list and the deck's closure notice ───────────────────────
+from shared.market_calendar import closures  # noqa: E402
+from shared.nse_holidays import NSE_HOLIDAYS, YEARS_COVERED  # noqa: E402
+
+
+def test_the_shipped_list_is_well_formed():
+    assert 2026 in YEARS_COVERED
+    for day, label in NSE_HOLIDAYS.items():
+        d = date.fromisoformat(day)
+        assert d.weekday() < 5, f"{day} is a weekend — the market is closed anyway"
+        assert label.strip()
+    assert NSE_HOLIDAYS["2026-10-02"] == "Mahatma Gandhi Jayanti"
+
+
+def test_the_day_before_a_holiday_announces_it():
+    c = closures(date(2026, 10, 1), NSE_HOLIDAYS)  # Thursday
+    assert c["today"] is None
+    assert c["ahead"] == [{"day": "2026-10-02", "label": "Mahatma Gandhi Jayanti"}]
+    assert c["next_session"] == "2026-10-05"
+
+
+def test_the_holiday_itself_says_so():
+    c = closures(date(2026, 10, 2), NSE_HOLIDAYS)  # Friday, Gandhi Jayanti
+    assert c["today"] == {"day": "2026-10-02", "label": "Mahatma Gandhi Jayanti"}
+    assert c["ahead"] == [] and c["next_session"] == "2026-10-05"
+    assert c["next_holiday"] == {"day": "2026-10-20", "label": "Dussehra"}
+
+
+def test_friday_and_the_weekend_announce_a_monday_holiday():
+    for today in (date(2026, 9, 11), date(2026, 9, 12), date(2026, 9, 13)):  # Fri, Sat, Sun
+        c = closures(today, NSE_HOLIDAYS)
+        assert c["ahead"] == [{"day": "2026-09-14", "label": "Ganesh Chaturthi"}], today
+        assert c["next_session"] == "2026-09-15"
+
+
+def test_an_ordinary_day_announces_nothing():
+    c = closures(date(2026, 10, 6), NSE_HOLIDAYS)
+    assert c["today"] is None and c["ahead"] == []
+    assert c["next_session"] == "2026-10-07"
+
+
+def test_back_to_back_closures_are_all_announced():
+    c = closures(date(2026, 10, 20), {"2026-10-20": "A", "2026-10-21": "", "2026-10-22": "C"})
+    assert c["today"]["label"] == "A"
+    assert [h["day"] for h in c["ahead"]] == ["2026-10-21", "2026-10-22"]
+    assert c["ahead"][0]["label"] == "Exchange holiday"
+    assert c["next_session"] == "2026-10-23"
+
+
+def test_the_scheduler_will_not_start_anything_on_a_shipped_holiday():
+    holidays = set(NSE_HOLIDAYS)
+    assert not should_be_running(datetime(2026, 10, 2, 10, 0), holidays)
+    assert should_be_running(datetime(2026, 10, 5, 10, 0), holidays)
+    assert next_transition(datetime(2026, 10, 1, 16, 0), holidays)["day"] == "2026-10-05"

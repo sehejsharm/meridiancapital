@@ -132,15 +132,25 @@ export function AlgoCard({
                   ? "gate flagged issues"
                   : "not screened"}
         </span>
-        {running ? (
-          <Button variant="danger" onClick={onStop} disabled={busy}>
-            Stop
-          </Button>
-        ) : (
-          <Button variant="default" onClick={onStart} disabled={busy}>
-            Start
-          </Button>
-        )}
+        <span className="flex shrink-0 items-center gap-2">
+          {algo.kind !== "builtin" && (
+            <Link
+              href={`/algos?update=${encodeURIComponent(algo.id)}`}
+              className="rounded-md px-2 py-1.5 text-2xs uppercase tracking-[0.1em] text-ink-muted transition-colors hover:text-brand touch:min-h-[36px]"
+            >
+              Update code
+            </Link>
+          )}
+          {running ? (
+            <Button variant="danger" onClick={onStop} disabled={busy}>
+              Stop
+            </Button>
+          ) : (
+            <Button variant="default" onClick={onStart} disabled={busy}>
+              Start
+            </Button>
+          )}
+        </span>
       </footer>
     </article>
   );

@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.deps import ctx
 from app.security import Principal, client_ip, require_auth
+from shared.nse_holidays import YEARS_COVERED
 
 router = APIRouter(prefix="/api/control", tags=["control"], dependencies=[Depends(require_auth)])
 
@@ -212,9 +213,14 @@ async def set_schedule(
     return {"ok": True, **c.sched.status()}
 
 
+def _calendar(db) -> dict:
+    """The calendar, and the years NSE's published list is loaded for."""
+    return {"holidays": db.holidays(), "published_years": sorted(YEARS_COVERED)}
+
+
 @router.get("/holidays")
 async def list_holidays() -> dict:
-    return {"holidays": ctx().db.holidays()}
+    return _calendar(ctx().db)
 
 
 @router.post("/holidays")
@@ -224,7 +230,7 @@ async def add_holiday(
     c = ctx()
     c.db.add_holiday(body.day, body.label)
     _audit(request, principal, "holiday.add", f"{body.day} {body.label}")
-    return {"ok": True, "holidays": c.db.holidays()}
+    return {"ok": True, **_calendar(c.db)}
 
 
 @router.delete("/holidays/{day}")
@@ -234,7 +240,7 @@ async def remove_holiday(
     c = ctx()
     c.db.remove_holiday(day)
     _audit(request, principal, "holiday.remove", day)
-    return {"ok": True, "holidays": c.db.holidays()}
+    return {"ok": True, **_calendar(c.db)}
 
 
 # ── emergency stop ───────────────────────────────────────────────────────────

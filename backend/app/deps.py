@@ -11,6 +11,8 @@ from app.program_status import live_snapshot_key
 from app.scheduler import Scheduler
 from app.supervisor import Supervisor
 from shared.db import K_MODE, Database
+from shared.nse_holidays import NSE_HOLIDAYS
+from shared.nse_holidays import SOURCE as NSE
 
 BUILTIN_ID = "gk50k"
 
@@ -45,10 +47,24 @@ def _seed_builtin(db: Database) -> None:
     db.set_algo_fields(BUILTIN_ID, mode=db.kv_get(K_MODE, "paper"))
 
 
+def _load_nse_holidays(db: Database) -> None:
+    """NSE's published closures go into the calendar without anyone typing them."""
+    added = db.seed_holidays(NSE_HOLIDAYS, source=NSE)
+    if added:
+        years = sorted({d[:4] for d in added})
+        db.add_event(
+            "info",
+            f"loaded {len(added)} NSE trading holidays for {', '.join(years)} — "
+            f"armed algorithms stay down on those days",
+            source="scheduler",
+        )
+
+
 def build_context() -> Context:
     global _ctx
     db = Database(settings.db_path)
     _seed_builtin(db)
+    _load_nse_holidays(db)
     sup = Supervisor(db)
     sched = Scheduler(db, sup)
     fleet = Fleet(db, supervisor_factory=Supervisor)

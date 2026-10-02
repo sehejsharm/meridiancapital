@@ -184,7 +184,8 @@ redeploy. Unset on either side, the old behaviour stands; nothing breaks.
 ## 6. First run
 
 1. Sign in to the dashboard with the operator password.
-2. **Controls → NSE holiday calendar** — add this year's dates from the NSE circular.
+2. **Controls → NSE holiday calendar** — NSE's published list for the year is already
+   loaded; check it, and add any closure NSE declares at short notice.
 3. **Controls → Automation → Arm** — anything you have started will now start itself at
    09:05 and stop at 15:25 on trading days. The engine is up ten minutes before the 09:15
    bell so it has time to log in to Angel, pull the scrip master and build its candles.

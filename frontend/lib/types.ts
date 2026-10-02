@@ -145,6 +145,8 @@ export interface SystemStatus {
     next: { action: "start" | "stop" | "none"; at: string | null; day: string | null };
     holiday_count: number;
     calendar_configured: boolean;
+    /** Closures to announce on the deck. Absent from an older server. */
+    closures?: Closures;
     last_tick: string | null;
     last_decision: string;
     manual_override: boolean;
@@ -223,6 +225,22 @@ export interface DailyEquityPoint {
 export interface Holiday {
   day: string;
   label: string;
+  /** "NSE" for the published list loaded automatically, "operator" for one added by hand. */
+  source?: string;
+}
+
+export interface Closure {
+  day: string;
+  label: string;
+}
+
+export interface Closures {
+  /** Set on a holiday. */
+  today: Closure | null;
+  /** Every holiday between today and the next session. */
+  ahead: Closure[];
+  next_session: string | null;
+  next_holiday: Closure | null;
 }
 
 export interface CommandRow {
