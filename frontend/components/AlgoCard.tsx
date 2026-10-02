@@ -69,7 +69,11 @@ export function AlgoCard({
             </Link>
           </div>
           <p className="mt-0.5 truncate text-2xs text-ink-muted">
-            {algo.kind === "builtin" ? "Built-in build" : `v${algo.active?.version ?? "—"}`}
+            {algo.kind === "builtin"
+              ? "Built-in build"
+              : algo.active
+                ? `v${algo.active.version}, uploaded ${recordedAt(algo.active.created_ts)}`
+                : "no code uploaded"}
             {" · "}
             {running ? `pid ${algo.runtime.pid}` : "stopped"}
           </p>

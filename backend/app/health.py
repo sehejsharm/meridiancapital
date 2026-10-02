@@ -12,6 +12,8 @@ import os
 import shutil
 import time
 
+from app.build import build_info
+
 # Thresholds from QUICK_CHECKLIST: alert above warn, stop trading above critical.
 MEM_WARN_MB = 1024
 MEM_CRITICAL_MB = 2048
@@ -212,4 +214,5 @@ def collect(db, fleet) -> dict:
         "load_average": _load(),
         "position_open": exposed,
         "checks": checks,
+        "build": build_info(),
     }

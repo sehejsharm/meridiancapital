@@ -45,3 +45,6 @@ yarn-error.log*
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Written by the installer: the commit a deployed copy was made from.
+/BUILD

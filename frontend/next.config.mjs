@@ -1,4 +1,4 @@
-/** @type {import('next').NextConfig} */
+import { execSync } from "node:child_process";
 
 // HTTPS-only headers go out on Vercel, not on a local `next start`: telling a
 // browser on http://localhost to upgrade every request would break local
@@ -29,8 +29,23 @@ if (onVercel) {
   );
 }
 
+// The commit this build is from, shown beside the server's on the deck so an
+// out-of-date server is plain to see. Vercel supplies it; a local build asks git.
+function buildCommit() {
+  if (process.env.VERCEL_GIT_COMMIT_SHA) return process.env.VERCEL_GIT_COMMIT_SHA.slice(0, 7);
+  try {
+    return execSync("git rev-parse --short=7 HEAD", { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  env: { NEXT_PUBLIC_BUILD_COMMIT: buildCommit() },
   poweredByHeader: false,
   async headers() {
     return [

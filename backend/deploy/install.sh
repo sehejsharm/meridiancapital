@@ -56,6 +56,12 @@ if [[ "$REPO_DIR" != "$APP_DIR" ]]; then
         --exclude '__pycache__' --exclude '.next' \
         "$REPO_DIR/" "$APP_DIR/"
 fi
+# The copy has no git history, so record which commit it is: the deck shows it
+# beside the dashboard's own, which answers "is the server updated?".
+if git -C "$REPO_DIR" rev-parse HEAD >/dev/null 2>&1; then
+    git -C "$REPO_DIR" log -1 --format='%h %cI' --abbrev=7 > "$APP_DIR/BUILD"
+    echo "    commit $(cut -d' ' -f1 "$APP_DIR/BUILD")"
+fi
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
 log "Python environment"
