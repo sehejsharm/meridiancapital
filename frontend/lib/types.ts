@@ -413,7 +413,7 @@ export interface HealthDetail {
   load_average: number[] | null;
   checks: HealthCheck[];
   /** The commit the server runs; absent from a server older than this field. */
-  build?: { commit: string | null; committed: string | null };
+  build?: { commit: string | null; committed: string | null; fingerprint?: string | null };
 }
 
 export interface NewsItem {

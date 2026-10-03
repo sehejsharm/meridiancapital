@@ -1,5 +1,7 @@
 import { execSync } from "node:child_process";
 
+import { backendFingerprint } from "./backend-fingerprint.mjs";
+
 // HTTPS-only headers go out on Vercel, not on a local `next start`: telling a
 // browser on http://localhost to upgrade every request would break local
 // development, and HSTS is ignored over plain http anyway.
@@ -45,7 +47,12 @@ function buildCommit() {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  env: { NEXT_PUBLIC_BUILD_COMMIT: buildCommit() },
+  env: {
+    NEXT_PUBLIC_BUILD_COMMIT: buildCommit(),
+    // The server's code as of this build, to tell an outdated server apart
+    // from one that simply had nothing new in a dashboard-only change.
+    NEXT_PUBLIC_BACKEND_FINGERPRINT: backendFingerprint(),
+  },
   poweredByHeader: false,
   async headers() {
     return [

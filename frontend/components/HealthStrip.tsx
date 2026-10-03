@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui";
 import { useHealth } from "@/lib/useDeskFeeds";
 import { duration } from "@/lib/format";
-import type { HealthCheck } from "@/lib/types";
+import type { HealthCheck, HealthDetail } from "@/lib/types";
 
 const STATE_DOT: Record<string, string> = {
   ok: "bg-good",
@@ -41,25 +41,38 @@ function Row({ check }: { check: HealthCheck }) {
 }
 
 const DASHBOARD_COMMIT = process.env.NEXT_PUBLIC_BUILD_COMMIT ?? "";
+const DASHBOARD_BACKEND = process.env.NEXT_PUBLIC_BACKEND_FINGERPRINT ?? "";
 
 /**
- * Which code the server runs, beside the dashboard's own.
+ * Which code the server runs, and whether it is the latest.
  *
  * Every change deploys the dashboard by itself, but the server only changes
  * when it is updated by hand — so this row is how you tell whether it was.
+ * It compares the server's code itself with the server code this dashboard
+ * was built alongside, so a change to the dashboard alone never asks for a
+ * server update. Only if either side cannot say does it fall back to the
+ * commit.
  */
-function CodeRow({ server }: { server: string | null | undefined }) {
+function CodeRow({ build }: { build: HealthDetail["build"] }) {
+  const server = build?.commit;
   const dash = DASHBOARD_COMMIT.slice(0, 7);
   const known = Boolean(server);
-  const current = known && (!dash || server!.slice(0, 7) === dash);
+  const byCode = Boolean(build?.fingerprint && DASHBOARD_BACKEND);
+  const current =
+    known &&
+    (byCode
+      ? build!.fingerprint === DASHBOARD_BACKEND
+      : !dash || server!.slice(0, 7) === dash);
   const state = current ? "ok" : "warning";
   const detail = !known
     ? "the server predates version stamps — update it (git pull, then install.sh)"
     : current
       ? dash
-        ? "up to date with this dashboard"
+        ? "up to date — runs the latest server code"
         : "server version"
-      : `older than this dashboard (${dash}) — update it (git pull, then install.sh)`;
+      : byCode
+        ? "a newer server version is out — update it (git pull, then install.sh)"
+        : `older than this dashboard (${dash}) — update it (git pull, then install.sh)`;
   return (
     <div className="flex items-start justify-between gap-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
@@ -107,7 +120,7 @@ export function HealthStrip() {
         <p className="text-xs text-critical">{error}</p>
       ) : (
         <div className="divide-y divide-hairline">
-          {data && <CodeRow server={data.build?.commit} />}
+          {data && <CodeRow build={data.build} />}
           {(data?.checks ?? []).map((c) => (
             <Row key={c.key} check={c} />
           ))}
