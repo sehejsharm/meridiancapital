@@ -14,7 +14,7 @@
   --surface-2: #1e1e1b;
   --text-primary: #f5f3ee;
   --text-secondary: #b5b2a6;
-  --text-muted: #8a877e;
+  --text-muted: #8c8980;
   --hairline: rgba(212, 175, 55, 0.16);
   --gridline: #24241f;
   --baseline: #38372f;
@@ -23,12 +23,16 @@
   --brand-bright: #e8c766;
   --brand-dim: rgba(212, 175, 55, 0.12);
   --logo-plate: #0a0a0a;
+  /* The background mark: present, never in the way. Set so every text colour
+     still passes WCAG AA (4.5:1) on every surface with the mark's solid points
+     over it; muted text and critical red were lifted a hair to make room. */
+  --watermark-opacity: 0.035;
 
   --series-1: #d4af37;
   --status-good: #0ca30c;
   --status-warning: #fab219;
   --status-serious: #ec835a;
-  --status-critical: #d86161;
+  --status-critical: #d96565;
 
   --profit: #2fbf4f;
   --loss: #e66767;
@@ -51,6 +55,7 @@
     --brand-bright: #6f5615;
     --brand-dim: rgba(130, 101, 31, 0.1);
     --logo-plate: #14130f;
+    --watermark-opacity: 0.026;
 
     --series-1: #82651f;
     --status-good: #0c770c;
@@ -78,6 +83,7 @@
   --brand-bright: #6f5615;
   --brand-dim: rgba(130, 101, 31, 0.1);
   --logo-plate: #14130f;
+  --watermark-opacity: 0.026;
 
   --series-1: #82651f;
   --status-good: #0c770c;
@@ -195,4 +201,158 @@ button,
 html,
 body {
   overscroll-behavior-y: none;
+}
+
+/* ── the mark, faint, over every page ──────────────────────────────────────
+   Above the page so the opaque cards do not hide it, below the header bar,
+   menus and dialogs, and transparent to clicks. Fixed, so it stays put while
+   the page scrolls under it. */
+.watermark {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: var(--watermark-opacity);
+  /* The rose's centre disc is drawn in the plate colour; here it has nothing
+     to cover, so it shows the page through it. */
+  --logo-plate: transparent;
+}
+.watermark-mark {
+  width: min(62vmin, 640px);
+  height: auto;
+}
+@media print {
+  .watermark {
+    display: none;
+  }
+}
+
+/* ── the splash: one second of the mark in motion ──────────────────────────
+   Sign-in, every page load, and a tap on the logo. 0–450ms the rings draw;
+   180–620ms the rays sweep in clockwise; 120–760ms the rose spins up from a
+   third of a turn back and settles with a slight overshoot; 560–820ms the
+   centre lights and a pulse runs out from it; 300–900ms the name tracks in.
+   1000–1200ms the whole thing fades and stops taking clicks. */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--plane);
+  animation: splash-out 200ms ease-in 1000ms forwards;
+}
+.splash-mark {
+  width: 132px;
+  height: 132px;
+  overflow: visible;
+}
+.splash-glow {
+  position: absolute;
+  top: 66px;
+  left: 50%;
+  width: 260px;
+  height: 260px;
+  margin: -130px 0 0 -130px;
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, var(--brand-dim), transparent);
+  opacity: 0;
+  animation: splash-glow 1000ms ease-out forwards;
+}
+.splash-ring {
+  stroke-dashoffset: var(--len);
+  animation: splash-draw 450ms cubic-bezier(0.3, 0.7, 0.2, 1) forwards;
+}
+.splash-ray {
+  stroke-dashoffset: var(--len);
+  opacity: 0;
+  animation: splash-ray 260ms ease-out forwards;
+}
+.splash-rose {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  transform: rotate(-120deg) scale(0.35);
+  opacity: 0;
+  animation: splash-rose 640ms cubic-bezier(0.2, 1.25, 0.35, 1) 120ms forwards;
+}
+.splash-core {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  transform: scale(0);
+  animation: splash-core 260ms cubic-bezier(0.3, 1.6, 0.5, 1) 560ms forwards;
+}
+.splash-pulse {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  opacity: 0;
+  animation: splash-pulse 380ms ease-out 620ms forwards;
+}
+.splash-name {
+  letter-spacing: 0.9em;
+  margin-right: -0.9em;
+  opacity: 0;
+  animation: splash-name 600ms cubic-bezier(0.2, 0.8, 0.2, 1) 300ms forwards;
+}
+.splash-sub {
+  opacity: 0;
+  transform: translateY(6px);
+  animation: splash-sub 400ms ease-out 500ms forwards;
+}
+
+@keyframes splash-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes splash-ray {
+  to { stroke-dashoffset: 0; opacity: 0.55; }
+}
+@keyframes splash-rose {
+  to { transform: rotate(0deg) scale(1); opacity: 1; }
+}
+@keyframes splash-core {
+  to { transform: scale(1); }
+}
+@keyframes splash-pulse {
+  0%   { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(5.5); opacity: 0; }
+}
+@keyframes splash-glow {
+  0%   { opacity: 0; transform: scale(0.6); }
+  60%  { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 0.6; transform: scale(1); }
+}
+@keyframes splash-name {
+  to { letter-spacing: 0.22em; margin-right: -0.22em; opacity: 1; }
+}
+@keyframes splash-sub {
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes splash-out {
+  to { opacity: 0; visibility: hidden; }
+}
+
+/* With the system's reduce-motion setting on, nothing spins, scales or
+   travels; the parts still arrive in the same order, by fading. */
+@media (prefers-reduced-motion: reduce) {
+  .splash-rose,
+  .splash-core,
+  .splash-glow,
+  .splash-sub {
+    transform: none;
+    animation-name: splash-fade;
+  }
+  .splash-pulse {
+    display: none;
+  }
+  .splash-name {
+    letter-spacing: 0.22em;
+    margin-right: -0.22em;
+    animation-name: splash-fade;
+  }
+}
+@keyframes splash-fade {
+  to { opacity: 1; }
 }

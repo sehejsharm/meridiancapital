@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 
+import { Splash } from "@/components/Splash";
+import { Watermark } from "@/components/Watermark";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -31,7 +34,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Watermark />
+        <Splash />
+      </body>
     </html>
   );
 }

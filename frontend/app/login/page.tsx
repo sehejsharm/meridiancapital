@@ -7,6 +7,7 @@ import { Logo } from "@/components/Logo";
 import { PinPad } from "@/components/PinPad";
 import { Button } from "@/components/ui";
 import { HONEYPOT_FIELD } from "@/lib/honeypot";
+import { playSplash } from "@/lib/splash";
 import {
   describeWebAuthnError,
   getAssertion,
@@ -51,6 +52,8 @@ function LoginForm() {
 
   const goOn = useCallback(() => {
     const next = params.get("next");
+    // The mark plays over the move, and the desk loads underneath it.
+    playSplash();
     router.replace(next && next.startsWith("/") ? next : "/");
     router.refresh();
   }, [params, router]);
@@ -143,7 +146,9 @@ function LoginForm() {
   return (
     <div className="w-full max-w-sm">
       <div className="flex flex-col items-center text-center">
-        <Logo size={80} className="text-brand" />
+        <button type="button" onClick={playSplash} aria-label="Meridian Capital" className="rounded-md">
+          <Logo size={80} className="text-brand" />
+        </button>
         <h1 className="mt-4 text-lg font-semibold tracking-[0.22em] text-ink">MERIDIAN</h1>
         <p className="text-2xs tracking-[0.34em] text-brand">CAPITAL</p>
       </div>

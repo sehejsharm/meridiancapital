@@ -22,6 +22,7 @@ import { signOut } from "@/lib/client-api";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { istTime } from "@/lib/format";
 import { useLinkView } from "@/lib/link";
+import { playSplash } from "@/lib/splash";
 
 const NAV = [
   { href: "/", label: "Deck", short: "Deck", Icon: IconDeck },
@@ -66,7 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <header className="pt-safe relative z-10 border-b border-hairline bg-surface/80 backdrop-blur">
         <div className="mx-auto flex max-w-[2200px] items-center gap-3 px-4 py-3 sm:px-6 xl:px-8">
-          <Link href="/" className="-my-1.5 shrink-0 py-1.5">
+          <Link href="/" onClick={playSplash} className="-my-1.5 shrink-0 py-1.5">
             <Wordmark />
           </Link>
 

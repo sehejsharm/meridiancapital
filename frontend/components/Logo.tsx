@@ -3,16 +3,16 @@
  * favicon size and inherits the brand gold from CSS rather than baking it in.
  */
 
-const RAY_COUNT = 32;
-const DIAGONALS = [45, 135, 225, 315];
-const CARDINALS = [0, 90, 180, 270];
+export const RAY_COUNT = 32;
+export const DIAGONALS = [45, 135, 225, 315];
+export const CARDINALS = [0, 90, 180, 270];
 
-function polar(angleDeg: number, radius: number, cx = 100, cy = 100) {
+export function polar(angleDeg: number, radius: number, cx = 100, cy = 100) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
   return [cx + radius * Math.cos(rad), cy + radius * Math.sin(rad)] as const;
 }
 
-function spike(angle: number, length: number, halfWidth: number) {
+export function spike(angle: number, length: number, halfWidth: number) {
   const [tipX, tipY] = polar(angle, length);
   const [leftX, leftY] = polar(angle - 90, halfWidth);
   const [rightX, rightY] = polar(angle + 90, halfWidth);
