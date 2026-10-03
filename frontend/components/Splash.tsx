@@ -8,20 +8,21 @@ import { SPLASH_EVENT, SPLASH_MS } from "@/lib/splash";
 const RAYS = Array.from({ length: RAY_COUNT }, (_, i) => (360 / RAY_COUNT) * i).filter((a) => a % 45 !== 0);
 const RINGS = [
   { r: 92, delay: 0 },
-  { r: 70, delay: 80 },
-  { r: 40, delay: 150 },
+  { r: 70, delay: 150 },
+  { r: 40, delay: 300 },
 ];
 const RAY_LENGTH = 50;
 // The fade-out, after the mark has finished moving.
-const FADE_MS = 200;
+const FADE_MS = 250;
 
 /**
  * The animated mark shown on sign-in, on every page load, and when the logo
  * is tapped.
  *
- * Over one second the rings draw themselves, the rays sweep in clockwise, the
- * rose spins into place and settles, the centre lights with a pulse, and the
- * name tracks in beneath. The whole sequence is CSS, so on a page load it
+ * Over three seconds the rings draw themselves, the rays sweep in clockwise
+ * and keep drifting round, the rose spins into place and settles, the centre
+ * lights and pulses twice, the name tracks in and a gleam crosses it, and a
+ * hairline fills beneath. The whole sequence is CSS, so on a page load it
  * starts with the first paint rather than waiting for the app's JavaScript,
  * and it leaves by itself even if that JavaScript is slow.
  */
@@ -73,7 +74,7 @@ export function Splash() {
             })}
           </g>
 
-          <g stroke="currentColor" strokeWidth="0.9">
+          <g className="splash-rays" stroke="currentColor" strokeWidth="0.9">
             {RAYS.map((angle, i) => {
               const [x1, y1] = polar(angle, 42);
               const [x2, y2] = polar(angle, 92);
@@ -86,7 +87,7 @@ export function Splash() {
                   y2={y2}
                   className="splash-ray"
                   strokeDasharray={RAY_LENGTH}
-                  style={{ ["--len" as string]: RAY_LENGTH, animationDelay: `${180 + i * 14}ms` }}
+                  style={{ ["--len" as string]: RAY_LENGTH, animationDelay: `${300 + i * 30}ms` }}
                 />
               );
             })}
@@ -110,6 +111,7 @@ export function Splash() {
 
         <div className="splash-name mt-5 text-lg font-semibold text-ink">MERIDIAN</div>
         <div className="splash-sub mt-1 text-2xs tracking-[0.34em] text-brand">CAPITAL</div>
+        <div className="splash-bar" />
       </div>
     </div>
   );

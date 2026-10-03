@@ -6,7 +6,7 @@
 export const SPLASH_EVENT = "meridian:splash";
 
 /** How long the mark is in motion, in milliseconds. */
-export const SPLASH_MS = 1000;
+export const SPLASH_MS = 3000;
 
 export function playSplash(): void {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(SPLASH_EVENT));

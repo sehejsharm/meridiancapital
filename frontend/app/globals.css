@@ -230,12 +230,17 @@ body {
   }
 }
 
-/* ── the splash: one second of the mark in motion ──────────────────────────
-   Sign-in, every page load, and a tap on the logo. 0–450ms the rings draw;
-   180–620ms the rays sweep in clockwise; 120–760ms the rose spins up from a
-   third of a turn back and settles with a slight overshoot; 560–820ms the
-   centre lights and a pulse runs out from it; 300–900ms the name tracks in.
-   1000–1200ms the whole thing fades and stops taking clicks. */
+/* ── the splash: three seconds of the mark in motion ───────────────────────
+   Sign-in, every page load, and a tap on the logo. Something moves for the
+   whole three seconds:
+     0–1000ms     the three rings draw themselves, one after another
+     300–1350ms   the rays sweep in clockwise, and keep drifting round to 3s
+     200–1500ms   the rose spins up from a third of a turn back and settles
+     1300–1600ms  the centre lights; a pulse runs out from it at 1.4s and 2.2s
+     900–2100ms   the name tracks in; the sub-line rises in at 1.5s
+     0–3000ms     the glow breathes, and a hairline fills like a progress bar
+     2200–2900ms  a gleam passes across the name
+     3000–3250ms  the whole thing fades and stops taking clicks */
 .splash {
   position: fixed;
   inset: 0;
@@ -244,7 +249,7 @@ body {
   align-items: center;
   justify-content: center;
   background: var(--plane);
-  animation: splash-out 200ms ease-in 1000ms forwards;
+  animation: splash-out 250ms ease-in 3000ms forwards;
 }
 .splash-mark {
   width: 132px;
@@ -261,46 +266,80 @@ body {
   border-radius: 9999px;
   background: radial-gradient(closest-side, var(--brand-dim), transparent);
   opacity: 0;
-  animation: splash-glow 1000ms ease-out forwards;
+  animation: splash-glow 3000ms ease-in-out forwards;
 }
 .splash-ring {
   stroke-dashoffset: var(--len);
-  animation: splash-draw 450ms cubic-bezier(0.3, 0.7, 0.2, 1) forwards;
+  animation: splash-draw 700ms cubic-bezier(0.3, 0.7, 0.2, 1) forwards;
+}
+.splash-rays {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: splash-drift 3000ms cubic-bezier(0.2, 0.6, 0.3, 1) forwards;
 }
 .splash-ray {
   stroke-dashoffset: var(--len);
   opacity: 0;
-  animation: splash-ray 260ms ease-out forwards;
+  animation: splash-ray 350ms ease-out forwards;
 }
 .splash-rose {
   transform-box: view-box;
   transform-origin: 50% 50%;
   transform: rotate(-120deg) scale(0.35);
   opacity: 0;
-  animation: splash-rose 640ms cubic-bezier(0.2, 1.25, 0.35, 1) 120ms forwards;
+  animation: splash-rose 1300ms cubic-bezier(0.2, 1.2, 0.35, 1) 200ms forwards;
 }
 .splash-core {
   transform-box: view-box;
   transform-origin: 50% 50%;
   transform: scale(0);
-  animation: splash-core 260ms cubic-bezier(0.3, 1.6, 0.5, 1) 560ms forwards;
+  animation: splash-core 320ms cubic-bezier(0.3, 1.6, 0.5, 1) 1300ms forwards;
 }
 .splash-pulse {
   transform-box: view-box;
   transform-origin: 50% 50%;
   opacity: 0;
-  animation: splash-pulse 380ms ease-out 620ms forwards;
+  animation: splash-pulse 800ms ease-out 1400ms 2;
 }
 .splash-name {
   letter-spacing: 0.9em;
   margin-right: -0.9em;
   opacity: 0;
-  animation: splash-name 600ms cubic-bezier(0.2, 0.8, 0.2, 1) 300ms forwards;
+  /* The gleam is a band of brighter gold carried across the lettering. */
+  background: linear-gradient(
+      100deg,
+      var(--text-primary) 40%,
+      var(--brand-bright) 50%,
+      var(--text-primary) 60%
+    )
+    100% 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation:
+    splash-name 1200ms cubic-bezier(0.2, 0.8, 0.2, 1) 900ms forwards,
+    splash-gleam 700ms ease-in-out 2200ms forwards;
 }
 .splash-sub {
   opacity: 0;
   transform: translateY(6px);
-  animation: splash-sub 400ms ease-out 500ms forwards;
+  animation: splash-sub 800ms ease-out 1500ms forwards;
+}
+.splash-bar {
+  width: 120px;
+  height: 1px;
+  margin-top: 18px;
+  background: var(--brand-dim);
+  overflow: hidden;
+}
+.splash-bar::after {
+  content: "";
+  display: block;
+  height: 100%;
+  background: var(--brand);
+  transform-origin: left;
+  transform: scaleX(0);
+  animation: splash-fill 3000ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 @keyframes splash-draw {
@@ -308,6 +347,10 @@ body {
 }
 @keyframes splash-ray {
   to { stroke-dashoffset: 0; opacity: 0.55; }
+}
+@keyframes splash-drift {
+  from { transform: rotate(-40deg); }
+  to   { transform: rotate(0deg); }
 }
 @keyframes splash-rose {
   to { transform: rotate(0deg) scale(1); opacity: 1; }
@@ -321,21 +364,29 @@ body {
 }
 @keyframes splash-glow {
   0%   { opacity: 0; transform: scale(0.6); }
-  60%  { opacity: 1; transform: scale(1.05); }
-  100% { opacity: 0.6; transform: scale(1); }
+  35%  { opacity: 1; transform: scale(1.05); }
+  65%  { opacity: 0.55; transform: scale(0.95); }
+  100% { opacity: 0.9; transform: scale(1.02); }
 }
 @keyframes splash-name {
   to { letter-spacing: 0.22em; margin-right: -0.22em; opacity: 1; }
 }
+@keyframes splash-gleam {
+  to { background-position: 0% 0; }
+}
 @keyframes splash-sub {
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes splash-fill {
+  to { transform: scaleX(1); }
 }
 @keyframes splash-out {
   to { opacity: 0; visibility: hidden; }
 }
 
 /* With the system's reduce-motion setting on, nothing spins, scales or
-   travels; the parts still arrive in the same order, by fading. */
+   travels; the parts still arrive in the same order, by fading, and the
+   hairline still fills. */
 @media (prefers-reduced-motion: reduce) {
   .splash-rose,
   .splash-core,
@@ -344,13 +395,16 @@ body {
     transform: none;
     animation-name: splash-fade;
   }
+  .splash-rays {
+    animation: none;
+  }
   .splash-pulse {
     display: none;
   }
   .splash-name {
     letter-spacing: 0.22em;
     margin-right: -0.22em;
-    animation-name: splash-fade;
+    animation: splash-fade 1200ms ease-out 900ms forwards;
   }
 }
 @keyframes splash-fade {
