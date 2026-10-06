@@ -451,4 +451,5 @@ def test_the_option_chain_explains_itself_while_a_program_trades(client, auth):
         sup.state.running = False
         sup.program_path = None
     assert out["available"] is False
-    assert "Your program" in out["reason"] and "rate budget" in out["reason"]
+    assert "Your program" in out["reason"] and "request budget" in out["reason"]
+    assert "program" in out, "the panel shows the program's own contract instead of an empty box"

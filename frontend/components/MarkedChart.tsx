@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createChart,
   createSeriesMarkers,
@@ -8,6 +8,7 @@ import {
   ColorType,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type UTCTimestamp,
 } from "lightweight-charts";
 
@@ -49,6 +50,9 @@ export function MarkedChart({
   const holder = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
+  const markersRef = useRef<ISeriesMarkersPluginApi<UTCTimestamp> | null>(null);
+  // Bumped once the chart exists, so data that arrived first is drawn then.
+  const [ready, setReady] = useState(0);
 
   useEffect(() => {
     const node = holder.current;
@@ -82,6 +86,8 @@ export function MarkedChart({
 
     chartRef.current = chart;
     seriesRef.current = series;
+    markersRef.current = createSeriesMarkers(series, []) as ISeriesMarkersPluginApi<UTCTimestamp>;
+    setReady((n) => n + 1);
 
     const resize = () => chart.applyOptions({ width: node.clientWidth });
     resize();
@@ -93,6 +99,7 @@ export function MarkedChart({
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      markersRef.current = null;
     };
   }, [height]);
 
@@ -112,6 +119,10 @@ export function MarkedChart({
 
     series.setData(data);
 
+    // Only this curve's own period: a trade from another day would be pinned
+    // to the nearest edge of the chart and read as if it happened there.
+    const first = data.length ? (data[0].time as number) - 120 : 0;
+    const last = data.length ? (data[data.length - 1].time as number) + 120 : 0;
     const markers = trades
       .flatMap((t) => {
         const entry = toSeconds(t.entry_ts);
@@ -138,22 +149,27 @@ export function MarkedChart({
         }
         return out;
       })
+      .filter((m) => (m.time as number) >= first && (m.time as number) <= last)
       .sort((a, b) => (a.time as number) - (b.time as number));
 
-    createSeriesMarkers(series, markers);
+    // One markers layer, updated in place: a new layer on every refresh used
+    // to pile duplicate markers on top of each other.
+    markersRef.current?.setMarkers(markers);
     chartRef.current?.timeScale().fitContent();
-  }, [equity, trades]);
+  }, [equity, trades, ready]);
 
-  if (!equity.length) {
-    return (
-      <div
-        className="flex items-center justify-center rounded-md border border-dashed border-hairline text-xs text-ink-muted"
-        style={{ height }}
-      >
-        No equity marks yet — the curve starts once an engine is running.
-      </div>
-    );
-  }
-
-  return <div ref={holder} className="w-full" style={{ height }} />;
+  // The chart's container is always mounted. It used to be rendered only once
+  // the data had arrived, but the chart is built when the component first
+  // mounts — so on the deck, where the data comes a moment later, the chart
+  // was never built and the box stayed empty.
+  return (
+    <div className="relative w-full" style={{ height }}>
+      <div ref={holder} className="h-full w-full" />
+      {!equity.length && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-md border border-dashed border-hairline text-xs text-ink-muted">
+          No equity marks yet — the curve starts once an engine is running.
+        </div>
+      )}
+    </div>
+  );
 }

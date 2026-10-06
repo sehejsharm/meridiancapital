@@ -607,4 +607,38 @@ export interface ChainPayload {
   model?: string;
   age_seconds?: number | null;
   stale?: boolean;
+  /** A running standalone program's own contract, when the chain is not fetched. */
+  program?: ProgramContract | null;
+}
+
+export interface ProgramContract {
+  ts?: string;
+  spot: number | null;
+  name?: string | null;
+  held: {
+    tsym: string | null;
+    side: "CE" | "PE" | null;
+    strike: number | null;
+    expiry: string | null;
+    dte: number | null;
+    lots: number | null;
+    qty: number;
+    entry: number | null;
+    live: number | null;
+    gain_pct: number | null;
+    unrealised: number | null;
+    peak_pct: number | null;
+    stop: number | null;
+    target_level: number | null;
+    spot_entry: number | null;
+    greeks: {
+      iv: number; delta: number; gamma: number; theta: number; vega: number;
+      theta_position: number | null; delta_position: number | null;
+    } | null;
+  } | null;
+  next: {
+    expiry: string | null;
+    call: { strike: number; trigger: number | null };
+    put: { strike: number; trigger: number | null };
+  } | null;
 }

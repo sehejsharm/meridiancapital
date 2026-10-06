@@ -192,3 +192,40 @@ def test_a_running_program_feeds_the_desk(fleet, tmp_db):  # noqa: F811
     fleet.stop("og", force=True)
     # Nothing running: the desk keeps the last recorded snapshot, labelled as such.
     assert live_snapshot_key(tmp_db, fleet) == snapshot_key("og")
+
+
+def test_after_an_api_restart_the_desk_keeps_following_the_program(fleet, tmp_db):  # noqa: F811
+    """The API restarting mid-session (an update) re-adopts the running program.
+    It used to forget where the program lives, so the deck froze until the next
+    day while the program went on trading."""
+    from app import programs
+    from app.program_output import ProgramOutput
+    from app.supervisor import Supervisor
+
+    register(tmp_db, "og", STATUS_PROGRAM, mode="live")
+    assert fleet.start("og")["ok"] is True
+    pid = fleet.get("og").state.pid
+
+    restarted = Supervisor(tmp_db, algo_id="og")   # what a fresh API process builds
+    assert restarted.state.running and restarted.state.pid == pid, "the program is re-adopted"
+    assert restarted.program_path == programs.program_path("og"), "and its folder is known again"
+
+    class OneSup:
+        def __init__(self, sup):
+            self.sup = sup
+
+        def all(self):
+            return {"og": self.sup}
+
+        def get(self, algo_id):
+            return self.sup
+
+    follower = ProgramOutput(tmp_db, OneSup(restarted))
+    tmp_db.kv_set(snapshot_key("og"), None)
+
+    def published():
+        follower.pump()
+        snap = tmp_db.kv_get(snapshot_key("og"), None)
+        return bool(snap) and snap["engine"]["pid"] == pid
+
+    assert wait_for(published), "the deck is fed from the adopted program's status file"

@@ -13,6 +13,7 @@ trusting.
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 import urllib.request
@@ -100,3 +101,100 @@ def option_chain(db) -> dict:
     age = _age(chain.get("ts"))
     return {"available": True, **chain, "age_seconds": round(age, 1) if age is not None else None,
             "stale": age is None or age > CHAIN_STALE_SEC}
+
+
+# ── a standalone program's contract, without asking Angel for anything ───────
+STRIKE_STEP = 50
+WEEKLY_EXPIRY_WEEKDAY = 1          # NIFTY weeklies expire on Tuesdays
+MIN_DTE, MAX_DTE = 2, 8            # the strategy's own expiry window
+
+
+def next_expiry(today, holidays: set[str]):
+    """The weekly expiry the strategy would pick today: the first Tuesday 2–8
+    days away, moved back to the previous trading day if it is a holiday.
+    An estimate for display — the program reads Angel's contract list."""
+    from datetime import timedelta
+
+    from shared.market_calendar import is_trading_day
+
+    for ahead in range(0, 15):
+        d = today + timedelta(days=ahead)
+        if d.weekday() != WEEKLY_EXPIRY_WEEKDAY:
+            continue
+        exp = d
+        while not is_trading_day(exp, holidays):
+            exp -= timedelta(days=1)
+        if MIN_DTE <= (exp - today).days <= MAX_DTE:
+            return exp
+    return None
+
+
+def _f(v):
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    return x if x == x else None
+
+
+def program_contract(snap: dict, holidays: set[str], now) -> dict | None:
+    """What the option panel can say about a running program from its own
+    status alone: the contract held, with Greeks solved from the premium the
+    program already reads, or the contracts a breakout would buy. Costs no
+    Angel requests, so it never competes with the program's rate budget."""
+    from datetime import date
+
+    from engine import greeks as G
+
+    if not snap:
+        return None
+    sig = snap.get("signal") or {}
+    spot = _f(sig.get("spot"))
+    pos = snap.get("position") or None
+    out = {"ts": snap.get("ts"), "spot": spot, "held": None, "next": None,
+           "name": (snap.get("engine") or {}).get("name")}
+    if pos:
+        side = pos.get("side")
+        strike = _f(pos.get("strike"))
+        live = _f(pos.get("live_premium"))
+        entry = _f(pos.get("entry_premium"))
+        qty = int(_f(pos.get("qty")) or 0)
+        target_pts = _f(pos.get("target_pts")) or 0.0
+        spot_entry = _f(pos.get("spot_entry"))
+        try:
+            expiry = date.fromisoformat(str(pos.get("expiry"))[:10])
+        except ValueError:
+            expiry = None
+        held = {
+            "tsym": pos.get("tsym"), "side": side, "strike": strike,
+            "expiry": expiry.isoformat() if expiry else None,
+            "dte": (expiry - now.date()).days if expiry else None,
+            "lots": pos.get("lots"), "qty": qty, "entry": entry, "live": live,
+            "gain_pct": _f(pos.get("gain_pct")), "unrealised": _f(pos.get("unrealised")),
+            "peak_pct": _f(pos.get("peak_pct")),
+            "stop": _f(pos.get("stop_price")) or None,
+            "target_level": (spot_entry + target_pts if side == "CE" else spot_entry - target_pts)
+            if spot_entry and target_pts else None,
+            "spot_entry": spot_entry, "opened_ts": pos.get("opened_ts"),
+            "greeks": None,
+        }
+        if live and spot and strike and expiry and side in ("CE", "PE"):
+            g = G.greeks(live, spot, strike, G.years_to_expiry(now, expiry), side)
+            if g:
+                held["greeks"] = {
+                    "iv": round(g.iv * 100, 2), "delta": round(g.delta, 3), "gamma": round(g.gamma, 5),
+                    "theta": round(g.theta, 2), "vega": round(g.vega, 2),
+                    # in rupees for the whole position, which is what the operator feels
+                    "theta_position": round(g.theta * qty, 0) if qty else None,
+                    "delta_position": round(g.delta * qty, 1) if qty else None,
+                }
+        out["held"] = held
+    elif spot:
+        atm = int(math.floor(spot / STRIKE_STEP + 0.5) * STRIKE_STEP)
+        exp = next_expiry(now.date(), holidays)
+        out["next"] = {
+            "expiry": exp.isoformat() if exp else None,
+            "call": {"strike": atm - STRIKE_STEP, "trigger": _f(sig.get("channel_high"))},
+            "put": {"strike": atm + STRIKE_STEP, "trigger": _f(sig.get("channel_low"))},
+        }
+    return out

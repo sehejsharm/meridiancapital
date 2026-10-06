@@ -182,6 +182,17 @@ class Supervisor:
             self.state.pid = pid
             self.state.adopted = True
             self.state.started_ts = self.pidfile.stat().st_mtime
+            # A standalone program keeps its status file and trade log beside
+            # itself. Without its path the follower cannot read them, and the
+            # deck froze for the rest of the session after an API restart while
+            # the program went on trading.
+            from app.programs import is_program_cmdline, program_path
+
+            cmdline = _cmdline(pid)
+            if self.program_path is None and is_program_cmdline(cmdline):
+                path = program_path(self.algo_id)
+                if str(path) in cmdline:
+                    self.program_path = path
             self.db.add_event(
                 "info", f"API adopted running engine pid {pid}", source="supervisor",
                 algo_id=self.algo_id,

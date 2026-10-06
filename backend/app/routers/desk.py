@@ -46,16 +46,24 @@ async def market_chain() -> dict:
     """The option chain around the traded contract, with volume, OI and Greeks."""
     c = ctx()
     out = market.option_chain(c.db)
-    programs_running = any(
-        sup.state.running and getattr(sup, "program_path", None) is not None
-        for sup in c.fleet.all().values()
-    )
-    if not out.get("available") and programs_running:
-        # "Start an engine" is wrong advice while a program is trading.
+    running = [aid for aid, sup in c.fleet.all().items()
+               if sup.state.running and getattr(sup, "program_path", None) is not None]
+    if running and (not out.get("available") or out.get("stale")):
+        # "Start an engine" is wrong advice while a program is trading, and a
+        # chain fetched separately would spend the rate budget it trades on.
+        # What the panel can show for free is the program's own contract.
+        from shared.db import snapshot_key
+
+        snaps = [s for s in (c.db.kv_get(snapshot_key(a), None) for a in running) if s]
+        snap = max(snaps, key=lambda s: s.get("ts") or "", default=None)
+        holidays = {h["day"] for h in c.db.holidays()}
+        out["program"] = market.program_contract(snap, holidays, now_ist()) if snap else None
+        # A chain saved by an engine that has since stopped is a record, not a
+        # quote; the program's own live contract takes its place.
+        out["available"] = False
         out["reason"] = (
-            "Your program trades through its own Angel session and does not publish the "
-            "option chain. Fetching it separately would spend the same Angel rate budget "
-            "the program trades on, so it is left off."
+            "Your program trades through its own Angel session, so the full chain is not "
+            "fetched: it would spend the request budget the program trades on."
         )
     return out
 

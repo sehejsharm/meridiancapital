@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Badge, Card, Empty } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
-import type { ChainPayload, ChainSide } from "@/lib/types";
+import { calendarDay } from "@/lib/holidays";
+import type { ChainPayload, ChainSide, ProgramContract } from "@/lib/types";
 
 const fmt = (v: number | null | undefined, digits = 2) =>
   v === null || v === undefined || !Number.isFinite(v) ? "—" : v.toFixed(digits);
@@ -64,7 +65,11 @@ export function OptionChain() {
 
   const subtitle = chain?.available
     ? `NIFTY ${fmt(chain.spot)} · expiry ${chain.expiry} (${chain.dte}d) · lot ${chain.lot}`
-    : "Price, volume, open interest and Greeks";
+    : chain?.program?.held
+      ? "The contract your program holds, with its Greeks"
+      : chain?.program
+        ? "What your program buys if NIFTY breaks out"
+        : "Price, volume, open interest and Greeks";
 
   return (
     <Card
@@ -82,6 +87,8 @@ export function OptionChain() {
         <Empty>Option chain unavailable — {error}</Empty>
       ) : !chain ? (
         <Empty>Loading…</Empty>
+      ) : !chain.available && chain.program ? (
+        <ProgramPanel program={chain.program} />
       ) : !chain.available ? (
         <Empty>{chain.reason}</Empty>
       ) : (
@@ -183,6 +190,96 @@ function ContractDetail({
           </div>
         ))}
       </dl>
+    </div>
+  );
+}
+
+const rupees = (v: number | null | undefined, digits = 0) =>
+  v === null || v === undefined || !Number.isFinite(v)
+    ? "—"
+    : `${v < 0 ? "−" : ""}₹${Math.abs(v).toLocaleString("en-IN", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+
+function Stat({ label, value, tone, hint }: { label: string; value: string; tone?: string; hint?: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-2xs uppercase tracking-[0.12em] text-ink-muted">{label}</div>
+      <div className={`text-sm font-semibold tabular-nums ${tone ?? "text-ink"}`}>{value}</div>
+      {hint && <div className="text-2xs text-ink-muted">{hint}</div>}
+    </div>
+  );
+}
+
+/**
+ * While a standalone program trades, the full chain is not fetched — it would
+ * spend the Angel request budget the program trades on. Everything here comes
+ * from the program's own status: the contract it holds, with Greeks solved on
+ * our server from the premium it already reads, or, while it is flat, the
+ * contracts a breakout would buy.
+ */
+function ProgramPanel({ program }: { program: ProgramContract }) {
+  const h = program.held;
+  if (h) {
+    const g = h.greeks;
+    const up = (h.gain_pct ?? 0) >= 0;
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="text-base font-semibold text-ink">
+            {h.side === "CE" ? "Call" : "Put"} {h.strike?.toLocaleString("en-IN")}
+            <span className="ml-2 text-xs font-normal text-ink-muted">
+              {h.tsym} · expires {calendarDay(h.expiry)}{h.dte != null ? ` (${h.dte}d)` : ""} · {h.lots} lot ({h.qty})
+            </span>
+          </div>
+          <Badge tone={up ? "good" : "critical"}>{h.gain_pct != null ? `${up ? "+" : ""}${h.gain_pct.toFixed(1)}%` : "—"}</Badge>
+        </div>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          <Stat label="Bought at" value={fmt(h.entry)} />
+          <Stat label="Now" value={fmt(h.live)} tone={up ? "text-good" : "text-critical"} />
+          <Stat label="Open P&L" value={rupees(h.unrealised)} tone={(h.unrealised ?? 0) >= 0 ? "text-good" : "text-critical"} />
+          <Stat label="Best so far" value={h.peak_pct != null ? `${h.peak_pct >= 0 ? "+" : ""}${h.peak_pct.toFixed(1)}%` : "—"} />
+          <Stat label="Stop at Angel" value={fmt(h.stop)} hint="sells if the option falls here" />
+          <Stat label="Target" value={h.target_level != null ? `NIFTY ${h.target_level.toLocaleString("en-IN")}` : "—"} hint={program.spot != null && h.target_level != null ? `${Math.abs(h.target_level - program.spot).toFixed(0)} points away` : undefined} />
+          <Stat label="Implied vol" value={g ? `${g.iv.toFixed(1)}%` : "—"} />
+          <Stat label="Delta" value={g ? g.delta.toFixed(2) : "—"} hint={g?.delta_position != null ? `₹${Math.abs(g.delta_position).toFixed(0)} per NIFTY point` : undefined} />
+          <Stat label="Time decay" value={g?.theta_position != null ? `${rupees(g.theta_position)}/day` : "—"} tone="text-critical" hint={g ? `${fmt(g.theta)} per unit per day` : undefined} />
+          <Stat label="Vega" value={g ? fmt(g.vega) : "—"} hint="per 1% change in volatility" />
+          <Stat label="Gamma" value={g ? g.gamma.toFixed(4) : "—"} />
+        </div>
+        <p className="text-2xs text-ink-muted">
+          From your program&apos;s own prices; Greeks are solved on our server by Black–Scholes. The full chain
+          is not fetched while a program trades, so this panel costs no Angel requests.
+        </p>
+      </div>
+    );
+  }
+  const n = program.next;
+  return (
+    <div className="space-y-4">
+      {n ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {([["call", "Upward breakout", "above", n.call] as const, ["put", "Downward breakout", "below", n.put] as const]).map(
+            ([key, title, dir, leg]) => (
+              <div key={key} className="rounded-md border border-hairline p-3">
+                <div className="text-2xs uppercase tracking-[0.12em] text-ink-muted">{title}</div>
+                <div className="mt-1 text-base font-semibold text-ink">
+                  Buys the {leg.strike.toLocaleString("en-IN")} {key === "call" ? "call" : "put"}
+                </div>
+                <div className="mt-0.5 text-2xs text-ink-muted">
+                  {leg.trigger != null ? `if a minute closes ${dir} ${leg.trigger.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "on a channel break"}
+                  {program.spot != null && leg.trigger != null ? ` · ${Math.abs(leg.trigger - program.spot).toFixed(1)} points away` : ""}
+                  {n.expiry ? ` · expiry ${calendarDay(n.expiry)}` : ""}
+                </div>
+              </div>
+            ),
+          )}
+        </div>
+      ) : (
+        <Empty>Waiting for your program&apos;s first price.</Empty>
+      )}
+      <p className="text-2xs text-ink-muted">
+        One strike in the money, at the nearest weekly expiry 2–8 days out, as the strategy picks them. Prices are
+        not fetched while your program trades, to keep Angel&apos;s request budget for the program.
+      </p>
     </div>
   );
 }
