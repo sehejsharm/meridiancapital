@@ -18,9 +18,12 @@ export function PositionPanel({ position }: { position: Position | null }) {
   const gain = position.gain_pct;
   const locked = position.stop_pct < 0;
   const breakeven = position.stop_pct === 0;
+  // No fixed target (v7 and later): the trailing stop decides the exit.
+  const target = position.target_pts != null && position.target_pts > 0 ? position.target_pts : null;
+  const trail = position.trail_pct ?? null;
   const progressToTarget =
-    position.index_move_pts != null
-      ? Math.max(0, Math.min(1, position.index_move_pts / position.target_pts))
+    target != null && position.index_move_pts != null
+      ? Math.max(0, Math.min(1, position.index_move_pts / target))
       : 0;
 
   return (
@@ -82,9 +85,16 @@ export function PositionPanel({ position }: { position: Position | null }) {
               }
               tone={pnlClass(position.index_move_pts)}
             />
-            <Field label="Target" value={`+${position.target_pts} pts`} />
+            <Field label="Target" value={target != null ? `+${target} pts` : "None — trailing stop"} />
           </dl>
 
+          {target == null ? (
+            <p className="mt-3 text-2xs text-ink-secondary">
+              {trail != null
+                ? `No fixed target. Once the option is up ${trail}%, the stop moves to the entry price, then follows ${trail}% of the entry price behind the best price reached.`
+                : "No fixed target. The stop follows the best price reached."}
+            </p>
+          ) : (
           <div className="mt-3">
             <div className="flex items-baseline justify-between">
               <span className="text-2xs text-ink-secondary">Progress to target</span>
@@ -99,6 +109,7 @@ export function PositionPanel({ position }: { position: Position | null }) {
               />
             </div>
           </div>
+          )}
         </div>
       </div>
     </Card>

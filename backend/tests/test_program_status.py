@@ -101,6 +101,16 @@ def test_an_open_position_shows_on_the_card():
     assert snap["signal"]["state"] == "break_down"
 
 
+def test_a_trailing_exit_has_no_target_on_the_card():
+    v7 = {**IN_TRADE, "position": {**IN_TRADE["position"], "target_pts": None, "trail_pct": 20}}
+    pos = program_snapshot(v7, name="og", mode="live", pid=1)["position"]
+    assert pos["target_pts"] is None and pos["trail_pct"] == 20
+    # earlier programs keep their fixed target
+    old = {**IN_TRADE, "position": {**IN_TRADE["position"], "target_pts": 90}}
+    pos = program_snapshot(old, name="og", mode="live", pid=1)["position"]
+    assert pos["target_pts"] == 90 and pos["trail_pct"] is None
+
+
 def test_the_price_feed_reaches_the_rate_card():
     v6 = {**FLAT, "feed": {"source": "stream", "stream_bars": 212, "candle_reads": 3, "fallbacks": 1,
                            "checks": 40, "check_refused": 6, "check_max_diff": 0.35, "refused": 2,

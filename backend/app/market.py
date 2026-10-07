@@ -173,6 +173,7 @@ def program_contract(snap: dict, holidays: set[str], now) -> dict | None:
             "gain_pct": _f(pos.get("gain_pct")), "unrealised": _f(pos.get("unrealised")),
             "peak_pct": _f(pos.get("peak_pct")),
             "stop": _f(pos.get("stop_price")) or None,
+            "trail_pct": _f(pos.get("trail_pct")),
             "target_level": (spot_entry + target_pts if side == "CE" else spot_entry - target_pts)
             if spot_entry and target_pts else None,
             "spot_entry": spot_entry, "opened_ts": pos.get("opened_ts"),

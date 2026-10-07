@@ -48,6 +48,12 @@ def test_a_put_target_is_below_its_entry():
     assert program_contract(snap, HOLIDAYS, datetime(2026, 10, 6, 13, 38))["held"]["target_level"] == 22550.0
 
 
+def test_a_trailing_exit_shows_no_target_level():
+    snap = {**HELD, "position": {**HELD["position"], "target_pts": None, "trail_pct": 20}}
+    h = program_contract(snap, HOLIDAYS, datetime(2026, 10, 6, 13, 38))["held"]
+    assert h["target_level"] is None and h["trail_pct"] == 20
+
+
 def test_while_flat_it_says_what_a_breakout_would_buy():
     flat = {k: v for k, v in HELD.items() if k != "position"}
     nxt = program_contract(flat, HOLIDAYS, datetime(2026, 10, 6, 11, 0))["next"]

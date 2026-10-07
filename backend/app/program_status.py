@@ -182,7 +182,9 @@ def _position(raw: dict, ts: str) -> dict | None:
         "stop_price": stop,
         "stop_pct": stop_pct,
         "stop_state": "resting at Angel" if stop else "held by the program",
-        "target_pts": _num(pos.get("target_pts")) or 0.0,
+        # None: no fixed target, the stop trails (v7 and later)
+        "target_pts": _num(pos.get("target_pts")) or None,
+        "trail_pct": _num(pos.get("trail_pct")),
         "index_move_pts": round(move, 1) if move is not None else None,
         "spot_entry": spot_entry or 0.0,
         "opened_ts": opened,

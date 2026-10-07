@@ -238,7 +238,11 @@ function ProgramPanel({ program }: { program: ProgramContract }) {
           <Stat label="Open P&L" value={rupees(h.unrealised)} tone={(h.unrealised ?? 0) >= 0 ? "text-good" : "text-critical"} />
           <Stat label="Best so far" value={h.peak_pct != null ? `${h.peak_pct >= 0 ? "+" : ""}${h.peak_pct.toFixed(1)}%` : "—"} />
           <Stat label="Stop at Angel" value={fmt(h.stop)} hint="sells if the option falls here" />
-          <Stat label="Target" value={h.target_level != null ? `NIFTY ${h.target_level.toLocaleString("en-IN")}` : "—"} hint={program.spot != null && h.target_level != null ? `${Math.abs(h.target_level - program.spot).toFixed(0)} points away` : undefined} />
+          {h.target_level != null ? (
+            <Stat label="Target" value={`NIFTY ${h.target_level.toLocaleString("en-IN")}`} hint={program.spot != null ? `${Math.abs(h.target_level - program.spot).toFixed(0)} points away` : undefined} />
+          ) : (
+            <Stat label="Target" value={h.trail_pct != null ? `Trailing ${h.trail_pct}%` : "—"} hint={h.trail_pct != null ? "no fixed target; the stop follows the best price" : undefined} />
+          )}
           <Stat label="Implied vol" value={g ? `${g.iv.toFixed(1)}%` : "—"} />
           <Stat label="Delta" value={g ? g.delta.toFixed(2) : "—"} hint={g?.delta_position != null ? `₹${Math.abs(g.delta_position).toFixed(0)} per NIFTY point` : undefined} />
           <Stat label="Time decay" value={g?.theta_position != null ? `${rupees(g.theta_position)}/day` : "—"} tone="text-critical" hint={g ? `${fmt(g.theta)} per unit per day` : undefined} />

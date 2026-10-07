@@ -91,7 +91,10 @@ export interface Position {
   stop_price: number;
   stop_pct: number;
   stop_state: string;
-  target_pts: number;
+  /** Null when the strategy has no fixed target and the stop trails instead. */
+  target_pts: number | null;
+  /** How far behind the best price the stop trails, in % of the entry premium. */
+  trail_pct?: number | null;
   index_move_pts: number | null;
   spot_entry: number;
   opened_ts: string;
@@ -650,6 +653,7 @@ export interface ProgramContract {
     unrealised: number | null;
     peak_pct: number | null;
     stop: number | null;
+    trail_pct?: number | null;
     target_level: number | null;
     spot_entry: number | null;
     greeks: {
