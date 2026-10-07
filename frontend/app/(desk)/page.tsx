@@ -248,8 +248,8 @@ export default function DeckPage() {
             title="Equity and fills"
             subtitle={
               equityDay?.recorded
-                ? `Last session, ${recordedAt(`${equityDay.date}T`).trim()} · arrows mark entries, circles mark exits`
-                : "Arrows mark entries, circles mark exits coloured by outcome"
+                ? `Last session, ${recordedAt(`${equityDay.date}T`).trim()} · gold arrows mark each buy and sell`
+                : "Gold arrows mark each buy (below the line) and sell (above it), with the result"
             }
           >
             <LazyMarkedChart equity={equity} trades={trades} height={280} />

@@ -18,17 +18,32 @@ const COLORS = {
   line: "#4f8cff",
   fillTop: "rgba(79, 140, 255, 0.28)",
   fillBottom: "rgba(79, 140, 255, 0.02)",
-  grid: "rgba(255,255,255,0.05)",
-  text: "#8b93a7",
-  entry: "#4f8cff",
-  win: "#34d399",
-  loss: "#f87171",
 };
 
+/** A theme colour from the stylesheet, so the chart matches light and dark. */
+function themeColor(name: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+const IST_SECONDS = 5.5 * 3600;
+
+/**
+ * Seconds for the chart, as Indian wall-clock time.
+ *
+ * Lightweight Charts draws every time in UTC, so a real timestamp put a 14:16
+ * trade at "08:46". The NIFTY chart's bars are shifted to IST on the server;
+ * these are shifted here the same way, so the axis and the crosshair read IST.
+ */
 function toSeconds(iso: string | null | undefined): UTCTimestamp | null {
   if (!iso) return null;
-  const ms = Date.parse(iso.endsWith("Z") ? iso : `${iso}+05:30`);
-  return Number.isNaN(ms) ? null : ((ms / 1000) as UTCTimestamp);
+  const zoned = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(iso);
+  const ms = Date.parse(zoned ? iso : `${iso}+05:30`);
+  return Number.isNaN(ms) ? null : ((Math.round(ms / 1000) + IST_SECONDS) as UTCTimestamp);
+}
+
+function rupees(n: number): string {
+  return `${n >= 0 ? "+" : "−"}₹${Math.abs(Math.round(n)).toLocaleString("en-IN")}`;
 }
 
 /**
@@ -62,13 +77,13 @@ export function MarkedChart({
       height,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: COLORS.text,
+        textColor: themeColor("--text-muted", "#8b93a7"),
         fontSize: 11,
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: COLORS.grid },
-        horzLines: { color: COLORS.grid },
+        vertLines: { color: themeColor("--gridline", "rgba(255,255,255,0.05)") },
+        horzLines: { color: themeColor("--gridline", "rgba(255,255,255,0.05)") },
       },
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false, timeVisible: true, secondsVisible: false },
@@ -123,28 +138,39 @@ export function MarkedChart({
     // to the nearest edge of the chart and read as if it happened there.
     const first = data.length ? (data[0].time as number) - 120 : 0;
     const last = data.length ? (data[data.length - 1].time as number) + 120 : 0;
+    // Every order in the brand gold, which stands clear of the blue equity line:
+    // a BUY arrow under the line where the option was bought, a SELL arrow over
+    // it where it was sold, with the price, why it was sold and the result.
+    const gold = themeColor("--brand", "#d4af37");
+    // On a phone-width chart the full labels would take most of its width.
+    const compact = (chartRef.current?.timeScale().width() ?? 1000) < 560;
     const markers = trades
       .flatMap((t) => {
         const entry = toSeconds(t.entry_ts);
         const exit = toSeconds(t.exit_ts);
-        const net = t.net ?? 0;
         const out = [];
         if (entry !== null) {
           out.push({
             time: entry,
             position: "belowBar" as const,
-            color: COLORS.entry,
-            shape: (t.side === "PE" ? "arrowDown" : "arrowUp") as "arrowDown" | "arrowUp",
-            text: `${t.side ?? ""} ${t.strike ?? ""} @ ${t.entry_prem?.toFixed(1) ?? "?"}`,
+            color: gold,
+            shape: "arrowUp" as const,
+            text: compact
+              ? `BUY @ ${t.entry_prem?.toFixed(2) ?? "?"}`
+              : `BUY ${t.side ?? ""} ${t.strike ?? ""} @ ${t.entry_prem?.toFixed(2) ?? "?"}`,
           });
         }
         if (exit !== null) {
           out.push({
             time: exit,
             position: "aboveBar" as const,
-            color: net >= 0 ? COLORS.win : COLORS.loss,
-            shape: "circle" as const,
-            text: `${t.reason ?? "exit"} ${net >= 0 ? "+" : ""}${Math.round(net)}`,
+            color: gold,
+            shape: "arrowDown" as const,
+            text: compact
+              ? `SELL${t.net != null ? ` ${rupees(t.net)}` : ` @ ${t.exit_prem?.toFixed(2) ?? "?"}`}`
+              : `SELL @ ${t.exit_prem?.toFixed(2) ?? "?"}` +
+                (t.reason ? ` · ${t.reason}` : "") +
+                (t.net != null ? ` · ${rupees(t.net)}` : ""),
           });
         }
         return out;
@@ -155,7 +181,22 @@ export function MarkedChart({
     // One markers layer, updated in place: a new layer on every refresh used
     // to pile duplicate markers on top of each other.
     markersRef.current?.setMarkers(markers);
-    chartRef.current?.timeScale().fitContent();
+    const scale = chartRef.current?.timeScale();
+    if (scale) {
+      scale.fitContent();
+      // A sale at 15:10 is the curve's last point, and its label is centred on
+      // it: leave room after the line (and a little before it) so the label is
+      // never cut off at the edge.
+      const width = scale.width();
+      const n = data.length;
+      if (markers.length && n > 1 && width > 0) {
+        // Half the widest label, at about 6.5 px a character, in bars of room.
+        const half = Math.max(...markers.map((m) => m.text.length)) * 3.3 + 10;
+        const after = Math.min(Math.ceil((half * (n + 2)) / Math.max(width - half, 1)), Math.ceil(n * 0.5));
+        const before = Math.min(Math.ceil((half * n) / width / 2), Math.ceil(n * 0.1));
+        scale.setVisibleLogicalRange({ from: -before, to: n - 1 + after });
+      }
+    }
   }, [equity, trades, ready]);
 
   // The chart's container is always mounted. It used to be rendered only once
