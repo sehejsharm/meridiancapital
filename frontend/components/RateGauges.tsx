@@ -2,12 +2,57 @@
 
 import { Card, Empty } from "@/components/ui";
 import { recordedAt as when } from "@/lib/recorded";
-import type { ApiStats } from "@/lib/types";
+import type { ApiStats, PriceFeed } from "@/lib/types";
 
 function tone(u: number): { bar: string; text: string } {
   if (u >= 0.85) return { bar: "bg-critical", text: "text-critical" };
   if (u >= 0.6) return { bar: "bg-warning", text: "text-warning" };
   return { bar: "bg-series", text: "text-ink" };
+}
+
+/**
+ * Where the program's one-minute closes come from. From v6 they come from
+ * Angel's live stream, which costs no requests; candles are read at start-up,
+ * as a five-minute cross-check, and whenever the stream missed a minute.
+ */
+function FeedLine({ feed, live }: { feed: PriceFeed; live: boolean }) {
+  const streaming = feed.source === "stream";
+  const state = !live
+    ? { dot: "bg-ink-muted", text: "text-ink-secondary", label: streaming ? "Live stream" : "Candles" }
+    : streaming
+      ? { dot: "bg-good", text: "text-good", label: "Live stream" }
+      : feed.stream_off_reason
+        ? { dot: "bg-warning", text: "text-warning", label: "Candles only" }
+        : { dot: "bg-warning", text: "text-warning", label: feed.stream_connected ? "Stream checking" : "Candles, stream reconnecting" };
+  const detail = streaming
+    ? [
+        feed.tick_age_sec !== null ? `last price ${feed.tick_age_sec < 1 ? "<1" : Math.round(feed.tick_age_sec)}s ago` : null,
+        `${feed.stream_minutes.toLocaleString()} minutes from the stream`,
+        feed.reconnects ? `${feed.reconnects} reconnect${feed.reconnects === 1 ? "" : "s"}` : null,
+      ]
+    : [feed.stream_off_reason ? `stream off: ${feed.stream_off_reason}` : feed.stream_error];
+  const checks = feed.checks
+    ? `${feed.checks} candle cross-check${feed.checks === 1 ? "" : "s"}` +
+      (feed.check_max_diff !== null ? `, largest gap ${feed.check_max_diff.toFixed(2)} pts` : "") +
+      (feed.check_refused ? `, ${feed.check_refused} refused` : "")
+    : null;
+  return (
+    <div className="mb-4 rounded-md border border-hairline px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-mono text-2xs uppercase tracking-[0.1em] text-ink-secondary">Price feed</span>
+        <span className={`flex items-center gap-1.5 text-2xs font-semibold ${state.text}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${state.dot}`} aria-hidden />
+          {state.label}
+        </span>
+      </div>
+      <p className="mt-1 text-2xs text-ink-muted">{[...detail, checks].filter(Boolean).join(" · ") || "—"}</p>
+      {feed.refused > 0 && feed.last_refusal && (
+        <p className="mt-1 text-2xs text-ink-muted">
+          Angel refused {feed.refused} candle read{feed.refused === 1 ? "" : "s"}: “{feed.last_refusal}”
+        </p>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -52,6 +97,7 @@ export function RateGauges({
         </span>
       }
     >
+      {api.feed && <FeedLine feed={api.feed} live={!recordedAt} />}
       <ul className="flex flex-col gap-3">
         {api.endpoints.map((e) => {
           const t = tone(e.utilisation);

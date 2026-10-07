@@ -101,6 +101,27 @@ def test_an_open_position_shows_on_the_card():
     assert snap["signal"]["state"] == "break_down"
 
 
+def test_the_price_feed_reaches_the_rate_card():
+    v6 = {**FLAT, "feed": {"source": "stream", "stream_bars": 212, "candle_reads": 3, "fallbacks": 1,
+                           "checks": 40, "check_refused": 6, "check_max_diff": 0.35, "refused": 2,
+                           "last_refusal": "AB1004 Access denied because of exceeding access rate",
+                           "stream": {"connected": True, "verified": True, "disabled": None,
+                                      "tick_age_sec": 0.8, "connects": 2, "last_error": None}}}
+    feed = program_snapshot(v6, name="og", mode="live", pid=1)["health"]["api"]["feed"]
+    assert feed["source"] == "stream" and feed["stream_verified"] and feed["reconnects"] == 1
+    assert feed["stream_minutes"] == 212 and feed["check_refused"] == 6 and feed["refused"] == 2
+    assert feed["last_refusal"].startswith("AB1004")
+    off = {**FLAT, "feed": {"source": "candles", "stream": {"disabled": "could not connect 8 times running"}}}
+    feed = program_snapshot(off, name="og", mode="live", pid=1)["health"]["api"]["feed"]
+    assert feed["source"] == "candles" and feed["stream_off_reason"].startswith("could not connect")
+    # a v5 program writes no feed: nothing to show, nothing broken
+    assert program_snapshot(FLAT, name="og", mode="live", pid=1)["health"]["api"]["feed"] is None
+    junk = {**FLAT, "feed": {"source": 7, "stream": "x", "stream_bars": "lots"}}
+    feed = program_snapshot(junk, name="og", mode="live", pid=1)["health"]["api"]["feed"]
+    assert feed["source"] == "candles" and feed["stream_minutes"] == 0
+    json.dumps(feed)
+
+
 def test_junk_in_the_status_never_breaks_the_snapshot():
     junk = {"ts": "2026-09-29T10:00:00", "equity": "n/a", "spot": None, "phase": "WHATEVER",
             "position": {"right": "CE", "entry": 0, "live_premium": None}, "api": "nope"}

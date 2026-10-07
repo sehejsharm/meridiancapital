@@ -492,6 +492,25 @@ export interface RateEndpoint {
   account_calls_this_second: number | null;
 }
 
+/** Where a v6+ program's one-minute closes come from. */
+export interface PriceFeed {
+  source: "stream" | "candles";
+  stream_connected: boolean;
+  stream_verified: boolean;
+  stream_off_reason: string | null;
+  stream_error: string | null;
+  tick_age_sec: number | null;
+  reconnects: number;
+  stream_minutes: number;
+  candle_reads: number;
+  fallbacks: number;
+  checks: number;
+  check_refused: number;
+  check_max_diff: number | null;
+  refused: number;
+  last_refusal: string | null;
+}
+
 export interface ApiStats {
   calls: Record<string, number>;
   total_calls: number;
@@ -502,6 +521,8 @@ export interface ApiStats {
   shared_waited_sec: number;
   endpoints: RateEndpoint[];
   peak_utilisation: number;
+  /** Absent for programs older than v6. */
+  feed?: PriceFeed | null;
 }
 
 export interface ShadowSide {

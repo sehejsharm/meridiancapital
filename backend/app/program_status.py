@@ -107,6 +107,37 @@ def _api(raw: dict) -> dict | None:
         "shared_waited_sec": 0.0,
         "endpoints": endpoints,
         "peak_utilisation": round(max((e["utilisation"] for e in endpoints), default=0.0), 3),
+        "feed": _feed(raw),
+    }
+
+
+def _feed(raw: dict) -> dict | None:
+    """Where the program's one-minute closes come from (v6 and later): Angel's live
+    stream, or candle requests. Older programs write nothing, and the deck shows nothing."""
+    f = raw.get("feed")
+    if not isinstance(f, dict):
+        return None
+    s = f.get("stream") if isinstance(f.get("stream"), dict) else {}
+
+    def text(v):
+        return " ".join(str(v).split())[:160] if v else None
+
+    return {
+        "source": "stream" if f.get("source") == "stream" else "candles",
+        "stream_connected": bool(s.get("connected")),
+        "stream_verified": bool(s.get("verified")),
+        "stream_off_reason": text(s.get("disabled")),
+        "stream_error": text(s.get("last_error")),
+        "tick_age_sec": _num(s.get("tick_age_sec")),
+        "reconnects": max(0, _int(s.get("connects")) - 1),
+        "stream_minutes": _int(f.get("stream_bars")),
+        "candle_reads": _int(f.get("candle_reads")),
+        "fallbacks": _int(f.get("fallbacks")),
+        "checks": _int(f.get("checks")),
+        "check_refused": _int(f.get("check_refused")),
+        "check_max_diff": _num(f.get("check_max_diff")),
+        "refused": _int(f.get("refused")),
+        "last_refusal": text(f.get("last_refusal")),
     }
 
 
