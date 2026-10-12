@@ -166,52 +166,80 @@ export default function ReportsPage() {
             {!report.trades.length ? (
               <Empty>No trades in this window.</Empty>
             ) : (
-              <div className="-mx-4 overflow-x-auto px-4">
-                <table className="w-full min-w-[42rem] text-xs lg:min-w-[860px]">
-                  <thead>
-                    <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">
-                      <th className="py-2 pr-3 font-medium">Date</th>
-                      <th className="py-2 pr-3 font-medium">Mode</th>
-                      <th className="py-2 pr-3 font-medium">Contract</th>
-                      {/* The result straight after the contract: on a narrow screen
-                          the table scrolls, and Net is the column never to lose. */}
-                      <th className="py-2 pr-3 text-right font-medium">Net</th>
-                      <th className="py-2 pr-3 text-right font-medium">Charges</th>
-                      <th className="py-2 pr-3 text-right font-medium">Entry</th>
-                      <th className="py-2 pr-3 text-right font-medium">Exit</th>
-                      <th className="hidden py-2 pr-3 text-right font-medium lg:table-cell">Lots</th>
-                      <th className="py-2 font-medium">Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-hairline">
-                    {report.trades.map((t) => (
-                      <tr key={t.id}>
-                        <td className="whitespace-nowrap py-2 pr-3 text-ink-secondary">{t.session_date}</td>
-                        <td className="py-2 pr-3">
+              <>
+                {/* A phone gets one card per trade: the table is wider than the screen. */}
+                <ul className="space-y-2 md:hidden">
+                  {report.trades.map((t) => (
+                    <li key={t.id} className="rounded-lg border border-hairline bg-surface-raised p-3 text-xs">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                           <Badge tone={t.mode === "live" ? "critical" : "neutral"}>{t.mode}</Badge>
-                        </td>
-                        <td className="whitespace-nowrap py-2 pr-3 font-mono text-2xs text-ink">
-                          {t.tsym ?? ([t.strike, t.side].filter((v) => v != null).join(" ") || "—")}
-                        </td>
-                        <td className={`whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums ${pnlClass(t.net)}`}>
+                          <span className="whitespace-nowrap font-medium text-ink">
+                            {[t.strike, t.side].filter((v) => v != null).join(" ") || t.tsym || "—"}
+                          </span>
+                        </div>
+                        <span className={`shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums ${pnlClass(t.net)}`}>
                           {t.net === null ? "—" : signedMoney(t.net)}
-                        </td>
-                        <td className="py-2 pr-3 text-right tabular-nums text-ink-muted">
-                          {t.charges?.toFixed(2) ?? "—"}
-                        </td>
-                        <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">
-                          {t.entry_prem?.toFixed(2) ?? "—"}
-                        </td>
-                        <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">
-                          {t.exit_prem?.toFixed(2) ?? "open"}
-                        </td>
-                        <td className="hidden py-2 pr-3 text-right tabular-nums text-ink-secondary lg:table-cell">{t.lots ?? "—"}</td>
-                        <td className="whitespace-nowrap py-2 text-ink-secondary">{t.reason ?? "—"}</td>
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-2xs tabular-nums text-ink-muted">
+                        <span>{t.session_date}</span>
+                        <span>
+                          {t.entry_prem?.toFixed(2) ?? "—"} → {t.exit_prem?.toFixed(2) ?? "open"}
+                        </span>
+                        <span>charges {t.charges?.toFixed(2) ?? "—"}</span>
+                        {t.reason && <span>{t.reason}</span>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="-mx-4 hidden overflow-x-auto px-4 md:block">
+                  <table className="w-full min-w-[42rem] text-xs lg:min-w-[860px]">
+                    <thead>
+                      <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">
+                        <th className="py-2 pr-3 font-medium">Date</th>
+                        <th className="py-2 pr-3 font-medium">Mode</th>
+                        <th className="py-2 pr-3 font-medium">Contract</th>
+                        {/* The result straight after the contract: on a narrow screen
+                            the table scrolls, and Net is the column never to lose. */}
+                        <th className="py-2 pr-3 text-right font-medium">Net</th>
+                        <th className="py-2 pr-3 text-right font-medium">Charges</th>
+                        <th className="py-2 pr-3 text-right font-medium">Entry</th>
+                        <th className="py-2 pr-3 text-right font-medium">Exit</th>
+                        <th className="hidden py-2 pr-3 text-right font-medium lg:table-cell">Lots</th>
+                        <th className="py-2 font-medium">Reason</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-hairline">
+                      {report.trades.map((t) => (
+                        <tr key={t.id}>
+                          <td className="whitespace-nowrap py-2 pr-3 text-ink-secondary">{t.session_date}</td>
+                          <td className="py-2 pr-3">
+                            <Badge tone={t.mode === "live" ? "critical" : "neutral"}>{t.mode}</Badge>
+                          </td>
+                          <td className="whitespace-nowrap py-2 pr-3 font-mono text-2xs text-ink">
+                            {t.tsym ?? ([t.strike, t.side].filter((v) => v != null).join(" ") || "—")}
+                          </td>
+                          <td className={`whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums ${pnlClass(t.net)}`}>
+                            {t.net === null ? "—" : signedMoney(t.net)}
+                          </td>
+                          <td className="py-2 pr-3 text-right tabular-nums text-ink-muted">
+                            {t.charges?.toFixed(2) ?? "—"}
+                          </td>
+                          <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">
+                            {t.entry_prem?.toFixed(2) ?? "—"}
+                          </td>
+                          <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">
+                            {t.exit_prem?.toFixed(2) ?? "open"}
+                          </td>
+                          <td className="hidden py-2 pr-3 text-right tabular-nums text-ink-secondary lg:table-cell">{t.lots ?? "—"}</td>
+                          <td className="whitespace-nowrap py-2 text-ink-secondary">{t.reason ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </Card>
 
