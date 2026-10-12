@@ -29,7 +29,7 @@ function Row({ check }: { check: HealthCheck }) {
         />
         <div className="min-w-0">
           <div className="text-xs text-ink">{check.label}</div>
-          <div className="truncate text-2xs text-ink-muted">{check.detail}</div>
+          <div className="text-2xs text-ink-muted [overflow-wrap:anywhere]">{check.detail}</div>
         </div>
       </div>
       <div className={`shrink-0 text-xs font-medium tabular-nums ${STATE_TEXT[check.state]}`}>

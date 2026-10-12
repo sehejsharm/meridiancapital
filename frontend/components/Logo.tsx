@@ -105,11 +105,11 @@ export function Logo({
   );
 }
 
-export function Wordmark({ size = 34 }: { size?: number }) {
+export function Wordmark({ size = 34, textClassName = "" }: { size?: number; textClassName?: string }) {
   return (
     <div className="flex items-center gap-3">
       <Logo size={size} className="text-brand shrink-0" />
-      <div className="leading-none">
+      <div className={`leading-none ${textClassName}`}>
         <div className="text-[15px] font-semibold tracking-[0.18em] text-ink">MERIDIAN</div>
         <div className="text-2xs tracking-[0.32em] text-brand">CAPITAL</div>
       </div>

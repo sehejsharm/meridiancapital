@@ -63,12 +63,14 @@ export function AlgoCard({
             />
             <Link
               href={`/algos/${algo.id}`}
-              className="-my-3 block truncate py-3 text-sm font-semibold text-ink hover:text-brand"
+              className="-my-3 block py-3 text-sm font-semibold text-ink [overflow-wrap:anywhere] hover:text-brand"
             >
               {algo.name}
             </Link>
           </div>
-          <p className="mt-0.5 truncate text-2xs text-ink-muted">
+          {/* Wraps rather than truncates: the name and version are how a card
+              is told apart from the next one. */}
+          <p className="mt-0.5 text-2xs text-ink-muted [overflow-wrap:anywhere]">
             {algo.kind === "builtin"
               ? "Built-in build"
               : algo.active
@@ -105,7 +107,7 @@ export function AlgoCard({
             label="Contract price"
             value={
               position && (position.live_premium ?? position.entry_premium) != null
-                ? `Rs ${(position.live_premium ?? position.entry_premium)!.toFixed(2)}`
+                ? `₹${(position.live_premium ?? position.entry_premium)!.toFixed(2)}`
                 : "—"
             }
             tone={

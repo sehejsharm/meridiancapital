@@ -67,18 +67,20 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <header className="pt-safe relative z-10 border-b border-hairline bg-surface/80 backdrop-blur">
         <div className="mx-auto flex max-w-[2200px] items-center gap-3 px-4 py-3 sm:px-6 xl:px-8">
-          <Link href="/" onClick={playSplash} className="-my-1.5 shrink-0 py-1.5">
-            <Wordmark />
+          <Link href="/" onClick={playSplash} className="-my-1.5 shrink-0 py-1.5" aria-label="Meridian Capital — deck">
+            {/* Between 1024 and 1280 px the full rail and the name do not both
+                fit: the mark alone stands for the name there. */}
+            <Wordmark textClassName="lg:max-xl:hidden" />
           </Link>
 
           {/* Full rail from lg up; below that the bottom bar carries navigation. */}
-          <nav aria-label="Sections" className="hidden gap-1 lg:flex">
+          <nav aria-label="Sections" className="hidden shrink-0 gap-0.5 lg:flex xl:gap-1">
             {NAV.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 aria-current={isActive(pathname, item.href) ? "page" : undefined}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] transition-colors ${
+                className={`whitespace-nowrap rounded-md px-2 py-1.5 text-xs font-medium uppercase tracking-[0.08em] transition-colors xl:px-3 xl:tracking-[0.12em] ${
                   isActive(pathname, item.href)
                     ? "bg-brand-dim text-brand"
                     : "text-ink-muted hover:text-ink"
@@ -95,9 +97,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={() => void signOut()}
-              className="hidden shrink-0 rounded-md px-2 py-1 text-2xs uppercase tracking-[0.12em] text-ink-muted transition-colors hover:text-ink lg:inline-flex"
+              aria-label="Sign out"
+              title="Sign out"
+              className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-2xs uppercase tracking-[0.12em] text-ink-muted transition-colors hover:text-ink lg:inline-flex"
             >
-              Sign out
+              <IconSignOut className="h-4 w-4 shrink-0" />
+              <span className="hidden xl:inline">Sign out</span>
             </button>
           </div>
         </div>
@@ -173,13 +178,13 @@ function DataLink({ ts }: { ts?: string }) {
 
   return (
     <span
-      className="hidden items-center gap-2 rounded-full border border-hairline px-2.5 py-0.5 sm:inline-flex"
+      className="hidden shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-hairline px-2.5 py-0.5 sm:inline-flex"
       title={`Dashboard ↔ server: ${copy.why}${ts ? `. Last engine update ${istTime(ts)} IST` : ""}`}
     >
       <StalenessDot />
       {copy.label && (
         <span
-          className={`text-2xs font-medium uppercase tracking-[0.1em] ${
+          className={`text-2xs font-medium uppercase tracking-[0.1em] lg:max-xl:hidden ${
             state === "live" ? "text-ink-secondary" : state === "offline" ? "text-critical" : "text-warning"
           }`}
         >
