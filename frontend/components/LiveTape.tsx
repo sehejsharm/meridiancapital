@@ -86,7 +86,10 @@ export function LiveTape({
         <div
           ref={box}
           onScroll={(e) => setPinned(e.currentTarget.scrollTop < 24)}
-          className="-mx-1 overflow-y-auto px-1"
+          // The bottom edge fades, so an entry cut by the scroll reads as "more
+          // below" rather than as text that failed to draw; the padding lets
+          // the last entry scroll clear of the fade.
+          className="-mx-1 overflow-y-auto px-1 pb-6 [mask-image:linear-gradient(to_bottom,#000_calc(100%-2rem),transparent)]"
           style={{ maxHeight: height }}
           role="log"
           aria-live="polite"

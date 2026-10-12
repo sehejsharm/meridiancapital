@@ -261,6 +261,18 @@ def test_trades_endpoint_returns_stats(client, auth):
     assert r.status_code == 200 and "stats" in r.json()
 
 
+def test_the_blotter_lists_trades_by_when_they_were_placed(client, auth):
+    """A trade imported late (a program's log read after a restart) is not a newer trade."""
+    from app.deps import ctx
+
+    db = ctx().db
+    for day in ("2026-10-09", "2026-10-12", "2026-10-08"):
+        db.add_trade({"entry_ts": f"{day}T10:30", "exit_ts": f"{day} 12:35", "session_date": day,
+                      "mode": "paper", "net": 1.0, "algo_id": "gk50k"})
+    rows = client.get("/api/trades", headers=auth).json()["trades"]
+    assert [t["session_date"] for t in rows][:3] == ["2026-10-12", "2026-10-09", "2026-10-08"]
+
+
 def test_equity_endpoint_returns_both_series(client, auth):
     body = client.get("/api/equity", headers=auth).json()
     assert "intraday" in body and "daily" in body

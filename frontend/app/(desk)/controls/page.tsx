@@ -43,6 +43,12 @@ export default function ControlsPage() {
   // only the built-in's live snapshot.
   const own = running && snapshot?.engine.pid === status?.engine.pid ? snapshot : null;
   const hasPosition = Boolean(own?.position);
+  // A position held by a standalone program: this box cannot exit it, and
+  // "the book is empty" beside a live trade would read as nothing at risk.
+  const heldElsewhere =
+    !own && snapshot?.position
+      ? `${snapshot.engine.banner ?? "A running program"} holds ${snapshot.position.side} ${snapshot.position.strike}`
+      : null;
   // Starting asks paper or real money here too, exactly as the deck does.
   const [asking, setAsking] = useState(false);
   const builtinId = status?.fleet?.algos.find((a) => a.kind === "builtin")?.algo_id ?? "gk50k";
@@ -257,7 +263,13 @@ export default function ControlsPage() {
             </Button>
           </div>
 
-          <FlattenControl running={running} hasPosition={hasPosition} busy={busy} onRun={run} />
+          <FlattenControl
+            running={running}
+            hasPosition={hasPosition}
+            heldElsewhere={heldElsewhere}
+            busy={busy}
+            onRun={run}
+          />
         </Card>
       </div>
 
@@ -269,11 +281,13 @@ export default function ControlsPage() {
 function FlattenControl({
   running,
   hasPosition,
+  heldElsewhere,
   busy,
   onRun,
 }: {
   running: boolean;
   hasPosition: boolean;
+  heldElsewhere: string | null;
   busy: string | null;
   onRun: (k: string, a: () => Promise<{ detail?: string }>, s: string) => Promise<void>;
 }) {
@@ -312,9 +326,15 @@ function FlattenControl({
           {busy === "flatten" ? "Sending…" : "Flatten now"}
         </Button>
       </div>
-      {!hasPosition && (
-        <p className="mt-2 text-2xs text-ink-muted">Nothing to flatten — the book is empty.</p>
-      )}
+      {!hasPosition &&
+        (heldElsewhere ? (
+          <p className="mt-2 text-2xs text-warning">
+            {heldElsewhere}. This box acts on the built-in engine only: Stop everything, at the top of this page,
+            exits that position too.
+          </p>
+        ) : (
+          <p className="mt-2 text-2xs text-ink-muted">Nothing to flatten — the book is empty.</p>
+        ))}
     </div>
   );
 }
@@ -410,14 +430,14 @@ function HolidayCalendar({ onNotice, today }: { onNotice: (n: Notice) => void; t
             : "No holidays loaded — the server predates the built-in NSE list. Update it and they load themselves."}
         </Empty>
       ) : (
-        <ul className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
           {shown.map((h) => {
             const isToday = h.day === now;
             const isPast = h.day < now;
             return (
               <li
                 key={h.day}
-                className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${
+                className={`flex min-w-0 items-center justify-between gap-3 rounded-md border px-3 py-2 ${
                   isToday ? "border-warning/60 bg-warning/10" : "border-hairline"
                 } ${isPast ? "opacity-55" : ""}`}
               >
@@ -426,7 +446,7 @@ function HolidayCalendar({ onNotice, today }: { onNotice: (n: Notice) => void; t
                     {calendarDay(h.day, true)}
                     {isToday && <span className="ml-2 text-2xs uppercase tracking-[0.1em] text-warning">today</span>}
                   </span>
-                  <span className="block truncate text-ink-muted">
+                  <span className="block text-ink-muted">
                     {h.label || "Exchange holiday"}
                     {h.source && h.source !== "NSE" && " · added by you"}
                   </span>
@@ -435,7 +455,7 @@ function HolidayCalendar({ onNotice, today }: { onNotice: (n: Notice) => void; t
                   type="button"
                   onClick={() => void remove(h)}
                   aria-label={`Remove ${h.day}`}
-                  className="shrink-0 text-2xs uppercase tracking-[0.1em] text-ink-muted transition-colors hover:text-critical"
+                  className="-my-2 shrink-0 px-1 py-2 text-2xs uppercase tracking-[0.1em] text-ink-muted transition-colors hover:text-critical touch:-my-3 touch:py-3"
                 >
                   Remove
                 </button>
@@ -449,7 +469,7 @@ function HolidayCalendar({ onNotice, today }: { onNotice: (n: Notice) => void; t
         <button
           type="button"
           onClick={() => setShowPast((v) => !v)}
-          className="mt-3 text-2xs uppercase tracking-[0.1em] text-ink-muted transition-colors hover:text-ink"
+          className="mt-1 py-2 text-2xs uppercase tracking-[0.1em] text-ink-muted transition-colors hover:text-ink touch:py-3"
         >
           {showPast ? "Hide past closures" : `Show ${past.length} past closure${past.length === 1 ? "" : "s"}`}
         </button>

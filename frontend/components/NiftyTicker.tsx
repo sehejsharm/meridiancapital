@@ -22,8 +22,10 @@ function Reading({
 }) {
   return (
     <div className="flex min-w-0 flex-col">
-      <span className="truncate text-2xs uppercase tracking-[0.14em] text-ink-muted">{label}</span>
-      <span className={`truncate text-sm font-semibold tabular-nums ${tone ?? "text-ink"}`}>
+      {/* Never cut to "CHANNEL H…": tighter tracking where the strip is
+          narrow, and a second line before any letter is lost. */}
+      <span className="text-2xs uppercase leading-tight tracking-[0.06em] text-ink-muted xl:tracking-[0.14em]">{label}</span>
+      <span className={`whitespace-nowrap text-sm font-semibold tabular-nums ${tone ?? "text-ink"}`}>
         {value === null ? "—" : value.toLocaleString("en-IN", {
           minimumFractionDigits: digits,
           maximumFractionDigits: digits,
@@ -112,7 +114,7 @@ export function NiftyTicker() {
 
       {/* A row of their own on a phone: as a shrinkable flex item the grid
           collapsed to nothing and its labels spilled across the status line. */}
-      <div className="grid w-full grid-cols-2 gap-x-6 gap-y-2 sm:w-auto sm:min-w-[24rem] sm:flex-1 sm:grid-cols-4">
+      <div className="grid w-full grid-cols-2 gap-x-4 gap-y-2 sm:w-auto sm:min-w-[24rem] sm:flex-1 sm:grid-cols-4 xl:gap-x-6">
         <Reading label="Bar close" value={levels.bar_close} />
         <Reading label="Channel high" value={levels.channel_high} />
         <Reading label="Channel low" value={levels.channel_low} />

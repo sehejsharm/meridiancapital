@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { Badge, Button } from "@/components/ui";
+import { Badge, Breakable, Button } from "@/components/ui";
 import { money, signedMoney, pnlClass } from "@/lib/format";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { recordedAt } from "@/lib/recorded";
@@ -65,7 +65,7 @@ export function AlgoCard({
               href={`/algos/${algo.id}`}
               className="-my-3 block py-3 text-sm font-semibold text-ink [overflow-wrap:anywhere] hover:text-brand"
             >
-              {algo.name}
+              <Breakable text={algo.name} />
             </Link>
           </div>
           {/* Wraps rather than truncates: the name and version are how a card
@@ -127,7 +127,7 @@ export function AlgoCard({
       )}
 
       <footer className="mt-auto flex items-center justify-between gap-3 border-t border-hairline px-4 py-2.5">
-        <span className="truncate text-2xs text-ink-muted">
+        <span className="min-w-0 text-2xs text-ink-muted">
           {algo.runtime_kind === "program"
             ? "standalone program"
             : algo.runtime_kind === "builtin"

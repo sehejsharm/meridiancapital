@@ -167,17 +167,19 @@ export default function ReportsPage() {
               <Empty>No trades in this window.</Empty>
             ) : (
               <div className="-mx-4 overflow-x-auto px-4">
-                <table className="w-full min-w-[860px] text-xs">
+                <table className="w-full min-w-[42rem] text-xs lg:min-w-[860px]">
                   <thead>
                     <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">
                       <th className="py-2 pr-3 font-medium">Date</th>
                       <th className="py-2 pr-3 font-medium">Mode</th>
                       <th className="py-2 pr-3 font-medium">Contract</th>
-                      <th className="py-2 pr-3 text-right font-medium">Lots</th>
+                      {/* The result straight after the contract: on a narrow screen
+                          the table scrolls, and Net is the column never to lose. */}
+                      <th className="py-2 pr-3 text-right font-medium">Net</th>
+                      <th className="py-2 pr-3 text-right font-medium">Charges</th>
                       <th className="py-2 pr-3 text-right font-medium">Entry</th>
                       <th className="py-2 pr-3 text-right font-medium">Exit</th>
-                      <th className="py-2 pr-3 text-right font-medium">Charges</th>
-                      <th className="py-2 pr-3 text-right font-medium">Net</th>
+                      <th className="hidden py-2 pr-3 text-right font-medium lg:table-cell">Lots</th>
                       <th className="py-2 font-medium">Reason</th>
                     </tr>
                   </thead>
@@ -191,20 +193,20 @@ export default function ReportsPage() {
                         <td className="whitespace-nowrap py-2 pr-3 font-mono text-2xs text-ink">
                           {t.tsym ?? ([t.strike, t.side].filter((v) => v != null).join(" ") || "—")}
                         </td>
-                        <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">{t.lots ?? "—"}</td>
+                        <td className={`whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums ${pnlClass(t.net)}`}>
+                          {t.net === null ? "—" : signedMoney(t.net)}
+                        </td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-ink-muted">
+                          {t.charges?.toFixed(2) ?? "—"}
+                        </td>
                         <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">
                           {t.entry_prem?.toFixed(2) ?? "—"}
                         </td>
                         <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">
                           {t.exit_prem?.toFixed(2) ?? "open"}
                         </td>
-                        <td className="py-2 pr-3 text-right tabular-nums text-ink-muted">
-                          {t.charges?.toFixed(2) ?? "—"}
-                        </td>
-                        <td className={`py-2 pr-3 text-right font-medium tabular-nums ${pnlClass(t.net)}`}>
-                          {t.net === null ? "—" : signedMoney(t.net)}
-                        </td>
-                        <td className="py-2 text-ink-secondary">{t.reason ?? "—"}</td>
+                        <td className="hidden py-2 pr-3 text-right tabular-nums text-ink-secondary lg:table-cell">{t.lots ?? "—"}</td>
+                        <td className="whitespace-nowrap py-2 text-ink-secondary">{t.reason ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge, Card, Empty } from "@/components/ui";
+import { useLiveFeed } from "@/lib/LiveContext";
 import { apiGet } from "@/lib/client-api";
 import { calendarDay } from "@/lib/holidays";
 import type { ChainPayload, ChainSide, ProgramContract } from "@/lib/types";
@@ -218,7 +219,22 @@ function Stat({ label, value, tone, hint }: { label: string; value: string; tone
  * contracts a breakout would buy.
  */
 function ProgramPanel({ program }: { program: ProgramContract }) {
-  const h = program.held;
+  // The price and P&L come from the live feed, the same second as the algorithm
+  // card and the balance card; this panel's own read is every 15 s and drew a
+  // price a few ticks old beside theirs. The Greeks keep the 15 s read.
+  const { snapshot } = useLiveFeed();
+  const pos = snapshot?.position;
+  const held = program.held;
+  const h =
+    held && pos && pos.strike === held.strike && pos.side === held.side && pos.live_premium != null
+      ? {
+          ...held,
+          live: pos.live_premium,
+          unrealised:
+            held.entry != null && held.qty ? Math.round((pos.live_premium - held.entry) * held.qty * 100) / 100 : held.unrealised,
+          gain_pct: held.entry ? (pos.live_premium / held.entry - 1) * 100 : held.gain_pct,
+        }
+      : held;
   if (h) {
     const g = h.greeks;
     const up = (h.gain_pct ?? 0) >= 0;

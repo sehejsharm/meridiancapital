@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ModeBadge } from "@/components/AlgoCard";
 import { GateReport } from "@/components/GateReport";
-import { Badge, Button, Card, Empty } from "@/components/ui";
+import { Badge, Breakable, Button, Card, Empty } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { fetchAlgos } from "@/lib/algos";
 import { istDateTime } from "@/lib/format";
@@ -158,12 +158,12 @@ export default function AlgosPage() {
           <>
           {/* Phones: one card per algorithm, every action in reach of a thumb.
               A table scrolled sideways puts Remove off the edge of the screen. */}
-          <ul className="divide-y divide-hairline md:hidden">
+          <ul className="divide-y divide-hairline lg:hidden">
             {data.algos.map((a) => (
               <li key={a.id} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex items-start justify-between gap-3">
                   <Link href={`/algos/${a.id}`} className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-ink">{a.name}</span>
+                    <span className="block text-sm font-medium text-ink [overflow-wrap:anywhere]"><Breakable text={a.name} /></span>
                     <span className="mt-0.5 block text-2xs text-ink-muted">
                       {a.kind} · {a.active ? `v${a.active.version}` : "no version"} ·{" "}
                       {istDateTime(a.created_ts)}
@@ -206,7 +206,7 @@ export default function AlgosPage() {
             ))}
           </ul>
 
-          <div className="-mx-4 hidden overflow-x-auto px-4 md:block">
+          <div className="-mx-4 hidden overflow-x-auto px-4 lg:block">
             <table className="w-full min-w-[640px] text-xs">
               <thead>
                 <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">

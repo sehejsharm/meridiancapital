@@ -15,7 +15,7 @@ export default function NotFound() {
       <div className="pointer-events-none fixed inset-0 plane-grid" aria-hidden="true" />
 
       <div className="relative w-full max-w-sm text-center">
-        <Logo size={72} className="mx-auto" />
+        <Logo size={72} className="mx-auto text-brand" />
 
         <p className="mt-8 text-2xs font-semibold uppercase tracking-[0.2em] text-brand">
           404 · off the chart

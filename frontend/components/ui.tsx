@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import { clamp01, pnlClass } from "@/lib/format";
 
@@ -219,5 +219,28 @@ export function Button({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * A file-style name ("ganesh_kavach_og_real (3)") with a line-break chance
+ * after each underscore, so a narrow card wraps it between words rather than
+ * mid-word. <wbr> adds nothing to the text, so copying the name stays exact.
+ */
+export function Breakable({ text }: { text: string }) {
+  const parts = text.split("_");
+  return (
+    <>
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {part}
+          {i < parts.length - 1 && (
+            <>
+              _<wbr />
+            </>
+          )}
+        </Fragment>
+      ))}
+    </>
   );
 }

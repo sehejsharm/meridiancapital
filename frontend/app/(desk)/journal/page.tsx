@@ -315,8 +315,10 @@ function ScopePicker({
   onPick: (id: string) => void;
 }) {
   return (
-    <nav aria-label="Strategy" className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-      <div className="flex w-max gap-1 rounded-lg border border-hairline bg-surface p-1">
+    // The tabs wrap onto a second row rather than run off the screen edge: a
+    // strategy cut in half at the border read as a layout fault.
+    <nav aria-label="Strategy">
+      <div className="inline-flex max-w-full flex-wrap gap-1 rounded-lg border border-hairline bg-surface p-1">
         {options.map((o) => (
           <button
             key={o.id}

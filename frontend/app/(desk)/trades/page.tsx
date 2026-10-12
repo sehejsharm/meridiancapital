@@ -57,7 +57,7 @@ export default function BlotterPage() {
           />
           <StatTile
             label="Win rate"
-            value={stats.n ? percent(stats.win_rate, 0) : "—"}
+            value={stats.n ? percent(stats.win_rate, 1) : "—"}
             hint={`${stats.wins} won · ${stats.losses} lost · ${stats.n} closed`}
           />
           <StatTile
@@ -105,7 +105,7 @@ export default function BlotterPage() {
           {/* Phones: a trade reads as a card — the result and net up top where
               the eye lands, the mechanics underneath. Twelve columns sideways is
               two and a half screens of scrolling to find out whether you won. */}
-          <ul className="space-y-2.5 md:hidden">
+          <ul className="space-y-2.5 lg:hidden">
             {trades.map((t) => {
               const open = !t.exit_ts;
               const net = t.net_angel ?? t.net;
@@ -113,13 +113,13 @@ export default function BlotterPage() {
               return (
                 <li key={t.id} className="tnum rounded-lg border border-hairline bg-surface-raised p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       {open ? (
                         <Badge tone="brand">Open</Badge>
                       ) : (
                         <Badge tone={won ? "good" : "critical"}>{won ? "Win" : "Loss"}</Badge>
                       )}
-                      <span className="truncate text-sm font-medium text-ink">
+                      <span className="whitespace-nowrap text-sm font-medium text-ink">
                         {t.strike} {t.side}
                       </span>
                       {t.mode === "paper" && (
@@ -160,7 +160,7 @@ export default function BlotterPage() {
             })}
           </ul>
 
-          <div className="-mx-4 hidden overflow-x-auto px-4 md:block">
+          <div className="-mx-4 hidden overflow-x-auto px-4 lg:block">
             <table className="w-full min-w-[56rem] border-collapse text-xs">
               <thead>
                 <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">

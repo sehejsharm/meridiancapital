@@ -92,7 +92,7 @@ export function RateGauges({
             : "This engine only — the shared budget is unavailable"
       }
       action={
-        <span className={`text-xs font-semibold tabular-nums ${tone(peak).text}`}>
+        <span className={`whitespace-nowrap text-xs font-semibold tabular-nums ${tone(peak).text}`}>
           {Math.round(peak * 100)}% peak
         </span>
       }
