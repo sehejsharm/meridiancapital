@@ -17,6 +17,7 @@ import csv
 import io
 from datetime import datetime
 
+from app import ledger
 from engine.clock import now_ist
 
 
@@ -25,17 +26,31 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str) -> 
         t for t in db.trades(limit=5000, algo_id=algo_id)
         if start <= (t.get("session_date") or "") <= end
     ]
-    closed = [t for t in trades if t.get("exit_ts")]
+    # Real-money trades carry Angel's own charges and net (its ledger); the
+    # figures the program recorded stay beside them for the record.
+    trades = ledger.reconcile(db, trades)
+    for t in trades:
+        t["charges_recorded"], t["net_recorded"] = t.get("charges"), t.get("net")
+        t["charges"], t["net"] = t.get("charges_angel"), t.get("net_angel")
+    # Newest first by when each trade was placed.
+    trades.sort(key=lambda t: (t.get("entry_ts") or t.get("exit_ts") or "").replace(" ", "T"), reverse=True)
+    # The figures are one account's: real money whenever the period has any,
+    # else paper. Paper trades beside real ones are listed, never added in.
+    live = any(t.get("mode") == "live" for t in trades)
+    scope = "real money" if live else "paper"
+    counted = [t for t in trades if (t.get("mode") == "live") == live]
+    closed = [t for t in counted if t.get("exit_ts")]
     nets = [float(t.get("net") or 0.0) for t in closed]
     wins = [n for n in nets if n > 0]
     losses = [n for n in nets if n < 0]
 
     gross_win = sum(wins)
     gross_loss = abs(sum(losses))
-    equity = [
-        e for e in db.equity_curve(limit=5000, algo_id=algo_id)
-        if start <= (e.get("ts") or "")[:10] <= end
-    ]
+    # One account's curve over the whole period: with every algorithm selected,
+    # the one trading real money (several accounts on one line drew a zigzag
+    # between them), and every sample in the window, not the newest 5,000.
+    curve_algo = algo_id or ledger.live_algo(db)
+    equity = db.equity_curve(limit=200_000, algo_id=curve_algo, date_from=start, date_to=end)
 
     peak = 0.0
     max_dd = 0.0
@@ -51,8 +66,10 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str) -> 
     ]
 
     summary = {
+        "scope": scope,
+        "not_counted": len(trades) - len(counted),
         "trades": len(closed),
-        "open_trades": len(trades) - len(closed),
+        "open_trades": len(counted) - len(closed),
         "wins": len(wins),
         "losses": len(losses),
         "win_rate_pct": round(100.0 * len(wins) / len(closed), 2) if closed else 0.0,
@@ -85,7 +102,7 @@ TRADE_COLUMNS = [
     "session_date", "algo_id", "mode", "entry_ts", "exit_ts", "view", "side", "tsym",
     "strike", "expiry", "lots", "qty", "entry_prem", "exit_prem", "spot_entry",
     "spot_exit", "peak_pct", "gross", "charges", "net", "reason", "hold_min",
-    "equity", "pnl_source",
+    "equity", "pnl_source", "reconciled", "charges_recorded", "net_recorded",
 ]
 
 
@@ -160,7 +177,8 @@ def _report_lines(payload: dict) -> list[str]:
         f"Period    : {payload['start']} to {payload['end']}",
         f"Generated : {payload['generated_at']} IST",
         "",
-        "SUMMARY",
+        "SUMMARY" + (f" - {s.get('scope')} only" if s.get("scope") else "")
+        + (f"; {s['not_counted']} other trade(s) listed below, not counted" if s.get("not_counted") else ""),
         "-" * 92,
         f"Trades closed   {s['trades']:>10}     Win rate      {s['win_rate_pct']:>10.2f} %",
         f"Wins            {s['wins']:>10}     Losses        {s['losses']:>10}",

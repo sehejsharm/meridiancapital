@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
+from app import ledger
 from app.deps import ctx, system_status
 from app.program_status import live_snapshot_key
 from app.security import Principal, require_auth
 from engine.clock import now_ist
-from shared.db import DEFAULT_ALGO
+from shared.db import DEFAULT_ALGO, snapshot_key
 
 router = APIRouter(prefix="/api", tags=["data"], dependencies=[Depends(require_auth)])
 
@@ -31,11 +32,15 @@ async def trades(
     limit: int = Query(200, ge=1, le=1000),
     session_date: str | None = None,
 ) -> dict:
+    """Every trade, with Angel's own charges and net beside the recorded ones;
+    the headline figures are over real-money trades, from Angel's numbers."""
     c = ctx()
-    return {
-        "trades": c.db.trades(limit=limit, session_date=session_date),
-        "stats": c.db.trade_stats(),
-    }
+    rows = ledger.reconcile(c.db, c.db.trades(limit=limit, session_date=session_date))
+    every = rows if session_date is None and len(rows) < limit else ledger.reconcile(c.db, c.db.trades(limit=5000))
+    # Newest first by when the trade was placed: a trade imported late (a
+    # program's log read after a restart) is not a newer trade.
+    rows.sort(key=lambda t: (t.get("entry_ts") or t.get("exit_ts") or "").replace(" ", "T"), reverse=True)
+    return {"trades": rows, "stats": ledger.stats(every)}
 
 
 @router.get("/events")
@@ -67,8 +72,20 @@ async def equity(
         "intraday": curve,
         "session_date": day,
         "recorded": day != today,
-        "daily": c.db.daily_equity(),
+        "daily": _daily_balances(c, today),
     }
+
+
+def _daily_balances(c, today: str) -> list[dict]:
+    """Closing balance at Angel for each session of the real-money algorithm:
+    the next morning's opening balance, and today's live trading balance."""
+    algo = ledger.live_algo(c.db)
+    if algo is None:
+        return []
+    snap = c.db.kv_get(snapshot_key(algo), None) or {}
+    money = ((snap.get("account") or {}).get("money") or {})
+    live_balance = money.get("balance") if (snap.get("position") is None and str(snap.get("ts") or "")[:10] == today) else None
+    return ledger.closing_balances(c.db, algo, live_balance=live_balance, today=today)
 
 
 @router.get("/reports/eod")

@@ -20,7 +20,7 @@ function formatValue(p: TuningParam, raw: number | string): string {
   const n = Number(raw);
   if (!Number.isFinite(n)) return String(raw);
   if (p.kind === "pct") return `${(n * 100).toFixed(0)}%`;
-  if (p.kind === "money") return `Rs ${n.toLocaleString("en-IN")}`;
+  if (p.kind === "money") return `₹${n.toLocaleString("en-IN")}`;
   return String(n);
 }
 

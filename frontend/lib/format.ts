@@ -1,7 +1,10 @@
+// Every rupee figure to the paisa, as Angel One shows it: a figure rounded to
+// whole rupees can never be checked against the Angel app.
 const INR = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
-  maximumFractionDigits: 0,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 
 const INR_PRECISE = new Intl.NumberFormat("en-IN", {
@@ -69,6 +72,16 @@ export function istDateTime(iso: string | null | undefined): string {
   const [date, time] = iso.split("T");
   if (!time) return iso;
   return `${date} ${time.slice(0, 5)}`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A trade time, "12 Oct 10:30", from either "2026-10-12T10:30" or "2026-10-12 10:30". */
+export function tradeTime(ts: string | null | undefined): string {
+  if (!ts) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}:\d{2})/.exec(ts);
+  if (!m) return ts;
+  return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1] ?? m[2]} ${m[4]}`;
 }
 
 export function secondsSince(iso: string | null | undefined, nowIso?: string): number | null {

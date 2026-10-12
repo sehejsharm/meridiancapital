@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AlgoCard } from "@/components/AlgoCard";
+import { AngelBalance } from "@/components/AngelBalance";
 import { HealthStrip } from "@/components/HealthStrip";
 import { HolidayNotice } from "@/components/HolidayNotice";
 import { LiveTape } from "@/components/LiveTape";
@@ -248,15 +249,23 @@ export default function DeckPage() {
             title="Equity and fills"
             subtitle={
               equityDay?.recorded
-                ? `Last session, ${recordedAt(`${equityDay.date}T`).trim()} · gold arrows mark each buy and sell`
-                : "Gold arrows mark each buy (below the line) and sell (above it), with the result"
+                ? `Last session, ${recordedAt(`${equityDay.date}T`).trim()} · every buy and sell marked`
+                : "Every buy marked as it fills, every sell with its result"
             }
           >
-            <LazyMarkedChart equity={equity} trades={trades} height={280} />
+            <LazyMarkedChart
+              equity={equity}
+              trades={trades}
+              position={live ? (snapshot?.position ?? null) : null}
+              height={280}
+            />
           </Card>
         </div>
 
         <div className="space-y-5">
+          {account?.money && (
+            <AngelBalance m={account.money} recorded={!live} position={snapshot?.position ?? null} />
+          )}
           <HealthStrip />
           <RateGauges api={snapshot?.health?.api} recordedAt={live ? null : (snapshot?.ts ?? null)} />
           <LiveTape events={events.slice(0, 60)} height={300} />

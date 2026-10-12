@@ -44,6 +44,8 @@ export interface Snapshot {
     realised_week: number;
     drawdown_pct: number;
     currency: string;
+    /** Angel's own money figures (v8 programs and later). */
+    money?: AngelMoney | null;
   };
   signal: {
     spot: number | null;
@@ -186,6 +188,27 @@ export interface TradeRow {
   hold_min: number | null;
   equity: number | null;
   pnl_source: "angel" | "estimate" | null;
+  /** Angel's own charges and net (its ledger, or its balance right after the trade). */
+  charges_angel?: number | null;
+  net_angel?: number | null;
+  reconciled?: "Angel ledger" | "Angel balance" | "recorded";
+  /** Money that moved outside trading around this session (a deposit or withdrawal). */
+  ledger_gap?: number | null;
+}
+
+/** The Angel app's Trading Balance Summary, line for line. */
+export interface AngelMoney {
+  balance: number | null;
+  opening_balance: number | null;
+  day_gross: number | null;
+  realised_gross: number | null;
+  charges: number | null;
+  /** True while a trade is open: the charges include an estimate for its buy. */
+  charges_estimated: boolean;
+  equity: number | null;
+  day_net: number | null;
+  source: string | null;
+  rms: Record<string, number>;
 }
 
 export interface TradeStats {
@@ -199,6 +222,9 @@ export interface TradeStats {
   best: number;
   worst: number;
   avg_hold: number;
+  /** Closed real-money trades whose figures are Angel's own (ledger or balance). */
+  reconciled?: number;
+  scope?: string;
 }
 
 export interface EventRow {
@@ -222,7 +248,9 @@ export interface EquityPoint {
 export interface DailyEquityPoint {
   session_date: string;
   equity: number;
-  day_pl: number | null;
+  day_pl?: number | null;
+  /** "Angel ledger", "Angel balance" or "recorded". */
+  source?: string;
 }
 
 export interface Holiday {
@@ -454,6 +482,10 @@ export interface TickerPayload {
 
 // ── reports ──────────────────────────────────────────────────────────────────
 export interface ReportSummary {
+  /** Whose money the figures are: real money whenever the period has any. */
+  scope?: "real money" | "paper";
+  /** Trades listed in the report but outside those figures (paper beside real). */
+  not_counted?: number;
   trades: number;
   open_trades: number;
   wins: number;

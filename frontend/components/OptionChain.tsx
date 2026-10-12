@@ -194,7 +194,8 @@ function ContractDetail({
   );
 }
 
-const rupees = (v: number | null | undefined, digits = 0) =>
+// Money to the paisa, like every other figure on the desk.
+const rupees = (v: number | null | undefined, digits = 2) =>
   v === null || v === undefined || !Number.isFinite(v)
     ? "—"
     : `${v < 0 ? "−" : ""}₹${Math.abs(v).toLocaleString("en-IN", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
@@ -244,7 +245,7 @@ function ProgramPanel({ program }: { program: ProgramContract }) {
             <Stat label="Target" value={h.trail_pct != null ? `Trailing ${h.trail_pct}%` : "—"} hint={h.trail_pct != null ? "no fixed target; the stop follows the best price" : undefined} />
           )}
           <Stat label="Implied vol" value={g ? `${g.iv.toFixed(1)}%` : "—"} />
-          <Stat label="Delta" value={g ? g.delta.toFixed(2) : "—"} hint={g?.delta_position != null ? `₹${Math.abs(g.delta_position).toFixed(0)} per NIFTY point` : undefined} />
+          <Stat label="Delta" value={g ? g.delta.toFixed(2) : "—"} hint={g?.delta_position != null ? `${rupees(Math.abs(g.delta_position))} per NIFTY point` : undefined} />
           <Stat label="Time decay" value={g?.theta_position != null ? `${rupees(g.theta_position)}/day` : "—"} tone="text-critical" hint={g ? `${fmt(g.theta)} per unit per day` : undefined} />
           <Stat label="Vega" value={g ? fmt(g.vega) : "—"} hint="per 1% change in volatility" />
           <Stat label="Gamma" value={g ? g.gamma.toFixed(4) : "—"} />

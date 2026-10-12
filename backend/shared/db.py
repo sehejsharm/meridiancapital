@@ -414,12 +414,20 @@ class Database:
         limit: int = 1000,
         session_date: str | None = None,
         algo_id: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> list[dict]:
         sql = "SELECT ts, equity, realised_today, peak_equity, day_pl FROM equity_samples"
         where, args = [], []
         if session_date:
             where.append("session_date = ?")
             args.append(session_date)
+        if date_from:
+            where.append("session_date >= ?")
+            args.append(date_from)
+        if date_to:
+            where.append("session_date <= ?")
+            args.append(date_to)
         if algo_id:
             where.append("algo_id = ?")
             args.append(algo_id)

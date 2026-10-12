@@ -111,6 +111,28 @@ def _api(raw: dict) -> dict | None:
     }
 
 
+def _money(raw: dict) -> dict | None:
+    """Angel's own money figures (v8 programs): the trading balance, the opening
+    balance, the day's P&L before charges and the charges Angel took — the
+    same lines as the Angel app's Trading Balance Summary."""
+    m = raw.get("money")
+    if not isinstance(m, dict):
+        return None
+    rms = m.get("rms") if isinstance(m.get("rms"), dict) else {}
+    return {
+        "balance": _num(m.get("balance")),
+        "opening_balance": _num(m.get("opening_balance")),
+        "day_gross": _num(m.get("day_gross")),
+        "realised_gross": _num(m.get("realised_gross")),
+        "charges": _num(m.get("charges")),
+        "charges_estimated": bool(m.get("charges_estimated")),
+        "equity": _num(m.get("equity")),
+        "day_net": _num(m.get("day_net")),
+        "source": str(m.get("source") or "")[:80] or None,
+        "rms": {str(k)[:40]: _num(v) for k, v in list(rms.items())[:30] if _num(v) is not None},
+    }
+
+
 def _feed(raw: dict) -> dict | None:
     """Where the program's one-minute closes come from (v6 and later): Angel's live
     stream, or candle requests. Older programs write nothing, and the deck shows nothing."""
@@ -244,6 +266,7 @@ def program_snapshot(raw: dict, *, name: str, mode: str, pid: int | None,
             "realised_week": realised_week,
             "drawdown_pct": _num(raw.get("drawdown_pct")) or 0.0,
             "currency": "INR",
+            "money": _money(raw),
         },
         "signal": {
             "spot": spot,

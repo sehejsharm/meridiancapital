@@ -111,6 +111,20 @@ def test_a_trailing_exit_has_no_target_on_the_card():
     assert pos["target_pts"] == 90 and pos["trail_pct"] is None
 
 
+def test_angels_money_figures_reach_the_deck():
+    v8 = {**FLAT, "equity": 46910.77, "day_pnl": 1619.56, "money": {
+        "balance": 46910.77, "opening_balance": 45291.21, "day_gross": 1693.25, "realised_gross": 1693.25,
+        "charges": 73.69, "charges_estimated": False, "equity": 46910.77, "day_net": 1619.56,
+        "source": "Angel trading balance", "rms": {"net": "46910.77", "availablecash": "45291.21"}}}
+    snap = program_snapshot(v8, name="og", mode="live", pid=1)
+    m = snap["account"]["money"]
+    assert m["balance"] == 46910.77 and m["opening_balance"] == 45291.21 and m["charges"] == 73.69
+    assert m["opening_balance"] + m["realised_gross"] - m["charges"] == pytest.approx(m["balance"], abs=0.005)
+    assert snap["account"]["equity"] == 46910.77 and snap["account"]["day_pl"] == 1619.56
+    assert m["rms"] == {"net": 46910.77, "availablecash": 45291.21}
+    assert program_snapshot(FLAT, name="og", mode="live", pid=1)["account"]["money"] is None
+
+
 def test_the_price_feed_reaches_the_rate_card():
     v6 = {**FLAT, "feed": {"source": "stream", "stream_bars": 212, "candle_reads": 3, "fallbacks": 1,
                            "checks": 40, "check_refused": 6, "check_max_diff": 0.35, "refused": 2,

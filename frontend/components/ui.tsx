@@ -48,14 +48,14 @@ export function StatTile({
   value: string;
   delta?: { text: string; value: number };
   hint?: string;
-  tone?: "neutral" | "brand";
+  tone?: "neutral" | "brand" | "profit" | "loss";
 }) {
   return (
     <div className="min-w-0 rounded-lg border border-hairline bg-surface px-3 py-3 sm:px-4">
       <div className="truncate text-2xs uppercase tracking-[0.14em] text-ink-muted">{label}</div>
       <div
         className={`mt-1.5 truncate text-xl font-semibold tabular-nums sm:text-2xl ${
-          tone === "brand" ? "text-brand" : "text-ink"
+          { brand: "text-brand", profit: "text-profit", loss: "text-loss", neutral: "text-ink" }[tone]
         }`}
       >
         {value}

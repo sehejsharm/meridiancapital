@@ -133,7 +133,15 @@ export default function ReportsPage() {
       {s && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile label="Net P&L" value={signedMoney(s.net_pnl)} tone="brand" hint={`${s.trades} closed trades`} />
+            <StatTile
+              label={s.scope ? `Net P&L, ${s.scope}` : "Net P&L"}
+              value={signedMoney(s.net_pnl)}
+              tone={s.net_pnl > 0 ? "profit" : s.net_pnl < 0 ? "loss" : "neutral"}
+              hint={
+                `${s.trades} closed trades` +
+                (s.not_counted ? ` · ${s.not_counted} paper trade${s.not_counted === 1 ? "" : "s"} listed, not counted` : "")
+              }
+            />
             <StatTile label="Win rate" value={`${s.win_rate_pct.toFixed(1)}%`} hint={`${s.wins}W / ${s.losses}L`} />
             <StatTile
               label="Profit factor"
@@ -176,11 +184,13 @@ export default function ReportsPage() {
                   <tbody className="divide-y divide-hairline">
                     {report.trades.map((t) => (
                       <tr key={t.id}>
-                        <td className="py-2 pr-3 text-ink-secondary">{t.session_date}</td>
+                        <td className="whitespace-nowrap py-2 pr-3 text-ink-secondary">{t.session_date}</td>
                         <td className="py-2 pr-3">
                           <Badge tone={t.mode === "live" ? "critical" : "neutral"}>{t.mode}</Badge>
                         </td>
-                        <td className="py-2 pr-3 font-mono text-2xs text-ink">{t.tsym ?? "—"}</td>
+                        <td className="whitespace-nowrap py-2 pr-3 font-mono text-2xs text-ink">
+                          {t.tsym ?? ([t.strike, t.side].filter((v) => v != null).join(" ") || "—")}
+                        </td>
                         <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">{t.lots ?? "—"}</td>
                         <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">
                           {t.entry_prem?.toFixed(2) ?? "—"}
@@ -189,7 +199,7 @@ export default function ReportsPage() {
                           {t.exit_prem?.toFixed(2) ?? "open"}
                         </td>
                         <td className="py-2 pr-3 text-right tabular-nums text-ink-muted">
-                          {t.charges?.toFixed(0) ?? "—"}
+                          {t.charges?.toFixed(2) ?? "—"}
                         </td>
                         <td className={`py-2 pr-3 text-right font-medium tabular-nums ${pnlClass(t.net)}`}>
                           {t.net === null ? "—" : signedMoney(t.net)}
