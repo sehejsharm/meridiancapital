@@ -20,6 +20,14 @@ export function AngelBalance({
   const paid = position ? Math.round(position.entry_premium * position.qty * 100) / 100 : null;
   const rows: { label: string; value: string; hint?: string; strong?: boolean; tone?: string }[] = [
     { label: "Opening ledger balance", value: money(m.opening_balance) },
+    ...(m.added != null && Math.abs(m.added) >= 0.005
+      ? [{
+          label: m.added > 0 ? "Funds added" : "Funds withdrawn",
+          value: signedMoney(m.added),
+          hint: "In Angel's trading balance, not yet in its ledger — paid in or out today (or collateral)",
+          tone: "text-ink",
+        }]
+      : []),
     {
       label: "Premium received",
       value: signedMoney(m.realised_gross),

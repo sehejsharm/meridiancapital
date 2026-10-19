@@ -122,6 +122,9 @@ def _money(raw: dict) -> dict | None:
     return {
         "balance": _num(m.get("balance")),
         "opening_balance": _num(m.get("opening_balance")),
+        # In Angel's trading balance but not its available cash: funds paid in
+        # that Angel has not settled yet, or collateral.
+        "added": _num(m.get("added")),
         "day_gross": _num(m.get("day_gross")),
         "realised_gross": _num(m.get("realised_gross")),
         "charges": _num(m.get("charges")),

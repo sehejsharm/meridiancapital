@@ -125,6 +125,18 @@ def test_angels_money_figures_reach_the_deck():
     assert program_snapshot(FLAT, name="og", mode="live", pid=1)["account"]["money"] is None
 
 
+def test_funds_angel_has_not_settled_reach_the_card_and_add_up():
+    """19 Oct 2026: available cash Rs 3,950.56, trading balance Rs 51,798.56. The
+    card shows the difference as its own line, so it adds up to the app's figure."""
+    v8 = {**FLAT, "equity": 51798.56, "day_pnl": 0.0, "money": {
+        "balance": 51798.56, "opening_balance": 3950.56, "added": 47848.00, "day_gross": 0.0,
+        "realised_gross": 0.0, "charges": 0.0, "charges_estimated": False, "equity": 51798.56, "day_net": 0.0,
+        "source": "Angel trading balance", "rms": {"net": "51798.56", "availablecash": "3950.56"}}}
+    m = program_snapshot(v8, name="og", mode="live", pid=1)["account"]["money"]
+    assert m["added"] == 47848.00
+    assert m["opening_balance"] + m["added"] + m["realised_gross"] - m["charges"] == pytest.approx(m["balance"], abs=0.005)
+
+
 def test_the_price_feed_reaches_the_rate_card():
     v6 = {**FLAT, "feed": {"source": "stream", "stream_bars": 212, "candle_reads": 3, "fallbacks": 1,
                            "checks": 40, "check_refused": 6, "check_max_diff": 0.35, "refused": 2,

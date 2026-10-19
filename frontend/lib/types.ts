@@ -200,6 +200,8 @@ export interface TradeRow {
 export interface AngelMoney {
   balance: number | null;
   opening_balance: number | null;
+  /** In Angel's trading balance but not its available cash (funds paid in, not yet settled). */
+  added?: number | null;
   day_gross: number | null;
   realised_gross: number | null;
   charges: number | null;
