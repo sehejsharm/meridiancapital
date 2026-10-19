@@ -37,6 +37,7 @@ async function relay(request: NextRequest, segments: string[]) {
     body = await request.text();
   }
 
+  const started = performance.now();
   try {
     const upstream = await fetch(target, {
       method: request.method,
@@ -59,6 +60,14 @@ async function relay(request: NextRequest, segments: string[]) {
     // route segment instead of the report filename.
     const disposition = upstream.headers.get("content-disposition");
     if (disposition) headers.set("Content-Disposition", disposition);
+    // Where a slow call spent its time: "app" is the control plane's own work,
+    // "relay" the whole trip from Vercel to the VM and back. A large relay with
+    // a small app is the network or DNS, not the server.
+    const app = upstream.headers.get("server-timing");
+    headers.set(
+      "Server-Timing",
+      [app, `relay;dur=${(performance.now() - started).toFixed(1)}`].filter(Boolean).join(", "),
+    );
 
     return new NextResponse(payload, { status: upstream.status, headers });
   } catch (error) {

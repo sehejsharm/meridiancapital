@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import time
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, Request
@@ -71,9 +72,20 @@ app.add_middleware(
 )
 
 
+# A request slower than this is written to the service log with its timing
+# (journalctl -u meridian-api | grep "slow request"), so a slow desk can be
+# traced to the call that made it slow instead of guessed at.
+SLOW_REQUEST_MS = 800.0
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
+    started = time.perf_counter()
     response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    response.headers["Server-Timing"] = f"app;dur={elapsed_ms:.1f}"
+    if elapsed_ms >= SLOW_REQUEST_MS:
+        log.warning("slow request %s %s %.0f ms", request.method, request.url.path, elapsed_ms)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
