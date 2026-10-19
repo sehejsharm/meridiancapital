@@ -178,6 +178,14 @@ export function MarkedChart({
   position?: Position | null;
   height?: number;
 }) {
+  // The live snapshot hands over a new position object every second. Only a
+  // different trade should redraw the chart: redrawing on every snapshot reset
+  // the zoom and re-laid the whole curve once a second, on a phone too.
+  const positionKey = position
+    ? `${position.opened_ts}|${position.side}|${position.strike}|${position.entry_premium}`
+    : "";
+  const positionRef = useRef(position);
+  positionRef.current = position;
   const holder = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
@@ -302,6 +310,7 @@ export function MarkedChart({
     }
     // The position held right now: its BUY from the live snapshot, the moment
     // it fills, not only once the trade has closed and reached the blotter.
+    const position = positionRef.current;
     const openAt = position ? toSeconds(position.opened_ts) : null;
     if (position && inPeriod(openAt) && !seen.has(position.opened_ts.replace(" ", "T").slice(0, 16))) {
       out.push({
@@ -343,7 +352,7 @@ export function MarkedChart({
       }
     }
     setLayoutTick((k) => k + 1);
-  }, [equity, trades, position, ready]);
+  }, [equity, trades, positionKey, ready]);
 
   // Labels follow the chart: on a scroll, a zoom or a resize.
   useEffect(() => {

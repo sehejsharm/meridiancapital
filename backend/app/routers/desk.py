@@ -5,7 +5,6 @@ and the downloadable reports.
 from __future__ import annotations
 
 import asyncio
-
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -132,25 +131,35 @@ async def ticker() -> dict:
 TICKER_FRESH_SEC = 90.0
 
 
-def _payload(algo_id: str | None, start: str, end: str, title: str) -> dict:
+# Points of the equity curve sent to the results page's chart.
+REPORT_CHART_POINTS = 3000
+
+
+async def _payload(algo_id: str | None, start: str, end: str, title: str,
+                   max_points: int | None = None) -> dict:
     if start > end:
         raise HTTPException(status_code=400, detail="start date must not be after end date")
-    return reports.build_payload(ctx().db, algo_id, start, end, title)
+    # Off the event loop: a long period reads every sample in it, and the live
+    # feed and every other request would wait for it.
+    return await asyncio.to_thread(
+        reports.build_payload, ctx().db, algo_id, start, end, title, max_points
+    )
 
 
 @router.get("/reports")
 async def report_json(
     start: str, end: str, algo_id: str | None = None, title: str = "Meridian session report"
 ) -> dict:
-    """The same payload the CSV and PDF are rendered from, for the results page."""
-    return _payload(algo_id, start, end, title)
+    """The same payload the CSV and PDF are rendered from, for the results page,
+    with the curve thinned to what a chart can show."""
+    return await _payload(algo_id, start, end, title, REPORT_CHART_POINTS)
 
 
 @router.get("/reports.csv", response_class=PlainTextResponse)
 async def report_csv(
     start: str, end: str, algo_id: str | None = None, title: str = "Meridian session report"
 ) -> Response:
-    payload = _payload(algo_id, start, end, title)
+    payload = await _payload(algo_id, start, end, title)
     return Response(
         content=reports.to_csv(payload),
         media_type="text/csv; charset=utf-8",
@@ -162,9 +171,10 @@ async def report_csv(
 async def report_pdf(
     start: str, end: str, algo_id: str | None = None, title: str = "Meridian session report"
 ) -> Response:
-    payload = _payload(algo_id, start, end, title)
+    payload = await _payload(algo_id, start, end, title)
+    content = await asyncio.to_thread(reports.to_pdf, payload)
     return Response(
-        content=reports.to_pdf(payload),
+        content=content,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{reports.filename(payload, "pdf")}"'},
     )

@@ -56,12 +56,15 @@ def plausible_charges(c: Decimal, turnover: float) -> bool:
 
 def openings(db, algo_id: str) -> dict[str, Decimal]:
     """Each session's opening balance as the program read it from Angel."""
+    # One pass over the (algo_id, session_date, id) index for each session's
+    # first sample. A subquery per row made this quadratic in the samples.
     with db.conn() as c:
         rows = c.execute(
-            """SELECT session_date, equity, day_pl FROM equity_samples e
-               WHERE algo_id = ? AND id = (SELECT MIN(id) FROM equity_samples
-                                           WHERE algo_id = e.algo_id AND session_date = e.session_date)
-               ORDER BY session_date""",
+            """SELECT e.session_date, e.equity, e.day_pl
+               FROM equity_samples e
+               JOIN (SELECT MIN(id) AS id FROM equity_samples
+                     WHERE algo_id = ? GROUP BY session_date) first ON first.id = e.id
+               ORDER BY e.session_date""",
             (algo_id,),
         ).fetchall()
     out = {}

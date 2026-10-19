@@ -204,6 +204,16 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{table}_algo ON {table}(algo_id)"
         )
+    # Each session's first and last sample per algorithm (the opening and
+    # closing balances the ledger reads) and a day's curve. Without these every
+    # read scanned the whole table once per sample: two seconds a request with
+    # three weeks of samples, growing every day, holding up every other request.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_equity_algo_session ON equity_samples(algo_id, session_date, id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_equity_session ON equity_samples(session_date, id)"
+    )
 
 
 class Database:

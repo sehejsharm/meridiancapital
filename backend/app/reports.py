@@ -21,7 +21,26 @@ from app import ledger
 from engine.clock import now_ist
 
 
-def build_payload(db, algo_id: str | None, start: str, end: str, title: str) -> dict:
+def thin(points: list[dict], limit: int) -> list[dict]:
+    """At most about `limit` of a curve's points for drawing it: every k-th
+    sample, plus each session's first and last, so no day loses its open or
+    close. A year of minute samples is 100,000 points, an 11 MB response that
+    the chart cannot show at any width anyway."""
+    if limit <= 0 or len(points) <= limit:
+        return points
+    step = -(-len(points) // limit)
+    out = []
+    for i, p in enumerate(points):
+        day = (p.get("ts") or "")[:10]
+        first = i == 0 or (points[i - 1].get("ts") or "")[:10] != day
+        last = i == len(points) - 1 or (points[i + 1].get("ts") or "")[:10] != day
+        if first or last or i % step == 0:
+            out.append(p)
+    return out
+
+
+def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
+                  max_points: int | None = None) -> dict:
     trades = [
         t for t in db.trades(limit=5000, algo_id=algo_id)
         if start <= (t.get("session_date") or "") <= end
@@ -84,6 +103,11 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str) -> 
         "max_drawdown_pct": round(100.0 * max_dd, 2),
         "errors": sum(1 for e in events if e.get("level") in ("error", "critical")),
     }
+
+    if max_points:
+        # Drawn on screen: thinned once the drawdown has been measured on every
+        # sample. The CSV and PDF keep every mark.
+        equity = thin(equity, max_points)
 
     return {
         "title": title,

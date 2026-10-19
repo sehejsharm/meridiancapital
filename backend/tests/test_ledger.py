@@ -126,3 +126,37 @@ def test_a_report_counts_one_account_and_draws_one_curve(tmp_db):
     assert s["net_pnl"] == pytest.approx(1278.21 + 1619.56), "the paper trade stays out of real money"
     assert {e["equity"] for e in p["equity"]} == {44013.00, 45291.21}, "no other account's samples on the curve"
     assert [t["session_date"] for t in p["trades"]] == ["2026-10-12", "2026-10-09", "2026-10-08"]
+
+
+def test_the_opening_balances_stay_fast_as_samples_pile_up(tmp_db):
+    """A subquery per sample made this quadratic: two seconds a request after
+    three weeks of minute samples, holding up the whole API. It is one indexed
+    pass now."""
+    import time
+
+    with tmp_db.conn() as c:
+        rows = [(f"2026-09-{d:02d}T10:{m // 60:02d}:{m % 60:02d}", f"2026-09-{d:02d}", 45000.0 + m, 0.0,
+                 51000.0, float(m), ALGO) for d in range(1, 29) for m in range(400)]
+        c.executemany("INSERT INTO equity_samples(ts, session_date, equity, realised_today, peak_equity, day_pl,"
+                      " algo_id) VALUES(?,?,?,?,?,?,?)", rows)
+        plan = " ".join(r[-1] for r in c.execute(
+            "EXPLAIN QUERY PLAN SELECT MIN(id) FROM equity_samples WHERE algo_id = ? GROUP BY session_date",
+            (ALGO,)).fetchall())
+    assert "idx_equity_algo_session" in plan
+    start = time.perf_counter()
+    opens = ledger.openings(tmp_db, ALGO)
+    assert time.perf_counter() - start < 0.5
+    assert len(opens) == 28 and all(v == 45000.0 for v in opens.values())
+
+
+def test_a_report_chart_gets_a_thinned_curve_with_every_days_open_and_close():
+    from app.reports import thin
+
+    pts = [{"ts": f"2026-09-{d:02d}T10:{m // 60:02d}:{m % 60:02d}", "equity": float(m)}
+           for d in range(1, 21) for m in range(400)]
+    out = thin(pts, 1000)
+    assert len(out) <= 1000 + 2 * 20
+    for d in range(1, 21):
+        day = [p for p in out if p["ts"].startswith(f"2026-09-{d:02d}")]
+        assert day[0]["equity"] == 0.0 and day[-1]["equity"] == 399.0
+    assert thin(pts[:50], 1000) == pts[:50]

@@ -58,6 +58,7 @@ async def events(
 async def equity(
     session_date: str | None = None,
     limit: int = Query(1000, ge=1, le=5000),
+    daily: bool = True,
 ) -> dict:
     c = ctx()
     today = now_ist().strftime("%Y-%m-%d")
@@ -72,7 +73,8 @@ async def equity(
         "intraday": curve,
         "session_date": day,
         "recorded": day != today,
-        "daily": _daily_balances(c, today),
+        # The deck shows only the day's curve and asks for this off.
+        "daily": _daily_balances(c, today) if daily else [],
     }
 
 

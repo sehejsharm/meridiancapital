@@ -72,7 +72,7 @@ export default function DeckPage() {
           // The control plane returns today's samples as "intraday"; this read
           // "curve", which never existed, so the chart was always empty.
           apiGet<{ intraday?: EquityPoint[]; session_date?: string; recorded?: boolean }>(
-            "/equity?limit=600",
+            "/equity?limit=600&daily=0",
           ),
           apiGet<{ trades: TradeRow[] }>("/trades?limit=80"),
         ]);
