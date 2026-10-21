@@ -132,6 +132,54 @@ def test_its_output_reaches_the_journal(fleet, tmp_db):
     assert events["WARN candle feed throttled - backing off"] == "warn"
 
 
+REFUSES = """import argparse, time
+
+def trade(dry_run=True):
+    print("connecting to Angel One", flush=True)
+    time.sleep(0.4)
+    print("[IP CHECK] real IP 1.2.3.4 is not the one registered", flush=True)
+    raise SystemExit("Refusing to trade with an unregistered IP. Fix the two items above and rerun.")
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--paper", action="store_true")
+    ap.add_argument("--live", action="store_true")
+    a = ap.parse_args()
+    trade(dry_run=not a.live)
+"""
+
+
+def test_why_a_program_gave_up_reaches_the_journal_after_it_exits(fleet, tmp_db):
+    """Its last words come after the follower's last read; they used to be
+    dropped with the run, leaving a stopped card and no cause anywhere."""
+    from app.program_output import ProgramOutput
+
+    register(tmp_db, "quits", REFUSES)
+    assert fleet.start("quits")["ok"] is True
+    follower = ProgramOutput(tmp_db, fleet)
+    assert wait_for(lambda: follower.pump() or any(
+        "connecting" in e["message"] for e in tmp_db.events(20, algo_id="quits")))
+    sup = fleet.get("quits")
+    assert wait_for(lambda: (sup.refresh(), not sup.state.running)[1]), "it should have exited"
+    follower.pump()
+    messages = [e["message"] for e in tmp_db.events(20, algo_id="quits")]
+    assert any(m.startswith("Refusing to trade with an unregistered IP") for m in messages), messages
+    assert any("[IP CHECK]" in m for m in messages), messages
+    assert follower.pump() == 0, "a finished run is read once, not again"
+
+
+def test_the_card_carries_todays_last_lines_of_this_run(fleet, tmp_db):
+    from app.routers.algos import RECENT_LINES, _recent
+
+    for i in range(RECENT_LINES + 3):
+        tmp_db.add_event("info", f"line {i}", source="program", algo_id="og")
+    tmp_db.add_event("info", "someone else's", source="program", algo_id="other")
+    lines = _recent(tmp_db, "og", {"running": False})
+    assert [ln["message"] for ln in lines] == [f"line {i}" for i in range(3, RECENT_LINES + 3)]
+    assert _recent(tmp_db, "og", {"running": True, "uptime_sec": -60.0}) == [], \
+        "while it runs, an earlier run's lines are not this run's"
+
+
 def test_stopping_sends_ctrl_c_so_the_program_can_clean_up(fleet, tmp_db):
     from app import programs
 

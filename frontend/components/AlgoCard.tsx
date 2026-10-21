@@ -3,10 +3,10 @@
 import Link from "next/link";
 
 import { Badge, Breakable, Button } from "@/components/ui";
-import { money, signedMoney, pnlClass } from "@/lib/format";
+import { duration, istTime, money, signedMoney, pnlClass } from "@/lib/format";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { recordedAt } from "@/lib/recorded";
-import type { Algo, AlgoLast, Snapshot } from "@/lib/types";
+import type { Algo, AlgoLast, AlgoLine, Snapshot } from "@/lib/types";
 
 /**
  * One algorithm on the deck.
@@ -40,8 +40,14 @@ export function AlgoCard({
   const running = algo.runtime?.running ?? false;
   const live = running && algo.runtime?.mode === "live";
   const fromRecord = !snapshot && Boolean(recorded);
-  const account = snapshot?.account ?? recorded?.account ?? null;
-  const position = snapshot ? snapshot.position : (recorded?.position ?? null);
+  // Running, but this run has not reported yet: the record on file is an
+  // earlier run's, and its figures — a ₹0.00 among them — are not this one's.
+  const starting = running && !snapshot && (!recorded || recorded.pid !== algo.runtime.pid);
+  const account = starting ? null : (snapshot?.account ?? recorded?.account ?? null);
+  const position = starting ? null : snapshot ? snapshot.position : (recorded?.position ?? null);
+  // What it last said: while it starts up, and after it stops — the login,
+  // the balance read, or the reason it gave up.
+  const lines = !compact && !snapshot && (starting || !running) ? (algo.recent ?? []) : [];
 
   return (
     <article
@@ -100,7 +106,9 @@ export function AlgoCard({
             value={
               position
                 ? `${position.side ?? ""} ${position.strike ?? ""} × ${position.lots ?? 0}`
-                : "flat"
+                : starting
+                  ? "—"
+                  : "flat"
             }
           />
           <Figure
@@ -114,7 +122,12 @@ export function AlgoCard({
               position?.gain_pct != null ? pnlClass(position.gain_pct) : undefined
             }
           />
-          {fromRecord && recorded && (
+          {starting ? (
+            <p className="col-span-full text-2xs text-ink-muted">
+              Starting for {duration(algo.runtime.uptime_sec)} — no figures from this run yet
+              {recorded ? ` (the last run's are from ${recordedAt(recorded.ts)} IST)` : ""}
+            </p>
+          ) : fromRecord && recorded && (
             <p className="col-span-full text-2xs text-ink-muted">
               {running
                 ? `As of ${recordedAt(recorded.ts)} IST`
@@ -125,6 +138,8 @@ export function AlgoCard({
           )}
         </div>
       )}
+
+      {lines.length > 0 && <RecentLines lines={lines} starting={starting} />}
 
       <footer className="mt-auto flex items-center justify-between gap-3 border-t border-hairline px-4 py-2.5">
         <span className="min-w-0 text-2xs text-ink-muted">
@@ -202,6 +217,31 @@ export function ModeBadge({ algo }: { algo: Pick<Algo, "mode" | "enabled" | "run
     <span title="Stopped. Press Start to run it; you will be asked paper or real money.">
       <Badge tone="neutral">Off</Badge>
     </span>
+  );
+}
+
+const LINE_TONE: Record<string, string> = {
+  error: "text-critical",
+  warn: "text-warning",
+  ok: "text-good",
+};
+
+/** Its own words, as it printed them: the card is where a failed start is
+ *  noticed, so the cause is put there rather than only in the journal. */
+function RecentLines({ lines, starting }: { lines: AlgoLine[]; starting: boolean }) {
+  return (
+    <div className="border-t border-hairline px-4 py-2.5">
+      <div className="text-2xs uppercase tracking-[0.12em] text-ink-muted">
+        {starting ? "What it is doing" : "Its last words today"}
+      </div>
+      <ol className="mt-1.5 space-y-0.5 font-mono text-2xs leading-snug">
+        {lines.map((line, i) => (
+          <li key={`${line.ts}-${i}`} className={`[overflow-wrap:anywhere] ${LINE_TONE[line.level] ?? "text-ink-secondary"}`}>
+            <span className="text-ink-muted">{istTime(line.ts).slice(0, 5)}</span> {line.message}
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 

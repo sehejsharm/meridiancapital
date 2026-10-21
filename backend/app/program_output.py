@@ -81,9 +81,11 @@ class ProgramOutput:
         moved = 0
         self.ingest_trades()
         for algo_id, sup in self.fleet.all().items():
-            if not (sup.state.running and sup.is_program(sup.state.pid)):
+            running = sup.state.running and sup.is_program(sup.state.pid)
+            if not running and algo_id not in self._offsets:
                 continue
-            self.publish_status(algo_id, sup)
+            if running:
+                self.publish_status(algo_id, sup)
             try:
                 size = sup.outfile.stat().st_size
             except OSError:
@@ -96,20 +98,33 @@ class ProgramOutput:
             offset = self._offsets[algo_id]
             if size < offset:  # a fresh start truncates the file
                 offset, self._partial[algo_id] = 0, ""
-            if size == offset:
-                continue
-            with sup.outfile.open("rb") as fh:
-                fh.seek(offset)
-                chunk = fh.read(min(size - offset, MAX_BYTES_PER_POLL))
+            if not running and size - offset > MAX_BYTES_PER_POLL:
+                # Its last words are at the end; that is the part to keep.
+                offset, self._partial[algo_id] = size - MAX_BYTES_PER_POLL, ""
+            chunk = b""
+            if size > offset:
+                with sup.outfile.open("rb") as fh:
+                    fh.seek(offset)
+                    chunk = fh.read(min(size - offset, MAX_BYTES_PER_POLL))
             self._offsets[algo_id] = offset + len(chunk)
             text = self._partial.get(algo_id, "") + chunk.decode("utf-8", "replace")
             *lines, self._partial[algo_id] = text.split("\n")
+            if not running:
+                # It has exited, and what it printed last — the traceback, the
+                # reason it refused to start — was still unread. It used to be
+                # dropped here, leaving a stopped card with no cause on it.
+                lines.append(self._partial.pop(algo_id, ""))
+                del self._offsets[algo_id]
             for raw in lines[-MAX_LINES_PER_POLL:]:
                 line = redact(ANSI.sub("", raw).strip())
                 if not line:
                     continue
                 for keep in self._filter(algo_id, line):
                     self.db.add_event(classify(keep), keep[:500], source="program", algo_id=algo_id)
+                    moved += 1
+            if not running:
+                for held in self._board.pop(algo_id, {}).get("held", []):
+                    self.db.add_event(classify(held), held[:500], source="program", algo_id=algo_id)
                     moved += 1
         return moved
 

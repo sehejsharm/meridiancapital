@@ -393,11 +393,28 @@ export interface Algo {
   /** How it runs: the built-in, a strategy module the engine calls, or a
    *  standalone program started as its own process. */
   runtime_kind?: "builtin" | "strategy" | "program" | "invalid" | "none";
-  runtime: { running: boolean; pid: number | null; mode: string };
+  runtime: {
+    running: boolean;
+    pid: number | null;
+    mode: string;
+    uptime_sec?: number | null;
+    last_exit_code?: number | null;
+    last_stop_reason?: string;
+  };
   /** The algorithm's last recorded figures, kept after it stops. */
   last?: AlgoLast | null;
+  /** Today's last few lines from it and its supervisor, oldest first; only
+   *  this run's while it runs. */
+  recent?: AlgoLine[];
   /** Set when this registration is the paper twin of another algorithm. */
   shadow_of: string | null;
+}
+
+export interface AlgoLine {
+  ts: string;
+  level: string;
+  source: string;
+  message: string;
 }
 
 export interface AlgoLast {

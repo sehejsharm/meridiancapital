@@ -8,6 +8,7 @@ paper or real money. The choice is made when an algorithm is started.
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -19,12 +20,16 @@ from app.deps import ctx
 from app import shadow
 from app.security import Principal, client_ip, require_auth
 from engine import versions
+from engine.clock import now_ist
 from engine.gate import check_catalogue
 from shared.db import SYSTEM_ALGO, snapshot_key
 
 router = APIRouter(prefix="/api/algos", tags=["algos"], dependencies=[Depends(require_auth)])
 
 SHADOW_SUFFIX = "-shadow"
+# The lines a card shows while a run has not reported yet, or after it stopped.
+RECENT_LINES = 6
+RECENT_SCAN = 40
 
 
 class UploadRequest(BaseModel):
@@ -61,6 +66,28 @@ def _audit(request: Request, principal: Principal, action: str, detail: str = ""
     ctx().db.audit(principal.subject, action, detail, client_ip(request))
 
 
+def _recent(db, algo_id: str, sup: dict) -> list[dict]:
+    """Today's last few lines from this algorithm and its supervisor, oldest first.
+
+    A program says what it is doing only by printing: logging in, reading the
+    balance, loading contracts — or why it gave up. Until its first status the
+    card had nothing to show but the last run's figures, so a start that
+    failed looked like a start that never happened. While it runs, only this
+    run's lines count.
+    """
+    now = now_ist()
+    since = now.date().isoformat()
+    if sup.get("running") and sup.get("uptime_sec") is not None:
+        started = now - timedelta(seconds=float(sup["uptime_sec"]) + 2.0)
+        since = max(since, started.isoformat(timespec="seconds"))
+    rows = [r for r in db.events(limit=RECENT_SCAN, algo_id=algo_id) if str(r.get("ts") or "") >= since]
+    return [
+        {"ts": r["ts"], "level": r.get("level") or "info", "source": r.get("source") or "",
+         "message": str(r.get("message") or "")[:300]}
+        for r in reversed(rows[:RECENT_LINES])
+    ]
+
+
 def _algo_view(db, algo: dict) -> dict:
     history = db.versions(algo["id"], limit=20)
     active = db.version(algo["active_version"]) if algo.get("active_version") else None
@@ -79,6 +106,7 @@ def _algo_view(db, algo: dict) -> dict:
         ),
         "runtime": sup,
         "last": last,
+        "recent": _recent(db, algo["id"], sup),
         "shadow_of": algo.get("shadow_of"),
     }
 
