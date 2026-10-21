@@ -286,3 +286,49 @@ def test_after_an_api_restart_the_desk_keeps_following_the_program(fleet, tmp_db
         return bool(snap) and snap["engine"]["pid"] == pid
 
     assert wait_for(published), "the deck is fed from the adopted program's status file"
+
+
+def test_a_sale_on_the_way_out_moves_the_last_figures_past_it(tmp_db, tmp_path, monkeypatch):
+    """21 Oct 2026: Stop while holding sold PE 22950 at 208.15 and the program
+    exited. Its last status was written before the sale: equity Rs 55,632.79 at
+    Angel's mark and "in a position". The deck kept both."""
+    from app import ledger
+    from app.program_output import ProgramOutput
+
+    monkeypatch.setattr(ledger, "PROGRAM_DIR", tmp_path)
+    raw = {
+        "ts": "2026-10-21T11:37:05", "pid": 4242, "state": "RUNNING", "phase": "IN POSITION",
+        "equity": 55632.79, "day_pnl": 2298.19, "peak_equity": 55900.0, "realised_today": 0.0,
+        "realised_week": 1542.52,
+        "position": {"tsym": "NIFTY27OCT2622950PE", "right": "PE", "strike": 22950, "qty": 65, "lots": 1,
+                     "entry": 180.40, "live_premium": 208.60, "ts": "2026-10-21T11:20:03"},
+        "money": {"balance": 41644.31, "opening_balance": 53334.60, "added": 0.0, "day_gross": 2327.0,
+                  "realised_gross": 0.0, "charges": 28.81, "charges_estimated": True,
+                  "equity": 55632.79, "day_net": 2298.19},
+    }
+    tmp_db.kv_set(snapshot_key("og"), program_snapshot(raw, name="og", mode="live", pid=4242))
+    tmp_db.add_trade({
+        "entry_ts": "2026-10-21 11:20", "exit_ts": "2026-10-21 11:37", "session_date": "2026-10-21",
+        "mode": "live", "side": "PE", "strike": 22950, "lots": 1, "qty": 65, "entry_prem": 180.40,
+        "exit_prem": 208.15, "gross": 1803.75, "charges": 71.57, "net": 1732.18, "reason": "STOPPED",
+        "equity": 55066.78, "algo_id": "og",
+    })
+    (tmp_path / "og").mkdir()
+    (tmp_path / "og" / "gk50k_money.jsonl").write_text(json.dumps({
+        "entry_ts": "2026-10-21T11:20", "realised_gross_today": 1803.75, "charges": 71.57,
+        "charges_source": "Angel trading balance", "balance_after": 55066.78, "mode": "live"}) + "\n")
+
+    follower = ProgramOutput(tmp_db, fleet=None)
+    assert follower.settle_record("og") is True
+    snap = tmp_db.kv_get(snapshot_key("og"), None)
+    acct = snap["account"]
+    assert snap["position"] is None, "it was sold: the card must not say it is held"
+    assert acct["equity"] == 55066.78 and acct["day_pl"] == 1732.18
+    assert acct["day_pl_pct"] == round(100 * 1732.18 / 53334.60, 2)
+    assert acct["realised_today"] == 1803.75
+    m = acct["money"]
+    assert (m["balance"], m["realised_gross"], m["charges"], m["charges_estimated"]) == (55066.78, 1803.75, 71.57, False)
+    assert round(m["opening_balance"] + m["realised_gross"] - m["charges"], 2) == m["balance"], "the card adds up"
+    assert snap["ts"] == "2026-10-21T11:37:00"
+    assert tmp_db.equity_curve(algo_id="og")[-1]["equity"] == 55066.78, "the day's last point follows"
+    assert follower.settle_record("og") is False, "once"

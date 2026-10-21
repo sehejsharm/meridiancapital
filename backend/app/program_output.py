@@ -13,6 +13,7 @@ import re
 import time
 
 from app import programs
+from app.ledger import money_log
 from app.program_status import program_snapshot, read_status
 from app.program_trades import TradeLogs
 from shared.db import snapshot_key
@@ -52,6 +53,11 @@ OPEN_LOOKAHEAD = 3    # lines after a border before its header must have shown
 _ERROR = re.compile(r"REJECT|ERROR|CRITICAL|FAIL|MISMATCH|Traceback|Exception|Refusing", re.I)
 _WARN = re.compile(r"WARN|throttl|backing off|stale|retry|NOT CONFIRMED", re.I)
 _OK = re.compile(r"FILLED|\bENTER\b|\bEXIT\b|\bOK\b|connected", re.I)
+
+
+def _minute(ts) -> str:
+    """'2026-10-21T11:20:07' and '2026-10-21 11:20' both as '2026-10-21 11:20'."""
+    return str(ts or "")[:16].replace("T", " ")
 
 
 def classify(line: str) -> str:
@@ -191,7 +197,79 @@ class ProgramOutput:
                 added += n
                 self.db.add_event("info", f"{n} trade{'s' if n != 1 else ''} recorded from the program's trade log",
                                   source="api", algo_id=algo["id"])
+            sup = self.fleet.get(algo["id"]) if self.fleet is not None else None
+            if sup is None or not sup.state.running:
+                try:
+                    self.settle_record(algo["id"])
+                except Exception as e:  # the record staying as it was is no reason to stop
+                    self.db.add_event("warn", f"could not update {algo['id']}'s last figures: {e}",
+                                      source="api", algo_id=algo["id"])
         return added
+
+    def settle_record(self, algo_id: str) -> bool:
+        """Bring a stopped program's last figures past the sale it made on the way out.
+
+        Stop while holding sells, books the trade and exits — with no status
+        written after the sale. The record kept showing the trade open and the
+        equity at Angel's last mark of it (21 Oct 2026: Rs 55,632.79 and "in a
+        position", where the sale left Rs 55,066.78 and flat). The trade log has
+        the sale; the record takes its figures, and the day's last equity point
+        follows. Returns True when the record was updated.
+        """
+        key = snapshot_key(algo_id)
+        snap = self.db.kv_get(key, None)
+        pos = snap.get("position") if isinstance(snap, dict) else None
+        if not isinstance(pos, dict):
+            return False
+        opened = _minute(pos.get("opened_ts"))
+        mode = (snap.get("engine") or {}).get("mode")
+        trade = next((t for t in self.db.trades(limit=10, algo_id=algo_id)
+                      if t.get("exit_ts") and _minute(t.get("entry_ts")) == opened and opened
+                      and t.get("strike") == pos.get("strike") and (t.get("side") or "") == pos.get("side")
+                      and (mode is None or t.get("mode") == mode)), None)
+        acct = snap.get("account") or {}
+        start = acct.get("start_equity")
+        if trade is None or start is None:
+            return False
+        equity = trade.get("equity")
+        if equity is None:
+            if trade.get("net") is None:
+                return False
+            equity = start + (acct.get("realised_today") or 0.0) + trade["net"]
+        equity = round(float(equity), 2)
+        day = round(equity - start, 2)
+        realised = round((acct.get("realised_today") or 0.0) + (trade.get("gross") or 0.0), 2)
+        peak = max(acct.get("peak_equity") or 0.0, equity)
+        acct.update(
+            equity=equity, day_pl=day, day_pl_pct=round(100 * day / start, 2) if start else 0.0,
+            realised_today=realised,
+            realised_week=round((acct.get("realised_week") or 0.0) + (trade.get("net") or 0.0), 2),
+            peak_equity=peak, drawdown_pct=round(100 * (equity - peak) / peak, 2) if peak else 0.0,
+        )
+        m = acct.get("money")
+        if isinstance(m, dict):
+            rec = next((r for r in reversed(money_log(algo_id))
+                        if _minute(r.get("entry_ts")) == opened), None)
+            day_gross = (rec or {}).get("realised_gross_today")
+            day_gross = realised if day_gross is None else float(day_gross)
+            from_balance = bool(rec) and str(rec.get("charges_source") or "").startswith("Angel trading balance")
+            balance = (rec or {}).get("balance_after")
+            m.update(
+                day_gross=day_gross, realised_gross=day_gross,
+                charges=round(day_gross - day, 2), charges_estimated=not from_balance,
+                balance=float(balance) if balance is not None else equity,
+                equity=equity, day_net=day,
+            )
+        snap["position"] = None
+        snap["ts"] = _minute(trade["exit_ts"]).replace(" ", "T") + ":00"
+        self.db.kv_set(key, snap)
+        self.db.add_equity_sample(snap["ts"][:10], equity, realised, peak, day, algo_id=algo_id)
+        self.db.add_event(
+            "info", f"last figures brought past the sale of {pos.get('tsym') or 'the open trade'} "
+            f"at {_minute(trade['exit_ts'])[11:]}: equity Rs {equity:,.2f}, day {day:+,.2f}",
+            source="api", algo_id=algo_id,
+        )
+        return True
 
     def publish_status(self, algo_id: str, sup) -> bool:
         """Turn the program's own status file into the desk's snapshot.

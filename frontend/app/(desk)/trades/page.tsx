@@ -8,6 +8,31 @@ import { apiGet } from "@/lib/client-api";
 import { minutes, money, percent, signedMoney, signedPercent, tradeTime } from "@/lib/format";
 import type { DailyEquityPoint, TradeRow, TradeStats } from "@/lib/types";
 
+/**
+ * The chart's change over its range, split into what trades made and what
+ * moved in or out of the account. Its first point is the first session's
+ * close, so that session's trades sit before the range.
+ */
+function balanceSplit(daily: DailyEquityPoint[], trades: TradeRow[]) {
+  if (daily.length < 2) return null;
+  const first = daily[0];
+  const last = daily[daily.length - 1];
+  const closed = trades.filter((t) => t.mode === "live" && t.exit_ts);
+  const net = (t: TradeRow) => t.net_angel ?? t.net ?? 0;
+  const inRange = closed.filter((t) => t.session_date > first.session_date && t.session_date <= last.session_date);
+  const traded = inRange.reduce((sum, t) => sum + net(t), 0);
+  const change = last.equity - first.equity;
+  return {
+    from: first.session_date,
+    to: last.session_date,
+    change,
+    traded,
+    moved: change - traded,
+    n: inRange.length,
+    before: closed.filter((t) => t.session_date <= first.session_date).reduce((sum, t) => sum + net(t), 0),
+  };
+}
+
 export default function BlotterPage() {
   const [trades, setTrades] = useState<TradeRow[]>([]);
   const [stats, setStats] = useState<TradeStats | null>(null);
@@ -43,6 +68,7 @@ export default function BlotterPage() {
     secondary: d.day_pl ?? undefined,
   }));
   const provisionalDay = daily.find((d) => d.source === "recorded");
+  const split = balanceSplit(daily, trades);
 
   return (
     <div className="space-y-5">
@@ -82,6 +108,21 @@ export default function BlotterPage() {
           emptyMessage="Two or more completed sessions are needed to draw this."
           xLabel={(p) => p.label}
         />
+        {split && (
+          <p className="mt-3 text-2xs text-ink-muted">
+            {/* The chart's change is the balance's, so it carries money paid in
+                and taken out; the Net P&L above is trades alone, from the first
+                one. The two only meet once that is split out. */}
+            Balance from the {split.from} close to {split.to}:{" "}
+            <span className="text-ink">{signedMoney(split.change)}</span> ={" "}
+            {split.n} trade{split.n === 1 ? "" : "s"}{" "}
+            <span className="text-ink">{signedMoney(split.traded)}</span> + paid in or taken out
+            (and any charge outside a trade){" "}
+            <span className="text-ink">{signedMoney(split.moved)}</span>.
+            {Math.abs(split.before) >= 0.005 &&
+              ` Net P&L above also counts ${signedMoney(split.before)} from trades on or before ${split.from}.`}
+          </p>
+        )}
       </Card>
 
       <Card
