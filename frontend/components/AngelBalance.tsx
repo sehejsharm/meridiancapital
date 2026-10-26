@@ -18,6 +18,13 @@ export function AngelBalance({
   position?: Position | null;
 }) {
   const paid = position ? Math.round(position.entry_premium * position.qty * 100) / 100 : null;
+  // Whatever moved Angel's balance besides the day's trades. Without this line the
+  // card stopped adding up whenever Angel took a fee or paid out after the open, and
+  // the balance and the desk's equity disagreed with nothing on screen saying why.
+  const other =
+    !position && !m.charges_estimated && m.balance != null && m.opening_balance != null
+      ? Math.round((m.balance - (m.opening_balance + (m.added ?? 0) + (m.realised_gross ?? 0) - Math.abs(m.charges ?? 0))) * 100) / 100
+      : null;
   const rows: { label: string; value: string; hint?: string; strong?: boolean; tone?: string }[] = [
     { label: "Opening ledger balance", value: money(m.opening_balance) },
     ...(m.added != null && Math.abs(m.added) >= 0.005
@@ -48,6 +55,14 @@ export function AngelBalance({
       hint: m.charges_estimated ? undefined : "What the balance went down by: opening + premium − balance",
       tone: "text-loss",
     },
+    ...(other != null && Math.abs(other) >= 0.5
+      ? [{
+          label: other < 0 ? "Taken by Angel outside a trade" : "Credited by Angel outside a trade",
+          value: signedMoney(other),
+          hint: "Not from a trade: a fee, a payout or a deposit Angel booked after the open. Not counted as P&L, so the desk's equity leaves it out",
+          tone: "text-ink",
+        }]
+      : []),
     { label: "Trading balance", value: money(m.balance), strong: true },
   ];
   const rms = Object.entries(m.rms ?? {}).filter(([, v]) => typeof v === "number" && Number.isFinite(v));

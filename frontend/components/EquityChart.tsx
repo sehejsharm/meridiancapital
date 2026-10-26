@@ -15,6 +15,25 @@ const VB_H = 300;
 const HEIGHT = 240;
 const GUTTER = 76; // right-hand room for the value axis, in CSS pixels
 
+const WHOLE_RUPEES = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+
+/**
+ * Round gridline values (1, 2, 2.5 or 5 times a power of ten) inside [min, max].
+ * Lines at fifths of the range put a figure such as ₹49,784.63 beside the last
+ * point, and it was read as the balance.
+ */
+function niceTicks(min: number, max: number, target = 4): number[] {
+  const span = max - min;
+  if (!(span > 0) || !Number.isFinite(span)) return [];
+  const pow = 10 ** Math.floor(Math.log10(span / target));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * pow).find((s) => span / s <= target + 1) ?? 10 * pow;
+  const out: number[] = [];
+  // Whole multiples of the step, never accumulated (no 0.1 + 0.2 drift), and +0
+  // so a gridline at zero never prints as "-₹0".
+  for (let k = Math.ceil(min / step); k * step <= max; k++) out.push(k * step + 0);
+  return out;
+}
+
 /**
  * Single-series equity curve.
  *
@@ -57,7 +76,7 @@ export function EquityChart({
 
     const line = points.map((p, i) => `${i === 0 ? "M" : "L"} ${vx(i)} ${vy(p.value)}`).join(" ");
     const area = `${line} L ${VB_W} ${VB_H} L 0 ${VB_H} Z`;
-    const ticks = Array.from({ length: 4 }, (_, i) => min + ((max - min) * (i + 1)) / 5);
+    const ticks = niceTicks(min, max);
 
     return { fx, fy, vy, line, area, ticks };
   }, [points, baseline]);
@@ -199,17 +218,26 @@ export function EquityChart({
           )}
         </div>
 
-        {/* Value axis, in the reserved gutter. */}
+        {/* Value axis, in the reserved gutter: round gridline values, and the
+            latest point's own figure beside it so the two are never confused. */}
         <div className="pointer-events-none absolute inset-y-0 right-0" style={{ width: GUTTER }}>
-          {ticks.map((value) => (
-            <span
-              key={value}
-              className="absolute left-2 -translate-y-1/2 whitespace-nowrap text-[10px] tabular-nums text-ink-muted"
-              style={{ top: pct(fy(value)) }}
-            >
-              {money(value)}
-            </span>
-          ))}
+          {ticks
+            .filter((value) => Math.abs(fy(value) - fy(last.value)) > 0.08)
+            .map((value) => (
+              <span
+                key={value}
+                className="absolute left-2 -translate-y-1/2 whitespace-nowrap text-[10px] tabular-nums text-ink-muted"
+                style={{ top: pct(fy(value)) }}
+              >
+                {WHOLE_RUPEES.format(value)}
+              </span>
+            ))}
+          <span
+            className="absolute left-2 -translate-y-1/2 whitespace-nowrap text-[10px] font-semibold tabular-nums text-ink"
+            style={{ top: pct(fy(last.value)) }}
+          >
+            {money(last.value)}
+          </span>
         </div>
       </div>
 
