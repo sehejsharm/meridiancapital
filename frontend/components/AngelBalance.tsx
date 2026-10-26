@@ -57,9 +57,9 @@ export function AngelBalance({
     },
     ...(other != null && Math.abs(other) >= 0.5
       ? [{
-          label: other < 0 ? "Taken by Angel outside a trade" : "Credited by Angel outside a trade",
+          label: other < 0 ? "Money out after the open, not a trade" : "Money in after the open, not a trade",
           value: signedMoney(other),
-          hint: "Not from a trade: a fee, a payout or a deposit Angel booked after the open. Not counted as P&L, so the desk's equity leaves it out",
+          hint: "A fee, a payout or a deposit Angel booked after the open. Money in/out, never trading P&L",
           tone: "text-ink",
         }]
       : []),

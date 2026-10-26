@@ -429,6 +429,8 @@ export interface AlgoLast {
     peak_equity: number | null;
     realised_today: number | null;
     realised_week: number | null;
+    /** Angel's own figures (v8 programs), so the card names its numbers as the deck does. */
+    money?: AngelMoney | null;
   } | null;
   position: {
     tsym: string | null;
@@ -518,7 +520,12 @@ export interface ReportSummary {
   largest_loss: number;
   average_trade: number;
   total_charges: number;
-  max_drawdown_pct: number;
+  /** The worst fall of cumulative trading P&L from its high, in rupees (trading only:
+   *  never money taken out of the account). */
+  max_drawdown_rs?: number;
+  /** That fall as a share of the balance at its high; null without an opening balance. */
+  max_drawdown_pct: number | null;
+  start_balance?: number | null;
   errors: number;
 }
 
@@ -531,6 +538,8 @@ export interface ReportPayload {
   summary: ReportSummary;
   trades: TradeRow[];
   equity: EquityPoint[];
+  /** Cumulative trading P&L after each closed trade; ends at the period's net. */
+  pnl_curve?: EquityPoint[];
   events: EventRow[];
 }
 

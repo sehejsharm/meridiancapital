@@ -360,8 +360,10 @@ def compact_snapshot(snap: dict | None) -> dict | None:
         "pid": eng.get("pid"),
         "mode": eng.get("mode"),
         "phase": eng.get("phase"),
-        "account": {k: acct.get(k) for k in ("equity", "day_pl", "day_pl_pct", "peak_equity",
-                                              "realised_today", "realised_week")} if acct else None,
+        "account": {**{k: acct.get(k) for k in ("equity", "day_pl", "day_pl_pct", "peak_equity",
+                                                "realised_today", "realised_week")},
+                    # Angel's own figures, so the card names its numbers as the deck does.
+                    "money": acct.get("money")} if acct else None,
         "position": {k: pos.get(k) for k in ("tsym", "side", "strike", "lots", "qty", "entry_premium",
                                              "live_premium", "gain_pct", "unrealised")} if pos else None,
     }

@@ -71,13 +71,28 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
     curve_algo = algo_id or ledger.live_algo(db)
     equity = db.equity_curve(limit=200_000, algo_id=curve_algo, date_from=start, date_to=end)
 
-    peak = 0.0
-    max_dd = 0.0
-    for point in equity:
-        value = float(point.get("equity") or 0.0)
-        peak = max(peak, value)
-        if peak > 0:
-            max_dd = max(max_dd, (peak - value) / peak)
+    # Drawdown is measured on trading alone: the balance at the period's first
+    # open plus each closed trade's net, in the order they closed. Measured on
+    # the raw balance it counted money taken out of the account as a loss (a
+    # "92.54%" drawdown on the day funds left), and an open trade's paper high
+    # as a peak.
+    start_balance = None
+    if curve_algo:
+        opens = ledger.openings(db, curve_algo)
+        first_day = next((d for d in sorted(opens) if start <= d <= end), None)
+        if first_day is not None and opens[first_day] is not None:
+            start_balance = float(opens[first_day])
+    in_order = sorted(closed, key=lambda t: (t.get("exit_ts") or "").replace(" ", "T"))
+    cum, high, max_dd_rs, max_dd_pct = 0.0, 0.0, 0.0, 0.0
+    pnl_curve = []
+    for t in in_order:
+        cum += float(t.get("net") or 0.0)
+        high = max(high, cum)
+        max_dd_rs = max(max_dd_rs, high - cum)
+        if start_balance:
+            max_dd_pct = max(max_dd_pct, (high - cum) / (start_balance + high))
+        pnl_curve.append({"ts": (t.get("exit_ts") or "").replace(" ", "T"), "equity": round(cum, 2),
+                          "day_pl": round(float(t.get("net") or 0.0), 2), "realised_today": None, "peak_equity": None})
 
     events = [
         e for e in db.events(limit=2000, algo_id=algo_id)
@@ -100,7 +115,9 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
         "largest_loss": round(min(losses), 2) if losses else 0.0,
         "average_trade": round(sum(nets) / len(nets), 2) if nets else 0.0,
         "total_charges": round(sum(float(t.get("charges") or 0.0) for t in closed), 2),
-        "max_drawdown_pct": round(100.0 * max_dd, 2),
+        "max_drawdown_rs": round(max_dd_rs, 2),
+        "max_drawdown_pct": round(100.0 * max_dd_pct, 2) if start_balance else None,
+        "start_balance": round(start_balance, 2) if start_balance else None,
         "errors": sum(1 for e in events if e.get("level") in ("error", "critical")),
     }
 
@@ -118,6 +135,9 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
         "summary": summary,
         "trades": trades,
         "equity": equity,
+        # Cumulative trading P&L after each closed trade: the curve the page draws,
+        # so it ends exactly at the period's net.
+        "pnl_curve": pnl_curve,
         "events": events,
     }
 
@@ -194,6 +214,11 @@ def _money(v) -> str:
 def _report_lines(payload: dict) -> list[str]:
     s = payload["summary"]
     profit_factor = f"{s['profit_factor']:.3f}" if s["profit_factor"] is not None else "n/a"
+    # Trading alone: the fall of cumulative trade P&L from its high, never money
+    # taken out of the account.
+    drawdown = _money(-s["max_drawdown_rs"]) if s.get("max_drawdown_rs") else _money(0)
+    if s.get("max_drawdown_pct") is not None:
+        drawdown += f" ({s['max_drawdown_pct']:.2f}%)"
     lines = [
         payload["title"],
         "=" * 92,
@@ -206,10 +231,10 @@ def _report_lines(payload: dict) -> list[str]:
         "-" * 92,
         f"Trades closed   {s['trades']:>10}     Win rate      {s['win_rate_pct']:>10.2f} %",
         f"Wins            {s['wins']:>10}     Losses        {s['losses']:>10}",
-        f"Net P&L         {_money(s['net_pnl']):>10}     Avg trade     {_money(s['average_trade']):>10}",
+        f"Trading P&L     {_money(s['net_pnl']):>10}     Avg trade     {_money(s['average_trade']):>10}",
         f"Gross profit    {_money(s['gross_profit']):>10}     Gross loss    {_money(s['gross_loss']):>10}",
         f"Largest win     {_money(s['largest_win']):>10}     Largest loss  {_money(s['largest_loss']):>10}",
-        f"Profit factor   {profit_factor:>10}     Max drawdown  {s['max_drawdown_pct']:>10.2f} %",
+        f"Profit factor   {profit_factor:>10}     Max drawdown  {drawdown:>10}",
         f"Charges paid    {_money(s['total_charges']):>10}     Errors logged {s['errors']:>10}",
         "",
         "TRADES",

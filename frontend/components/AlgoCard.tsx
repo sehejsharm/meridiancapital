@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Badge, Breakable, Button } from "@/components/ui";
 import { duration, istTime, money, signedMoney, pnlClass } from "@/lib/format";
 import { useLiveFeed } from "@/lib/LiveContext";
+import { accountFigures, valueLabel } from "@/lib/account";
 import { recordedAt } from "@/lib/recorded";
 import type { Algo, AlgoLast, AlgoLine, Snapshot } from "@/lib/types";
 
@@ -45,9 +46,15 @@ export function AlgoCard({
   const starting = running && !snapshot && (!recorded || recorded.pid !== algo.runtime.pid);
   const account = starting ? null : (snapshot?.account ?? recorded?.account ?? null);
   const position = starting ? null : snapshot ? snapshot.position : (recorded?.position ?? null);
-  // What it last said: while it starts up, and after it stops — the login,
-  // the balance read, or the reason it gave up.
-  const lines = !compact && !snapshot && (starting || !running) ? (algo.recent ?? []) : [];
+  const figures = accountFigures(account, Boolean(position));
+  // What it last said, while it starts up and when it stopped because something
+  // went wrong. A normal stop ends with the program's own end-of-day printout,
+  // whose "equity" and "drawdown from peak" are measured differently from the
+  // desk's figures; showing it beside them was the source of contradictions.
+  const recent = algo.recent ?? [];
+  const failed = recent.some((l) => l.level === "error" || l.level === "critical");
+  const lines = !compact && !snapshot && (starting || (!running && failed)) ? recent : [];
+  const stoppedClean = !compact && !snapshot && !running && !failed && recent.length > 0 ? recent.at(-1) : null;
 
   return (
     <article
@@ -95,11 +102,11 @@ export function AlgoCard({
             wide === "md" ? "md:grid-cols-4" : wide === "xl" ? "xl:grid-cols-4" : ""
           }`}
         >
-          <Figure label="Equity" value={account?.equity != null ? money(account.equity) : "—"} />
+          <Figure label={valueLabel(figures)} value={figures.value != null ? money(figures.value) : "—"} />
           <Figure
-            label="Day P&L"
-            value={account?.day_pl != null ? signedMoney(account.day_pl) : "—"}
-            tone={account?.day_pl != null ? pnlClass(account.day_pl) : undefined}
+            label="Day's trading P&L"
+            value={figures.trading != null ? signedMoney(figures.trading) : "—"}
+            tone={figures.trading != null ? pnlClass(figures.trading) : undefined}
           />
           <Figure
             label="Position"
@@ -140,6 +147,11 @@ export function AlgoCard({
       )}
 
       {lines.length > 0 && <RecentLines lines={lines} starting={starting} />}
+      {stoppedClean && (
+        <p className="border-t border-hairline px-4 py-2.5 text-2xs text-ink-muted">
+          Stopped normally at {istTime(stoppedClean.ts).slice(0, 5)} IST.
+        </p>
+      )}
 
       <footer className="mt-auto flex items-center justify-between gap-3 border-t border-hairline px-4 py-2.5">
         <span className="min-w-0 text-2xs text-ink-muted">

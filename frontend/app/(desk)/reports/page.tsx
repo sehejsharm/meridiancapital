@@ -134,7 +134,7 @@ export default function ReportsPage() {
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
-              label={s.scope ? `Net P&L, ${s.scope}` : "Net P&L"}
+              label={s.scope ? `Trading P&L, ${s.scope}` : "Trading P&L"}
               value={signedMoney(s.net_pnl)}
               tone={s.net_pnl > 0 ? "profit" : s.net_pnl < 0 ? "loss" : "neutral"}
               hint={
@@ -148,7 +148,14 @@ export default function ReportsPage() {
               value={s.profit_factor === null ? "n/a" : s.profit_factor.toFixed(2)}
               hint={`${money(s.gross_profit)} vs ${money(s.gross_loss)}`}
             />
-            <StatTile label="Max drawdown" value={`${s.max_drawdown_pct.toFixed(2)}%`} hint={`${s.errors} errors logged`} />
+            <StatTile
+              label="Max drawdown, trading"
+              value={s.max_drawdown_rs != null ? signedMoney(-s.max_drawdown_rs) : "—"}
+              hint={
+                (s.max_drawdown_pct != null ? `${s.max_drawdown_pct.toFixed(2)}% from its high · ` : "") +
+                `${s.errors} errors logged`
+              }
+            />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -158,8 +165,8 @@ export default function ReportsPage() {
             <StatTile label="Charges paid" value={money(s.total_charges)} hint={`${s.open_trades} still open`} />
           </div>
 
-          <Card title="Equity and fills" subtitle="The period's curve with every entry and exit marked">
-            <LazyMarkedChart equity={report.equity} trades={report.trades} height={300} />
+          <Card title="Trading P&L over the period" subtitle="After charges, added up trade by trade, with every entry and exit marked">
+            <LazyMarkedChart equity={report.pnl_curve ?? report.equity} trades={report.trades} height={300} />
           </Card>
 
           <Card title="Blotter" subtitle={`${report.trades.length} trades in the period`}>

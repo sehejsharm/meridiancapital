@@ -75,7 +75,7 @@ export default function BlotterPage() {
       {stats && (
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatTile
-            label="Net P&L, real money"
+            label="Trading P&L, all real-money trades"
             value={signedMoney(stats.net)}
             delta={{ text: `${signedMoney(stats.gross)} before charges`, value: stats.gross }}
             hint={`${money(stats.charges)} in charges · ${stats.reconciled ?? 0} of ${stats.n} matched to Angel`}
@@ -96,7 +96,7 @@ export default function BlotterPage() {
       )}
 
       <Card
-        title="Daily balance at Angel"
+        title="Angel balance at each close"
         subtitle={
           provisionalDay
             ? `Each session's closing balance: the next morning's opening ledger balance. ${provisionalDay.session_date} is provisional until tomorrow's opening is read.`
@@ -113,14 +113,14 @@ export default function BlotterPage() {
             {/* The chart's change is the balance's, so it carries money paid in
                 and taken out; the Net P&L above is trades alone, from the first
                 one. The two only meet once that is split out. */}
-            Balance from the {split.from} close to {split.to}:{" "}
-            <span className="text-ink">{signedMoney(split.change)}</span> ={" "}
+            Angel balance from the {split.from} close to {split.to}:{" "}
+            <span className="text-ink">{signedMoney(split.change)}</span> = trading P&amp;L of{" "}
             {split.n} trade{split.n === 1 ? "" : "s"}{" "}
-            <span className="text-ink">{signedMoney(split.traded)}</span> + paid in or taken out
-            (and any charge outside a trade){" "}
+            <span className="text-ink">{signedMoney(split.traded)}</span> + money in/out (deposits, withdrawals,
+            fees){" "}
             <span className="text-ink">{signedMoney(split.moved)}</span>.
             {Math.abs(split.before) >= 0.005 &&
-              ` Net P&L above also counts ${signedMoney(split.before)} from trades on or before ${split.from}.`}
+              ` The trading P&L above also counts ${signedMoney(split.before)} from trades on or before ${split.from}.`}
           </p>
         )}
       </Card>

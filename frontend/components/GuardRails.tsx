@@ -51,7 +51,7 @@ export function GuardRails({
           display={`${money(guards.weekly_loss_used)} / ${money(-guards.weekly_loss_limit)}`}
         />
         <Meter
-          label="Drawdown from peak"
+          label="Drawdown halt (from the bot's best equity, open trades included)"
           used={drawdownPct}
           limit={guards.drawdown_stop}
           display={`${percent(drawdownPct)} / −${percent(guards.drawdown_stop, 0)}`}

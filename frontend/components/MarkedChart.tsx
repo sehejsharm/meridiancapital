@@ -170,8 +170,11 @@ export function MarkedChart({
   trades,
   position = null,
   height = 300,
+  measure = "equity",
 }: {
   equity: EquityPoint[];
+  /** What the line shows: each sample's equity, or the day's trading P&L. */
+  measure?: "equity" | "day_pl";
   trades: TradeRow[];
   /** The open position, from the live snapshot: its BUY shows the moment it fills,
    *  not only once the trade has closed and reached the blotter. */
@@ -254,7 +257,8 @@ export function MarkedChart({
     const byTime = new Map<number, number>();
     for (const point of equity) {
       const t = toSeconds(point.ts);
-      if (t !== null) byTime.set(t, point.equity);
+      const v = measure === "day_pl" ? point.day_pl : point.equity;
+      if (t !== null && v != null) byTime.set(t, v);
     }
     const data = Array.from(byTime.entries())
       .sort((a, b) => a[0] - b[0])
@@ -352,7 +356,7 @@ export function MarkedChart({
       }
     }
     setLayoutTick((k) => k + 1);
-  }, [equity, trades, positionKey, ready]);
+  }, [equity, trades, positionKey, ready, measure]);
 
   // Labels follow the chart: on a scroll, a zoom or a resize.
   useEffect(() => {

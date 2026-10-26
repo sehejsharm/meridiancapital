@@ -208,14 +208,14 @@ export default function JournalPage() {
                   value={signedMoney(report.net)}
                   tone={report.net >= 0 ? "text-profit" : "text-loss"}
                 />
-                <Field label="Start equity" value={money(report.start_equity)} />
-                <Field label="End equity" value={money(report.end_equity)} />
+                <Field label="Opening balance" value={money(report.start_equity)} />
+                <Field label="Closing value" value={money(report.end_equity)} />
                 <Field
-                  label="Day P&L"
+                  label="Day's trading P&L"
                   value={signedMoney(report.day_pl)}
                   tone={report.day_pl >= 0 ? "text-profit" : "text-loss"}
                 />
-                <Field label="Drawdown from peak" value={percent(report.drawdown_pct)} />
+                <Field label="Drawdown halt meter" value={percent(report.drawdown_pct)} />
                 <Field label="Average hold" value={duration(report.avg_hold_min * 60)} />
               </dl>
             )}

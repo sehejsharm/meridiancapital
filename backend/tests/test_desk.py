@@ -265,7 +265,14 @@ def test_report_summary_maths(client, auth, seeded):
     assert s["trades"] == 4 and s["wins"] == 2 and s["losses"] == 2
     assert s["net_pnl"] == pytest.approx(1600.0)          # 2*2000 - 2*1200
     assert s["profit_factor"] == pytest.approx(4000 / 2400, rel=1e-3)
-    assert s["max_drawdown_pct"] == pytest.approx(8.0)     # 50000 -> 46000
+    # Measured on trading alone: -1200, +2000, -1200, +2000 in the order they
+    # closed falls 1,200 from its high twice; 2.4% of the 50,000 it opened with.
+    assert s["max_drawdown_rs"] == pytest.approx(1200.0)
+    assert s["max_drawdown_pct"] == pytest.approx(2.4)
+    assert s["start_balance"] == pytest.approx(50000.0)
+    curve = body["pnl_curve"]
+    assert [p["equity"] for p in curve] == [-1200.0, 800.0, -400.0, 1600.0]
+    assert curve[-1]["equity"] == pytest.approx(s["net_pnl"]), "the curve ends at the period's trading P&L"
     assert s["errors"] == 1
 
 

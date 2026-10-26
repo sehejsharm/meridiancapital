@@ -18,6 +18,7 @@ import { NiftyChart } from "@/components/NiftyChart";
 import { OptionChain } from "@/components/OptionChain";
 import { Badge, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
+import { accountFigures, valueLabel, type AccountFigures } from "@/lib/account";
 import { fetchAlgos } from "@/lib/algos";
 import { money, signedMoney } from "@/lib/format";
 import { useLinkView } from "@/lib/link";
@@ -32,6 +33,18 @@ import type { AlgoList, EquityPoint, TradeRow } from "@/lib/types";
  * card with room for its figures, several get a denser grid. A desk running six
  * strategies and a desk running one should not be read the same way.
  */
+
+/** How the headline figure is made up, in the desk's three words: the rule
+ *  opening + trading + in/out = balance holds to the paisa. */
+function breakdown(f: AccountFigures, asOf: string | null): string {
+  const parts: string[] = [];
+  if (f.opening != null) parts.push(`opening ${money(f.opening)}`);
+  if (f.trading != null) parts.push(`${signedMoney(f.trading)} trading`);
+  if (f.other != null && Math.abs(f.other) >= 0.005) parts.push(`${signedMoney(f.other)} money in/out`);
+  if (f.inTrade) parts.push("open trade at market");
+  if (asOf) parts.push(asOf);
+  return parts.join(" · ");
+}
 export default function DeckPage() {
   const { status, events } = useLiveFeed();
   // With nothing running this is the last snapshot any algorithm recorded;
@@ -119,6 +132,7 @@ export default function DeckPage() {
   const list = algos?.algos ?? [];
   const single = list.length <= 1;
   const account = snapshot?.account;
+  const figures = accountFigures(account, Boolean(snapshot?.position));
   const asOf = snapshot && !live ? `last recorded ${recordedAt(snapshot.ts)} IST` : null;
 
   return (
@@ -152,16 +166,26 @@ export default function DeckPage() {
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatTile
-          label="Equity"
-          value={account ? money(account.equity) : "—"}
-          hint={account ? (asOf ?? `peak ${money(account.peak_equity)}`) : undefined}
+          label={valueLabel(figures)}
+          value={account ? money(figures.value) : "—"}
+          hint={account ? breakdown(figures, asOf) : undefined}
           tone="brand"
         />
         <StatTile
-          label="Day P&L"
-          value={account ? signedMoney(account.day_pl) : "—"}
-          delta={account ? { text: `${account.day_pl_pct.toFixed(2)}%`, value: account.day_pl } : undefined}
-          hint={asOf && account ? `session of ${recordedAt(snapshot!.ts).split(" ").slice(0, -1).join(" ")}` : undefined}
+          label="Day's trading P&L"
+          value={account ? signedMoney(figures.trading) : "—"}
+          delta={
+            account && figures.trading != null && figures.opening
+              ? { text: `${((100 * figures.trading) / figures.opening).toFixed(2)}% of the opening balance`, value: figures.trading }
+              : undefined
+          }
+          hint={
+            account
+              ? [figures.charges != null ? `after ${money(figures.charges)} charges` : null,
+                 asOf ? `session of ${recordedAt(snapshot!.ts).split(" ").slice(0, -1).join(" ")}` : null]
+                  .filter(Boolean).join(" · ") || undefined
+              : undefined
+          }
         />
         <StatTile
           label="Engines running"
@@ -246,11 +270,11 @@ export default function DeckPage() {
           <OptionChain />
 
           <Card
-            title="Equity and fills"
+            title="Day's trading P&L"
             subtitle={
               equityDay?.recorded
-                ? `Last session, ${recordedAt(`${equityDay.date}T`).trim()} · every buy and sell marked`
-                : "Every buy marked as it fills, every sell with its result"
+                ? `Last session, ${recordedAt(`${equityDay.date}T`).trim()} · after charges · every buy and sell marked`
+                : "After charges, minute by minute · every buy marked as it fills, every sell with its result"
             }
           >
             <LazyMarkedChart
@@ -258,6 +282,7 @@ export default function DeckPage() {
               trades={trades}
               position={live ? (snapshot?.position ?? null) : null}
               height={280}
+              measure="day_pl"
             />
           </Card>
         </div>
