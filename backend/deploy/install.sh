@@ -30,6 +30,17 @@ warn() { printf '\033[1;33m[!] %s\033[0m\n' "$*"; }
 
 [[ $EUID -eq 0 ]] || { echo "Run with sudo." >&2; exit 1; }
 
+if [[ -z "$DASHBOARD_ORIGIN" && -f /etc/caddy/Caddyfile ]]; then
+    # An update run without the origin keeps the one already in force. It used to
+    # rewrite the Caddyfile with the template's placeholder, which 403'd the
+    # dashboard's live feed until the next run that named the origin.
+    kept="$(grep -m1 -oE 'not header Origin https://[^[:space:]]+' /etc/caddy/Caddyfile | awk '{print $4}' || true)"
+    if [[ -n "$kept" && "$kept" != "https://meridian.vercel.app" ]]; then
+        DASHBOARD_ORIGIN="$kept"
+        echo "Keeping the dashboard origin already in force: ${DASHBOARD_ORIGIN}"
+    fi
+fi
+
 log "System packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
