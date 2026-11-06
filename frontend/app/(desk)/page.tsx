@@ -16,6 +16,7 @@ import { StalenessMonitor } from "@/components/StalenessMonitor";
 import { TradingViewChart } from "@/components/TradingViewChart";
 import { NiftyChart } from "@/components/NiftyChart";
 import { OptionChain } from "@/components/OptionChain";
+import { ConfigDriftNotice } from "@/components/ProgramConfig";
 import { Badge, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
 import { accountFigures, valueLabel, type AccountFigures } from "@/lib/account";
@@ -146,6 +147,7 @@ export default function DeckPage() {
       />
 
       <HolidayNotice />
+      <ConfigDriftNotice />
       <StalenessMonitor />
       <NiftyTicker />
 

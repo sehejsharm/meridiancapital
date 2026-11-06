@@ -23,8 +23,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from app import program_config
 from app.deps import ctx
 from app.security import Principal, client_ip, require_auth
+from engine import config as C
 from engine import tuning
 from shared.db import K_TUNING
 
@@ -61,12 +63,23 @@ def _payload() -> dict:
         # up is staged rather than live.
         "pending_restart": bool(saved) and running,
         "confirm_phrase": RETUNE_PHRASE,
+        # Whose parameters these are. Only the built-in engine reads this form;
+        # an uploaded program carries its own constants (see /tuning/programs).
+        "applies_to": {"engine": "builtin", "name": C.BUILD_NAME, "version": C.BUILD_VERSION},
     }
 
 
 @router.get("")
 async def get_tuning() -> dict:
     return _payload()
+
+
+@router.get("/programs")
+async def program_configs() -> dict:
+    """Each uploaded program's configuration: what it logged at its last startup,
+    what its active code says, and where the two (or the built-in's) disagree."""
+    return {"programs": program_config.all_reports(ctx().db),
+            "builtin": {"name": C.BUILD_NAME, "version": C.BUILD_VERSION}}
 
 
 @router.post("")

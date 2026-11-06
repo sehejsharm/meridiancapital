@@ -318,6 +318,35 @@ export interface TuningPayload {
   engine_running: boolean;
   pending_restart: boolean;
   confirm_phrase: string;
+  /** Whose parameters these are: only the built-in engine reads this form. */
+  applies_to?: { engine: "builtin"; name: string; version: string };
+}
+
+/** One parameter of an uploaded program: what it logged at startup, what its code says. */
+export interface ProgramConfigRow {
+  key: string;
+  label: string;
+  kind: TuningKind;
+  running: number | string | null;
+  running_known: boolean;
+  code: number | string | null;
+  code_known: boolean;
+  builtin: number | string | null;
+  builtin_known: boolean;
+  /** The running process and its active code disagree. */
+  drift: boolean;
+  differs_from_builtin: boolean;
+}
+
+export interface ProgramConfigReport {
+  algo_id: string;
+  name: string;
+  mode: "paper" | "live" | null;
+  running: { logged_ts: string | null; event_id: number } | null;
+  code: { version: number | null; sha256: string } | null;
+  rows: ProgramConfigRow[];
+  drift: string[];
+  differs_from_builtin: string[];
 }
 
 // ── fleet ────────────────────────────────────────────────────────────────────

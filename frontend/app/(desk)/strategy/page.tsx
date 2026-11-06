@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ProgramConfigCard, useProgramConfigs } from "@/components/ProgramConfig";
 import { Badge, Button, Card } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
 import { useLiveFeed } from "@/lib/LiveContext";
@@ -45,6 +46,7 @@ export default function StrategyPage() {
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const configs = useProgramConfigs();
 
   const load = useCallback(async () => {
     try {
@@ -144,13 +146,24 @@ export default function StrategyPage() {
 
   return (
     <div className="space-y-5">
+      {/* Which engine this page describes. It used to call itself "the strategy" while the
+          program trading real money ran different numbers (6 Nov 2026: break-even 20% vs 25%,
+          trail 20% vs 35%, no take-profit vs 90 points). */}
       <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-xs text-warning">
-        <strong className="font-semibold">These numbers are the strategy.</strong> Every value
-        here was fixed by the backtest that produced this build&apos;s results. Changing any of
-        them means the engine is no longer running the configuration that was validated, and the
-        published figures no longer describe it. Changes are written to the audit log and take
-        effect the next time the engine starts — never under an open position.
+        <strong className="font-semibold">
+          The form below is the built-in engine&apos;s
+          {data.applies_to ? ` (${data.applies_to.name} · ${data.applies_to.version})` : ""}.
+        </strong>{" "}
+        Every value in it was fixed by the backtest that produced that build&apos;s results, and only the
+        built-in engine reads it: an uploaded program carries its own parameters in its code and never
+        sees this form. What each uploaded program is actually running is shown first, as it logged it
+        at startup. Changes here are written to the audit log and take effect the next time the built-in
+        engine starts — never under an open position.
       </div>
+
+      {configs?.programs.map((report) => (
+        <ProgramConfigCard key={report.algo_id} report={report} builtin={configs.builtin} />
+      ))}
 
       {notice && (
         <div
@@ -176,8 +189,8 @@ export default function StrategyPage() {
       <div className="flex flex-wrap items-center gap-3">
         <Badge tone={data.changed.length ? "warning" : "good"}>
           {data.changed.length
-            ? `${data.changed.length} overridden`
-            : "Backtested configuration"}
+            ? `Built-in engine: ${data.changed.length} overridden`
+            : "Built-in engine: backtested configuration"}
         </Badge>
         {data.changed.length > 0 && (
           <Button variant="ghost" onClick={reset} disabled={busy}>
