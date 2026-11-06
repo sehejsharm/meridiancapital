@@ -43,12 +43,15 @@ export function StatTile({
   delta,
   hint,
   tone = "neutral",
+  spark,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   delta?: { text: string; value: number };
   hint?: string;
   tone?: "neutral" | "brand" | "profit" | "loss";
+  /** The recent trend behind the number, drawn small under it. */
+  spark?: ReactNode;
 }) {
   return (
     <div className="min-w-0 rounded-lg border border-hairline bg-surface px-3 py-3 sm:px-4">
@@ -60,6 +63,7 @@ export function StatTile({
       >
         {value}
       </div>
+      {spark && <div className="mt-1.5">{spark}</div>}
       {delta && (
         <div className={`mt-1 text-xs font-medium tabular-nums ${pnlClass(delta.value)}`}>
           {delta.text}

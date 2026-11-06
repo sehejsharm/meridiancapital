@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { CommandPalette } from "@/components/CommandPalette";
 import { CrashLoopBanner } from "@/components/CrashLoopBanner";
 import { Wordmark } from "@/components/Logo";
 import {
@@ -71,6 +72,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <CrashLoopBanner />
+      <CommandPalette />
 
       <header className="pt-safe relative z-10 border-b border-hairline bg-surface/80 backdrop-blur">
         <div className="mx-auto flex max-w-[2200px] items-center gap-3 px-4 py-3 sm:px-6 xl:px-8">

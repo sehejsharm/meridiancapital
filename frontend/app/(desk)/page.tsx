@@ -17,6 +17,8 @@ import { TradingViewChart } from "@/components/TradingViewChart";
 import { NiftyChart } from "@/components/NiftyChart";
 import { OptionChain } from "@/components/OptionChain";
 import { ConfigDriftNotice } from "@/components/ProgramConfig";
+import { CountUpMoney } from "@/components/CountUp";
+import { Sparkline } from "@/components/Sparkline";
 import { Badge, Card, Empty, Pending, Skeleton, StatTile } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
 import { accountFigures, valueLabel, type AccountFigures } from "@/lib/account";
@@ -169,13 +171,21 @@ export default function DeckPage() {
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatTile
           label={valueLabel(figures)}
-          value={account ? money(figures.value) : "—"}
+          value={account ? <CountUpMoney value={figures.value} /> : "—"}
           hint={account ? breakdown(figures, asOf) : undefined}
           tone="brand"
+          spark={<Sparkline values={equity.map((p) => p.equity)} className="text-brand" label="Equity through the session" />}
         />
         <StatTile
           label="Day's trading P&L"
-          value={account ? signedMoney(figures.trading) : "—"}
+          value={account ? <CountUpMoney value={figures.trading} signed /> : "—"}
+          spark={
+            <Sparkline
+              values={equity.map((p) => p.day_pl ?? null)}
+              className={(figures.trading ?? 0) >= 0 ? "text-profit" : "text-loss"}
+              label="Day's P&L through the session"
+            />
+          }
           delta={
             account && figures.trading != null && figures.opening
               ? { text: `${((100 * figures.trading) / figures.opening).toFixed(2)}% of the opening balance`, value: figures.trading }
