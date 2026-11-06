@@ -64,6 +64,11 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      # P&L, reconciliation and strategy-config display: a silent regression
+      # there costs real money.
+      - name: Unit tests
+        run: npm test
+
       - name: Build
         run: npx next build
         env:
