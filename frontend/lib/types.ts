@@ -76,7 +76,20 @@ export interface Snapshot {
   };
 }
 
+/** IV and Greeks of the held contract at its live premium (a program's position). */
+export interface PositionGreeks {
+  iv: number;
+  delta: number;
+  gamma: number;
+  theta: number;
+  vega: number;
+  theta_position: number | null;
+  delta_position: number | null;
+  dte: number;
+}
+
 export interface Position {
+  greeks?: PositionGreeks | null;
   tsym: string;
   side: "CE" | "PE";
   strike: number;
@@ -521,6 +534,8 @@ export interface AlgoLast {
     live_premium: number | null;
     gain_pct: number | null;
     unrealised: number | null;
+    greeks?: PositionGreeks | null;
+    stop_price?: number | null;
   } | null;
 }
 

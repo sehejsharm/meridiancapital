@@ -332,3 +332,24 @@ def test_a_sale_on_the_way_out_moves_the_last_figures_past_it(tmp_db, tmp_path, 
     assert snap["ts"] == "2026-10-21T11:37:00"
     assert tmp_db.equity_curve(algo_id="og")[-1]["equity"] == 55066.78, "the day's last point follows"
     assert follower.settle_record("og") is False, "once"
+
+
+def test_an_open_position_carries_live_greeks_from_its_own_premium():
+    """The card showed only "Contract price" while a trade was open; the Greeks
+    lived in the option-chain card. They now ride with the position, solved
+    from the premium the program reads (no Angel request)."""
+    raw = {**IN_TRADE, "ts": "2026-11-06T12:30:00", "spot": 24520.0,
+           "position": {**IN_TRADE["position"], "right": "CE", "strike": 24500, "expiry": "2026-11-10",
+                        "entry": 150.0, "live_premium": 172.0, "qty": 65, "lots": 1}}
+    pos = program_snapshot(raw, name="og", mode="live", pid=4242)["position"]
+    g = pos["greeks"]
+    assert g is not None and 0.5 < g["delta"] < 0.75, "an in-the-money call"
+    assert 5 < g["iv"] < 60
+    assert g["theta"] < 0 and g["theta_position"] < 0, "time decay costs the holder"
+    assert g["dte"] == 4
+    assert pos["unrealised"] == round((172.0 - 150.0) * 65, 2)
+
+
+def test_greeks_are_absent_rather_than_wrong_without_a_premium():
+    raw = {**IN_TRADE, "position": {**IN_TRADE["position"], "live_premium": None}}
+    assert program_snapshot(raw, name="og", mode="live", pid=1)["position"]["greeks"] is None

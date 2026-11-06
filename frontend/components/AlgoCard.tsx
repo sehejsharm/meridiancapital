@@ -8,7 +8,7 @@ import { useLiveFeed } from "@/lib/LiveContext";
 import { accountFigures, valueLabel } from "@/lib/account";
 import { gateText } from "@/lib/gate";
 import { recordedAt } from "@/lib/recorded";
-import type { Algo, AlgoLast, AlgoLine, Snapshot } from "@/lib/types";
+import type { Algo, AlgoLast, AlgoLine, PositionGreeks, Snapshot } from "@/lib/types";
 
 /**
  * One algorithm on the deck.
@@ -120,16 +120,19 @@ export function AlgoCard({
             }
           />
           <Figure
-            label="Contract price"
+            label={position ? "Contract, live" : "Contract price"}
             value={
               position && (position.live_premium ?? position.entry_premium) != null
-                ? `₹${(position.live_premium ?? position.entry_premium)!.toFixed(2)}`
+                ? `₹${(position.live_premium ?? position.entry_premium)!.toFixed(2)}${
+                    position.gain_pct != null ? ` (${position.gain_pct >= 0 ? "+" : ""}${position.gain_pct.toFixed(1)}%)` : ""
+                  }`
                 : "—"
             }
             tone={
               position?.gain_pct != null ? pnlClass(position.gain_pct) : undefined
             }
           />
+          {position && <LiveContract position={position} />}
           {starting ? (
             <p className="col-span-full text-2xs text-ink-muted">
               Starting for {duration(algo.runtime.uptime_sec)} — no figures from this run yet
@@ -228,6 +231,43 @@ export function ModeBadge({ algo }: { algo: Pick<Algo, "mode" | "enabled" | "run
     <span title="Stopped. Press Start to run it; you will be asked paper or real money.">
       <Badge tone="neutral">Off</Badge>
     </span>
+  );
+}
+
+/**
+ * An open position's live mark-to-market and Greeks. The card used to show only
+ * "Contract price"; the Greeks lived in the option-chain card further down.
+ * They are solved on the server from the premium the program itself reads.
+ */
+function LiveContract({
+  position,
+}: {
+  position: { unrealised: number | null; entry_premium: number | null; greeks?: PositionGreeks | null };
+}) {
+  const g = position.greeks;
+  return (
+    <div className="col-span-full grid grid-cols-2 gap-x-4 gap-y-1 rounded-md border border-hairline bg-surface-raised px-3 py-2 text-2xs sm:grid-cols-4">
+      <span className="text-ink-muted">
+        Mark-to-market{" "}
+        <b className={`tabular-nums ${pnlClass(position.unrealised ?? 0)}`}>{signedMoney(position.unrealised)}</b>
+      </span>
+      <span className="text-ink-muted">
+        Paid <b className="tabular-nums text-ink">{position.entry_premium != null ? `₹${position.entry_premium.toFixed(2)}` : "—"}</b>
+      </span>
+      {g ? (
+        <>
+          <span className="text-ink-muted">
+            IV <b className="tabular-nums text-ink">{g.iv.toFixed(1)}%</b> · Δ <b className="tabular-nums text-ink">{g.delta.toFixed(2)}</b>
+          </span>
+          <span className="text-ink-muted" title="Theta: premium lost per calendar day; vega: per point of volatility">
+            Θ <b className="tabular-nums text-loss">{g.theta_position != null ? `${signedMoney(g.theta_position)}/day` : g.theta.toFixed(2)}</b> · vega{" "}
+            <b className="tabular-nums text-ink">{g.vega.toFixed(2)}</b>
+          </span>
+        </>
+      ) : (
+        <span className="col-span-2 text-ink-muted">Greeks need a live premium and the index</span>
+      )}
+    </div>
   );
 }
 

@@ -179,6 +179,32 @@ def _feed(raw: dict) -> dict | None:
     }
 
 
+def _greeks(live, spot, strike, expiry, side, ts, qty) -> dict | None:
+    """IV and Greeks of the held contract at its live premium, or None."""
+    from datetime import date
+
+    from engine import greeks as G
+
+    if not (live and spot and strike) or side not in ("CE", "PE"):
+        return None
+    try:
+        exp = date.fromisoformat(str(expiry)[:10])
+        now = datetime.fromisoformat(ts)
+    except ValueError:
+        return None
+    g = G.greeks(live, spot, float(strike), G.years_to_expiry(now, exp), side)
+    if g is None:
+        return None
+    return {
+        "iv": round(g.iv * 100, 2), "delta": round(g.delta, 3), "gamma": round(g.gamma, 5),
+        "theta": round(g.theta, 2), "vega": round(g.vega, 2),
+        # For the whole position, in rupees and index-point exposure.
+        "theta_position": round(g.theta * qty, 0) if qty else None,
+        "delta_position": round(g.delta * qty, 1) if qty else None,
+        "dte": (exp - now.date()).days,
+    }
+
+
 def _position(raw: dict, ts: str) -> dict | None:
     pos = raw.get("position")
     if not isinstance(pos, dict):
@@ -204,6 +230,9 @@ def _position(raw: dict, ts: str) -> dict | None:
     if spot_entry and spot:
         move = (spot - spot_entry) if side == "CE" else (spot_entry - spot)
     return {
+        # Live mark-to-market Greeks, solved from the premium the program itself
+        # reads (no Angel request): what the card shows beside the unrealised P&L.
+        "greeks": _greeks(live, spot, strike, pos.get("expiry"), side, ts, qty),
         "tsym": str(pos.get("tsym") or f"NIFTY {strike} {side}".strip()),
         "side": side,
         "strike": strike,
@@ -378,5 +407,6 @@ def compact_snapshot(snap: dict | None) -> dict | None:
                     # Angel's own figures, so the card names its numbers as the deck does.
                     "money": acct.get("money")} if acct else None,
         "position": {k: pos.get(k) for k in ("tsym", "side", "strike", "lots", "qty", "entry_premium",
-                                             "live_premium", "gain_pct", "unrealised")} if pos else None,
+                                             "live_premium", "gain_pct", "unrealised", "greeks",
+                                             "stop_price", "opened_ts")} if pos else None,
     }
