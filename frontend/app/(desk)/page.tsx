@@ -17,7 +17,7 @@ import { TradingViewChart } from "@/components/TradingViewChart";
 import { NiftyChart } from "@/components/NiftyChart";
 import { OptionChain } from "@/components/OptionChain";
 import { ConfigDriftNotice } from "@/components/ProgramConfig";
-import { Badge, Card, Empty, StatTile } from "@/components/ui";
+import { Badge, Card, Empty, Pending, Skeleton, StatTile } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
 import { accountFigures, valueLabel, type AccountFigures } from "@/lib/account";
 import { fetchAlgos } from "@/lib/algos";
@@ -210,12 +210,18 @@ export default function DeckPage() {
           <h2 id="fleet-heading" className="text-2xs font-semibold uppercase tracking-[0.16em] text-brand">
             Algorithms
           </h2>
-          <Badge tone={list.length ? "neutral" : "warning"}>
-            {list.length} registered
-          </Badge>
+          {algos ? (
+            <Badge tone={list.length ? "neutral" : "warning"}>
+              {list.length} registered
+            </Badge>
+          ) : (
+            <Pending width="5rem" />
+          )}
         </div>
 
-        {!list.length ? (
+        {!algos ? (
+          <Skeleton rows={4} className="rounded-lg border border-hairline bg-surface p-4" />
+        ) : !list.length ? (
           <Empty>No algorithms registered yet.</Empty>
         ) : (
           <div className={`grid gap-4 ${fleetColumns(list.length)}`}>

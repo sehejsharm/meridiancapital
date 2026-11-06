@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { EmergencyStop } from "@/components/EmergencyStop";
 import { RunModeDialog } from "@/components/RunModeDialog";
-import { Badge, Button, Card, Empty, Field } from "@/components/ui";
+import { Badge, Button, Card, Empty, Field, Pending } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { appliesTo, controlTargets, unreachedRunning } from "@/lib/controlTargets";
 import { istDateTime } from "@/lib/format";
@@ -94,16 +94,22 @@ export default function ControlsPage() {
           title="Built-in engine"
           subtitle="Ganesh Kavach 50K. Uploaded algorithms are started from the deck."
           action={
-            <Badge tone={live ? "critical" : running ? "good" : "neutral"} dot={running}>
-              {live ? "Real money" : running ? "Paper" : "Stopped"}
-            </Badge>
+            !status ? (
+              <Pending width="4.5rem" />
+            ) : (
+              <Badge tone={live ? "critical" : running ? "good" : "neutral"} dot={running}>
+                {live ? "Real money" : running ? "Paper" : "Stopped"}
+              </Badge>
+            )
           }
         >
           <dl className="divide-y divide-hairline">
             <Field
               label="Trading"
               value={
-                !running
+                !status
+                  ? <Pending width="8rem" />
+                  : !running
                   ? "Off — you pick paper or real money when you start it"
                   : live
                     ? "Real money — orders go to Angel One"
@@ -114,9 +120,9 @@ export default function ControlsPage() {
             <Field label="Process id" value={status?.engine.pid ?? "—"} />
             <Field
               label="Stopped by operator"
-              value={schedule?.manual_override ? "Yes — automation will not restart it" : "No"}
+              value={!schedule ? <Pending /> : schedule.manual_override ? "Yes — automation will not restart it" : "No"}
             />
-            <Field label="Restarts this session" value={status?.engine.restarts_this_session ?? 0} />
+            <Field label="Restarts this session" value={!status ? <Pending /> : (status.engine.restarts_this_session ?? 0)} />
             {status?.engine.last_stop_reason && (
               <Field label="Last stop" value={status.engine.last_stop_reason} mono={false} />
             )}
@@ -174,23 +180,29 @@ export default function ControlsPage() {
           title="Automation"
           subtitle="Master switch. When armed, every algorithm you have started comes up at 09:05 and stops at 15:25 IST on NSE trading days; when disarmed, nothing starts itself."
           action={
-            <Badge tone={schedule?.enabled ? "good" : "warning"}>
-              {schedule?.enabled ? "Armed" : "Disarmed"}
-            </Badge>
+            !schedule ? (
+              <Pending width="4.5rem" />
+            ) : (
+              <Badge tone={schedule.enabled ? "good" : "warning"}>
+                {schedule.enabled ? "Armed" : "Disarmed"}
+              </Badge>
+            )
           }
         >
           <dl className="divide-y divide-hairline">
             <Field
               label="Today is a trading day"
               value={
-                schedule?.is_trading_day
-                  ? "Yes"
-                  : schedule?.closures?.today
-                    ? `No — ${schedule.closures.today.label}`
-                    : "No"
+                !schedule
+                  ? <Pending />
+                  : schedule.is_trading_day
+                    ? "Yes"
+                    : schedule.closures?.today
+                      ? `No — ${schedule.closures.today.label}`
+                      : "No"
               }
             />
-            <Field label="Inside session window" value={schedule?.in_session_window ? "Yes" : "No"} />
+            <Field label="Inside session window" value={!schedule ? <Pending /> : schedule.in_session_window ? "Yes" : "No"} />
             <Field
               label="Next transition"
               value={
@@ -206,7 +218,7 @@ export default function ControlsPage() {
           <div className="mt-4 flex gap-2">
             <Button
               variant={schedule?.enabled ? "default" : "primary"}
-              disabled={busy !== null}
+              disabled={busy !== null || !schedule}
               onClick={() =>
                 void run(
                   "schedule",

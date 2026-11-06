@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ModeBadge } from "@/components/AlgoCard";
 import { GateReport } from "@/components/GateReport";
-import { Badge, Breakable, Button, Card, Empty } from "@/components/ui";
+import { Badge, Breakable, Button, Card, Empty, Skeleton } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { fetchAlgos } from "@/lib/algos";
 import { istDateTime } from "@/lib/format";
@@ -151,8 +151,10 @@ export default function AlgosPage() {
         </div>
       )}
 
-      <Card title="Registered algorithms" subtitle={`${data?.algos.length ?? 0} in the registry`}>
-        {!data?.algos.length ? (
+      <Card title="Registered algorithms" subtitle={data ? `${data.algos.length} in the registry` : "Reading the registry…"}>
+        {!data ? (
+          <Skeleton rows={3} />
+        ) : !data.algos.length ? (
           <Empty>Nothing registered yet.</Empty>
         ) : (
           <>

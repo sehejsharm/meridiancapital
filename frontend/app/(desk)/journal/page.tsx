@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { EventFeed } from "@/components/EventFeed";
 import { LogDownload } from "@/components/LogDownload";
-import { Badge, Card, Empty, Field } from "@/components/ui";
+import { Badge, Card, Empty, Field, Skeleton } from "@/components/ui";
 import { fetchAlgos } from "@/lib/algos";
 import { apiGet } from "@/lib/client-api";
 import { duration, istDateTime, money, percent, signedMoney } from "@/lib/format";
@@ -69,9 +69,11 @@ export default function JournalPage() {
   const [algos, setAlgos] = useState<Algo[]>([]);
   const [scope, setScopeState] = useState<string>(ALL);
   const [scopedEvents, setScopedEvents] = useState<EventRow[]>([]);
-  const [report, setReport] = useState<EodReport | null>(null);
-  const [runs, setRuns] = useState<RunRow[]>([]);
-  const [commands, setCommands] = useState<CommandRow[]>([]);
+  // undefined: not read yet. null: read, and there is none. Only the second
+  // may say "No session has been closed out yet".
+  const [report, setReport] = useState<EodReport | null | undefined>(undefined);
+  const [runs, setRuns] = useState<RunRow[] | undefined>(undefined);
+  const [commands, setCommands] = useState<CommandRow[] | undefined>(undefined);
 
   useEffect(() => setScopeState(readScope()), []);
   const setScope = useCallback((next: string) => {
@@ -103,6 +105,10 @@ export default function JournalPage() {
 
   useEffect(() => {
     let cancelled = false;
+    // A new scope has not been read yet: another strategy's figures must not stand in.
+    setReport(undefined);
+    setRuns(undefined);
+    setCommands(undefined);
     const load = async () => {
       const q = (base: string, extra = "") =>
         `${base}?${[extra, filter].filter(Boolean).join("&")}`;
@@ -189,7 +195,9 @@ export default function JournalPage() {
               ) : undefined
             }
           >
-            {!report ? (
+            {report === undefined ? (
+              <Skeleton rows={6} />
+            ) : !report ? (
               <Empty>No session has been closed out yet.</Empty>
             ) : (
               <dl className="divide-y divide-hairline">
@@ -225,7 +233,9 @@ export default function JournalPage() {
           {scope !== SYSTEM && (
           <>
           <Card title="Engine runs" subtitle="Every start and stop, with why">
-            {runs.length === 0 ? (
+            {runs === undefined ? (
+              <Skeleton rows={4} />
+            ) : runs.length === 0 ? (
               <Empty>No runs recorded.</Empty>
             ) : (
               <ol className="space-y-2.5">
@@ -260,7 +270,9 @@ export default function JournalPage() {
           </Card>
 
           <Card title="Control commands" subtitle="Instructions sent to the engine">
-            {commands.length === 0 ? (
+            {commands === undefined ? (
+              <Skeleton rows={3} />
+            ) : commands.length === 0 ? (
               <Empty>No commands issued.</Empty>
             ) : (
               <ol className="space-y-2">

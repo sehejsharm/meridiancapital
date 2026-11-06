@@ -180,6 +180,32 @@ export function Field({
   );
 }
 
+/**
+ * Not loaded yet. A trading desk must never show a confident "off", "zero" or
+ * "no" it has not read: /controls flashed DISARMED and "Today is a trading day:
+ * No" before the status arrived, /algos "0 in the registry".
+ */
+export function Skeleton({ rows = 3, className = "" }: { rows?: number; className?: string }) {
+  return (
+    <div aria-busy="true" aria-label="Loading" className={`space-y-2.5 ${className}`}>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="h-4 animate-pulse rounded bg-surface-raised" style={{ width: `${92 - i * 11}%` }} />
+      ))}
+    </div>
+  );
+}
+
+/** An inline value still loading: a neutral bar, not a guess. */
+export function Pending({ width = "3rem" }: { width?: string }) {
+  return (
+    <span
+      aria-label="loading"
+      className="inline-block h-3 animate-pulse rounded bg-surface-raised align-middle"
+      style={{ width }}
+    />
+  );
+}
+
 export function Empty({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-[7rem] items-center justify-center rounded-md border border-dashed border-hairline px-4 py-6 text-center text-xs text-ink-muted">
