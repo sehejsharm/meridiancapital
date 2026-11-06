@@ -148,13 +148,12 @@ export default function ReportsPage() {
               value={s.profit_factor === null ? "n/a" : s.profit_factor.toFixed(2)}
               hint={`${money(s.gross_profit)} vs ${money(s.gross_loss)}`}
             />
+            {/* Drawdown only: the error count used to ride in this hint ("34.31% from its
+                high · 241 errors logged"), as if it had something to do with the drawdown. */}
             <StatTile
               label="Max drawdown, trading"
               value={s.max_drawdown_rs != null ? signedMoney(-s.max_drawdown_rs) : "—"}
-              hint={
-                (s.max_drawdown_pct != null ? `${s.max_drawdown_pct.toFixed(2)}% from its high · ` : "") +
-                `${s.errors} errors logged`
-              }
+              hint={s.max_drawdown_pct != null ? `${s.max_drawdown_pct.toFixed(2)}% from its high` : undefined}
             />
           </div>
 
@@ -163,6 +162,24 @@ export default function ReportsPage() {
             <StatTile label="Largest win" value={signedMoney(s.largest_win)} />
             <StatTile label="Largest loss" value={signedMoney(s.largest_loss)} />
             <StatTile label="Charges paid" value={money(s.total_charges)} hint={`${s.open_trades} still open`} />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {s.scope === "real money" && (
+              <StatTile
+                label="Reconciled to Angel"
+                value={`${s.matched_to_angel ?? 0} of ${s.trades}`}
+                hint={[
+                  s.fund_transfer_trades ? `${s.fund_transfer_trades} on fund-transfer days` : null,
+                  s.provisional_trades ? `${s.provisional_trades} provisional` : null,
+                ].filter(Boolean).join(" · ") || "every trade matched"}
+              />
+            )}
+            <StatTile
+              label="Reliability: errors logged"
+              value={String(s.errors)}
+              hint="Errors and criticals in the journal over this period — see Reliability for the trend"
+            />
           </div>
 
           <Card title="Trading P&L over the period" subtitle="After charges, added up trade by trade, with every entry and exit marked">

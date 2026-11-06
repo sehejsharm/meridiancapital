@@ -561,7 +561,11 @@ export interface ReportSummary {
   /** That fall as a share of the balance at its high; null without an opening balance. */
   max_drawdown_pct: number | null;
   start_balance?: number | null;
+  /** Errors and criticals the journal logged in the period — a reliability figure, not trading. */
   errors: number;
+  matched_to_angel?: number;
+  fund_transfer_trades?: number;
+  provisional_trades?: number;
 }
 
 export interface ReportPayload {
