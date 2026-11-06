@@ -285,3 +285,23 @@ def test_an_infinite_loop_at_import_is_killed_by_the_cpu_limit():
     assert elapsed < 120, f"runner ran {elapsed:.0f}s — the CPU limit did not contain it"
     assert r.returncode != 0, "a killed process must not report success"
     assert not r.stdout.strip(), "a killed process must not emit a passing report"
+
+
+def test_the_gate_keeps_numpy_to_one_thread_under_its_process_cap():
+    """numpy's BLAS starts threads on import and threads count against the
+    gate's RLIMIT_NPROC of 0. As an ordinary user (CI, a non-root VM) every
+    upload importing pandas died with exit 130 before a single check; root
+    ignores the cap, so it passed on a root shell."""
+    import subprocess
+    import sys
+
+    code = (
+        "import os, resource, engine.gate_runner as g\n"
+        "resource.setrlimit = lambda *a: None\n"   # the limits themselves are not under test
+        "g._apply_limits()\n"
+        "print(','.join(os.environ.get(v, '') for v in g._SINGLE_THREAD))\n"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                         cwd=str(__import__("pathlib").Path(__file__).resolve().parent.parent), timeout=60)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "1,1,1,1,1"

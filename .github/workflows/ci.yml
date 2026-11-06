@@ -95,7 +95,9 @@ jobs:
       # block every upload without anyone noticing until they tried one.
       - name: Gate the built-in strategy
         run: |
-          python -m engine.gate_runner < engine/builtin_gk50k.py > report.json
+          # Through a pipe, as the API reads it: the gate forbids writing files
+          # (RLIMIT_FSIZE 0), so a redirect straight into one loses the report.
+          python -m engine.gate_runner < engine/builtin_gk50k.py | cat > report.json
           python - <<'PY'
           import json, sys
           r = json.load(open("report.json"))

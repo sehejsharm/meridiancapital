@@ -15,8 +15,22 @@ CPU_SECONDS = 20
 ADDRESS_SPACE_BYTES = 1024 * 1024 * 1024  # 1 GiB
 
 
+# numpy's BLAS starts worker threads when it is first imported, and threads
+# count against RLIMIT_NPROC. With the cap at 0 that start fails and the gate
+# dies with exit 130 before it checks anything — for every upload that imports
+# pandas, whenever the API runs as an ordinary user (root ignores the cap, so it
+# passed on a root shell and failed in CI and on a non-root VM). One thread each,
+# set before anything imports numpy, keeps them from starting at all.
+_SINGLE_THREAD = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS",
+                  "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")
+
+
 def _apply_limits() -> None:
     """Cap CPU and memory so a runaway upload cannot take the VM down."""
+    import os
+
+    for var in _SINGLE_THREAD:
+        os.environ[var] = "1"
     try:
         import resource
     except ImportError:  # pragma: no cover - POSIX only
