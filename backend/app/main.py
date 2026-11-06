@@ -20,6 +20,7 @@ from app.config import settings
 from app.deps import build_context, ctx
 from app.notify import Notifier
 from app.program_output import ProgramOutput
+from app.replay import Archiver
 from app.routers import algos, auth, control, data, desk, reliability, tuning, ws
 from engine.clock import now_ist
 from engine.config import BANNER, BUILD_VERSION
@@ -44,11 +45,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await programs_out.start()
     notifier = Notifier(c.db, fleet=c.fleet)
     await notifier.start()
+    archiver = Archiver(c.db)
+    await archiver.start()
     # Reconcile immediately so a mid-session restart brings the engine back at once.
     c.sched.tick()
     try:
         yield
     finally:
+        await archiver.stop()
         await notifier.stop()
         await programs_out.stop()
         await c.sched.stop()

@@ -104,6 +104,16 @@ export function IconPulse({ className }: P) {
   );
 }
 
+export function IconReplay({ className }: P) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M4 12a8 8 0 1 0 2.3-5.6" />
+      <path d="M4 4v4h4" />
+      <path d="M10.5 9.5v5l4-2.5z" />
+    </svg>
+  );
+}
+
 export function IconTune({ className }: P) {
   return (
     <svg {...base} className={className}>

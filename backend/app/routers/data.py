@@ -126,3 +126,14 @@ async def audit(
     _p: Principal = Depends(require_auth),
 ) -> dict:
     return {"entries": ctx().db.audit_tail(limit)}
+
+
+@router.get("/replay")
+async def replay(
+    day: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    algo: str | None = Query(None, max_length=80),
+) -> dict:
+    """One past session for replay: the index, the P&L samples, the trades and the journal."""
+    from app import replay as rp
+
+    return rp.session(ctx().db, day, algo)

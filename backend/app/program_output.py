@@ -346,6 +346,7 @@ class ProgramOutput:
                 self.db.add_equity_sample(
                     snap["market"]["session_date"], acct["equity"], acct["realised_today"],
                     acct["peak_equity"], acct["day_pl"], algo_id=algo_id,
+                    spot=(snap.get("signal") or {}).get("spot"),
                 )
                 self._sampled[algo_id] = time.time()
             return True

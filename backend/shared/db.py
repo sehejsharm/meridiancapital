@@ -191,6 +191,8 @@ _ADDED_COLUMNS = (
     ("engine_runs", "algo_id", "TEXT NOT NULL DEFAULT 'gk50k'"),
     ("algos", "shadow_of", "TEXT"),
     ("holidays", "source", "TEXT NOT NULL DEFAULT 'operator'"),
+    # The index at each sample, so a past session can be replayed against it.
+    ("equity_samples", "spot", "REAL"),
 )
 
 
@@ -435,15 +437,35 @@ class Database:
     # ── equity curve ─────────────────────────────────────────────────────────
     def add_equity_sample(self, session_date: str, equity: float, realised_today: float | None,
                           peak_equity: float | None, day_pl: float | None,
-                          algo_id: str = DEFAULT_ALGO) -> None:
+                          algo_id: str = DEFAULT_ALGO, spot: float | None = None) -> None:
         with self.conn() as c:
             c.execute(
                 """INSERT INTO equity_samples(ts, session_date, equity, realised_today,
-                                              peak_equity, day_pl, algo_id)
-                   VALUES(?,?,?,?,?,?,?)""",
+                                              peak_equity, day_pl, algo_id, spot)
+                   VALUES(?,?,?,?,?,?,?,?)""",
                 (now_ist().isoformat(timespec="seconds"), session_date, equity,
-                 realised_today, peak_equity, day_pl, algo_id),
+                 realised_today, peak_equity, day_pl, algo_id, spot),
             )
+
+    def session_samples(self, session_date: str, algo_id: str) -> list[dict]:
+        """One algorithm's samples for one session, oldest first, with the index."""
+        with self.conn() as c:
+            rows = c.execute(
+                """SELECT ts, equity, day_pl, realised_today, spot FROM equity_samples
+                   WHERE algo_id = ? AND session_date = ? ORDER BY id""",
+                (algo_id, session_date),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def sample_sessions(self, algo_id: str, limit: int = 90) -> list[str]:
+        """The sessions an algorithm has samples for, newest first."""
+        with self.conn() as c:
+            rows = c.execute(
+                """SELECT DISTINCT session_date FROM equity_samples WHERE algo_id = ?
+                   ORDER BY session_date DESC LIMIT ?""",
+                (algo_id, limit),
+            ).fetchall()
+        return [r["session_date"] for r in rows]
 
     def equity_curve(
         self,

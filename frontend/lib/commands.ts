@@ -15,6 +15,7 @@ export function baseCommands(todayIso: string): Command[] {
     { id: "reports", label: "Reports", hint: "Go to", href: "/reports" },
     { id: "analytics", label: "Analytics", hint: "Go to", href: "/analytics", keywords: "stats heatmap kelly monte carlo" },
     { id: "journal-today", label: "Today's journal", hint: todayIso, href: "/journal", keywords: "log events" },
+    { id: "replay", label: "Session replay", hint: "Go to", href: "/replay", keywords: "post-mortem chart past day" },
     { id: "reliability", label: "Reliability", hint: "Go to", href: "/reliability", keywords: "errors crashes uptime" },
     { id: "strategy", label: "Strategy", hint: "Go to", href: "/strategy", keywords: "parameters config" },
     { id: "controls", label: "Controls", hint: "Halt, flatten, automation", href: "/controls", keywords: "halt flatten kill automation" },
