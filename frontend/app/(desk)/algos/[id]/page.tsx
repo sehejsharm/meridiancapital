@@ -12,15 +12,11 @@ import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { fetchAlgo } from "@/lib/algos";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { istDateTime } from "@/lib/format";
+import { gateText } from "@/lib/gate";
 import type { Algo, GateReport as Report } from "@/lib/types";
 
 type Notice = { tone: "good" | "critical"; text: string } | null;
 
-function gateLabel(status: string): string {
-  if (status === "passed") return "passed every check";
-  if (status === "failed") return "flagged issues — see the report below";
-  return "not screened";
-}
 
 export default function AlgoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -167,7 +163,7 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
               mono={false}
             />
             <Field label="Active version" value={algo.active ? `v${algo.active.version}` : "none"} />
-            <Field label="Gate" value={gateLabel(algo.gate.status)} />
+            <Field label="Gate" value={gateText(algo.gate.status, algo.runtime_kind)} />
           </dl>
 
           <div className="mt-4 flex flex-wrap gap-2">

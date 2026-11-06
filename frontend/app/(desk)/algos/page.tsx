@@ -7,6 +7,7 @@ import { ModeBadge } from "@/components/AlgoCard";
 import { GateReport } from "@/components/GateReport";
 import { Badge, Breakable, Button, Card, Empty, Skeleton } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
+import { gateText, gateTone } from "@/lib/gate";
 import { fetchAlgos } from "@/lib/algos";
 import { istDateTime } from "@/lib/format";
 import type { Algo, AlgoList, GateCheck, GateReport as Report } from "@/lib/types";
@@ -178,8 +179,8 @@ export default function AlgosPage() {
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
                   <ModeBadge algo={a} />
                   {a.gate.status !== "none" && (
-                    <Badge tone={a.gate.status === "passed" ? "good" : a.gate.status === "failed" ? "warning" : "neutral"}>
-                      {a.gate.status === "program" ? "program" : `gate ${a.gate.status}`}
+                    <Badge tone={gateTone(a.gate.status)}>
+                      {gateText(a.gate.status, a.runtime_kind)}
                     </Badge>
                   )}
                   <span className="ml-auto flex gap-2">
@@ -247,7 +248,7 @@ export default function AlgosPage() {
                               : "neutral"
                         }
                       >
-                        {a.gate.status === "none" ? "—" : a.gate.status}
+                        {a.gate.status === "none" && a.runtime_kind !== "program" ? "—" : gateText(a.gate.status, a.runtime_kind)}
                       </Badge>
                     </td>
                     <td className="py-2.5 pr-3">
