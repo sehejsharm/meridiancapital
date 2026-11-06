@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { isEmbeddable, tradingViewUrl } from "@/components/tvSymbols";
+
 /**
  * TradingView's Advanced Chart, embedded for live NIFTY price action.
  *
@@ -14,15 +16,36 @@ import { useEffect, useRef, useState } from "react";
  * proxy, no network). That is a normal outcome, not an error, so it degrades
  * to a labelled placeholder with a link out rather than an empty box.
  */
-export function TradingViewChart({
-  symbol = "NSE:NIFTY",
-  interval = "5",
-  height = 420,
-}: {
-  symbol?: string;
-  interval?: string;
-  height?: number;
-}) {
+export function TradingViewChart(props: { symbol?: string; interval?: string; height?: number }) {
+  const symbol = props.symbol ?? "NSE:NIFTY";
+  if (!isEmbeddable(symbol)) return <LinkOut symbol={symbol} height={props.height ?? 420} />;
+  return <EmbeddedChart symbol={symbol} interval={props.interval ?? "5"} height={props.height ?? 420} />;
+}
+
+function LinkOut({ symbol, height }: { symbol: string; height: number }) {
+  return (
+    <div
+      className="flex h-[300px] flex-col items-center justify-center gap-3 rounded-md border border-dashed border-hairline bg-surface px-6 text-center sm:h-[var(--chart-h)]"
+      style={{ ["--chart-h" as string]: `${height}px` }}
+    >
+      <p className="max-w-md text-xs leading-relaxed text-ink-secondary">
+        NSE licenses its prices to TradingView for tradingview.com only, so TradingView&apos;s embedded chart
+        cannot show {symbol} here — it would quietly draw a different instrument instead. The Chart tab draws
+        NIFTY 50 from Angel One&apos;s own candles.
+      </p>
+      <a
+        href={tradingViewUrl(symbol)}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="inline-flex items-center rounded-md border border-brand/50 bg-brand-dim px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-brand transition-colors hover:border-brand touch:min-h-[44px]"
+      >
+        Open {symbol} on TradingView ↗
+      </a>
+    </div>
+  );
+}
+
+function EmbeddedChart({ symbol, interval, height }: { symbol: string; interval: string; height: number }) {
   const holder = useRef<HTMLDivElement | null>(null);
   const [failed, setFailed] = useState(false);
   // The embed is several hundred KB of third-party script plus an iframe. On a
@@ -104,7 +127,7 @@ export function TradingViewChart({
             TradingView&apos;s chart could not load — it is blocked or unreachable from here.
           </p>
           <a
-            href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`}
+            href={tradingViewUrl(symbol)}
             target="_blank"
             rel="noreferrer noopener"
             className="text-xs font-medium text-brand underline underline-offset-2"
