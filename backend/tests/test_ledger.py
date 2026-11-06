@@ -160,3 +160,30 @@ def test_a_report_chart_gets_a_thinned_curve_with_every_days_open_and_close():
         day = [p for p in out if p["ts"].startswith(f"2026-09-{d:02d}")]
         assert day[0]["equity"] == 0.0 and day[-1]["equity"] == 399.0
     assert thin(pts[:50], 1000) == pts[:50]
+
+
+def test_a_fund_transfer_session_is_never_counted_as_matched(tmp_db, tmp_path):
+    """16 and 19 Oct 2026: a withdrawal and a deposit of about Rs 47,840. The
+    table marked both trades "moved outside trading"; the header said "26 of 27
+    matched to Angel", because the v8 money log had one of them's charges."""
+    opening(tmp_db, "2026-10-15", 45000.00)
+    opening(tmp_db, "2026-10-16", 46500.00)
+    opening(tmp_db, "2026-10-19", 46500.00 + 1600.00 - 47841.00)   # withdrawn overnight
+    opening(tmp_db, "2026-10-20", 46500.00 + 1600.00 - 47841.00 + 47847.00 - 70.00)
+    tmp_db.add_trade(trade("2026-10-15", 1573.69, 73.69))            # an ordinary day
+    tmp_db.add_trade(trade("2026-10-16", 1673.69, 73.69, entry_ts="2026-10-16T10:30"))
+    tmp_db.add_trade(trade("2026-10-19", 0.00, 70.00, entry_ts="2026-10-19T10:30"))
+    folder = tmp_path / ALGO
+    folder.mkdir()
+    (folder / "gk50k_money.jsonl").write_text(json.dumps({
+        "entry_ts": "2026-10-16T10:30", "charges_angel_balance": 73.69, "mode": "live"}) + "\n")
+
+    rows = {t["session_date"]: t for t in ledger.reconcile(tmp_db, tmp_db.trades(), base=tmp_path)}
+    assert rows["2026-10-15"]["match"] == ledger.MATCHED
+    assert rows["2026-10-16"]["reconciled"] == ledger.BALANCE, "its charges are Angel's"
+    assert rows["2026-10-16"]["match"] == ledger.FUND_TRANSFER, "but the row says money moved"
+    assert rows["2026-10-19"]["match"] == ledger.FUND_TRANSFER
+
+    s = ledger.stats(list(rows.values()))
+    assert (s["n"], s["reconciled"], s["fund_transfer"], s["provisional"]) == (3, 1, 2, 0)
+    assert s["reconciled"] + s["fund_transfer"] + s["provisional"] == s["n"]

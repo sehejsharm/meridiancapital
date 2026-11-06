@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { EquityChart, type ChartPoint } from "@/components/EquityChart";
 import { Badge, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
+import { matchLine, matchOf } from "@/lib/blotter";
 import { minutes, money, percent, signedMoney, signedPercent, tradeTime } from "@/lib/format";
 import type { DailyEquityPoint, TradeRow, TradeStats } from "@/lib/types";
 
@@ -78,7 +79,7 @@ export default function BlotterPage() {
             label="Trading P&L, all real-money trades"
             value={signedMoney(stats.net)}
             delta={{ text: `${signedMoney(stats.gross)} before charges`, value: stats.gross }}
-            hint={`${money(stats.charges)} in charges · ${stats.reconciled ?? 0} of ${stats.n} matched to Angel`}
+            hint={`${money(stats.charges)} in charges · ${matchLine(stats)}`}
             tone={stats.net > 0 ? "profit" : stats.net < 0 ? "loss" : "neutral"}
           />
           <StatTile
@@ -299,17 +300,23 @@ export default function BlotterPage() {
 
 /** Whether a real-money trade's charges and net are Angel's own figures. */
 function Matched({ t, className = "" }: { t: TradeRow; className?: string }) {
-  if (t.ledger_gap != null && Math.abs(t.ledger_gap) >= 0.01) {
+  const match = matchOf(t);
+  if (match === "fund_transfer") {
     return (
       <span
         className={`flex items-center gap-1 text-2xs font-normal text-warning ${className}`}
-        title="Your Angel balance moved by more than this trade's charges can explain — a deposit or a withdrawal. The program's figure is kept."
+        title={
+          "Your Angel balance moved by more than this trade's charges can explain — a deposit or a withdrawal." +
+          (t.reconciled === "Angel balance"
+            ? " The trade's charges are Angel's own, from your trading balance right after it."
+            : " The program's figure is kept.")
+        }
       >
-        {signedMoney(t.ledger_gap)} moved outside trading
+        {signedMoney(t.ledger_gap ?? null)} moved outside trading
       </span>
     );
   }
-  if (t.reconciled === "Angel ledger" || t.reconciled === "Angel balance") {
+  if (match === "matched") {
     return (
       <span
         className={`flex items-center gap-1 text-2xs font-normal text-good ${className}`}

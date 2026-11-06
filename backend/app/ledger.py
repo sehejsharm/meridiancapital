@@ -34,6 +34,12 @@ BALANCE = "Angel balance"        # v8: the trading balance right after the trade
 RECORDED = "recorded"            # neither available yet: the program's own figure
 TWO = Decimal("0.01")
 
+# What the blotter says about each real-money trade: one category per trade,
+# the same one the row's mark and the header's counts read.
+MATCHED = "matched"              # Angel's figures, nothing else moved the balance
+FUND_TRANSFER = "fund_transfer"  # a deposit or withdrawal moved the balance that session
+PROVISIONAL = "provisional"      # the program's own figure until Angel's is read
+
 
 def _d(v) -> Decimal | None:
     if v is None:
@@ -139,7 +145,25 @@ def reconcile(db, trades: list[dict], base: Path | None = None) -> list[dict]:
             t.setdefault("charges_angel", t.get("charges"))
             t.setdefault("net_angel", t.get("net"))
             t.setdefault("reconciled", RECORDED)
+        t["match"] = match_category(t)
     return out
+
+
+def match_category(t: dict) -> str:
+    """The one word the blotter shows for a trade, and the header counts.
+
+    A session whose balance moved by more than charges can explain (a deposit or
+    a withdrawal) is a fund-transfer session, whatever else matched: its row says
+    so instead of a tick. The header once counted such a trade as "matched to
+    Angel" when the v8 money log had its charges (16 and 19 Oct 2026: "26 of 27
+    matched", with 25 ticks and two transfer notes in the table).
+    """
+    gap = t.get("ledger_gap")
+    if gap is not None and abs(float(gap)) >= 0.01:
+        return FUND_TRANSFER
+    if t.get("reconciled") in (LEDGER, BALANCE):
+        return MATCHED
+    return PROVISIONAL
 
 
 def _split(ts: list[dict], charges: Decimal, how: str) -> None:
@@ -178,7 +202,11 @@ def stats(trades: list[dict]) -> dict:
         "best": _f(max(nets)) if nets else 0.0,
         "worst": _f(min(nets)) if nets else 0.0,
         "avg_hold": (sum(holds) / len(holds)) if holds else 0.0,
-        "reconciled": sum(1 for t in closed if t.get("reconciled") in (LEDGER, BALANCE)),
+        # Distinct categories, summing to n: a trade on a fund-transfer session is
+        # never also counted as matched.
+        "reconciled": sum(1 for t in closed if (t.get("match") or match_category(t)) == MATCHED),
+        "fund_transfer": sum(1 for t in closed if (t.get("match") or match_category(t)) == FUND_TRANSFER),
+        "provisional": sum(1 for t in closed if (t.get("match") or match_category(t)) == PROVISIONAL),
         "scope": "real money",
     }
 

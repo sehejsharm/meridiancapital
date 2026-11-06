@@ -194,6 +194,8 @@ export interface TradeRow {
   reconciled?: "Angel ledger" | "Angel balance" | "recorded";
   /** Money that moved outside trading around this session (a deposit or withdrawal). */
   ledger_gap?: number | null;
+  /** The one category the row's mark and the header's counts read. */
+  match?: "matched" | "fund_transfer" | "provisional";
 }
 
 /** The Angel app's Trading Balance Summary, line for line. */
@@ -224,8 +226,12 @@ export interface TradeStats {
   best: number;
   worst: number;
   avg_hold: number;
-  /** Closed real-money trades whose figures are Angel's own (ledger or balance). */
+  /** Closed real-money trades matched to Angel, on sessions nothing else moved the balance. */
   reconciled?: number;
+  /** Trades on sessions a deposit or withdrawal moved the balance (shown "moved outside trading"). */
+  fund_transfer?: number;
+  /** Trades still on the program's own figure. */
+  provisional?: number;
   scope?: string;
 }
 

@@ -119,6 +119,10 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
         "max_drawdown_pct": round(100.0 * max_dd_pct, 2) if start_balance else None,
         "start_balance": round(start_balance, 2) if start_balance else None,
         "errors": sum(1 for e in events if e.get("level") in ("error", "critical")),
+        # Reconciliation, one category per real-money trade (never a trade in two).
+        "matched_to_angel": sum(1 for t in closed if live and t.get("match") == ledger.MATCHED),
+        "fund_transfer_trades": sum(1 for t in closed if live and t.get("match") == ledger.FUND_TRANSFER),
+        "provisional_trades": sum(1 for t in closed if live and t.get("match") == ledger.PROVISIONAL),
     }
 
     if max_points:
@@ -146,7 +150,7 @@ TRADE_COLUMNS = [
     "session_date", "algo_id", "mode", "entry_ts", "exit_ts", "view", "side", "tsym",
     "strike", "expiry", "lots", "qty", "entry_prem", "exit_prem", "spot_entry",
     "spot_exit", "peak_pct", "gross", "charges", "net", "reason", "hold_min",
-    "equity", "pnl_source", "reconciled", "charges_recorded", "net_recorded",
+    "equity", "pnl_source", "reconciled", "match", "ledger_gap", "charges_recorded", "net_recorded",
 ]
 
 
