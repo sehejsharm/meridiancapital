@@ -81,6 +81,15 @@ def session(db, day: str | None, algo_id: str | None) -> dict:
     }
 
 
+def _chain_baseline(db) -> None:
+    """The day's first OI per contract, kept even if no one has the Deck open at the open."""
+    from app import market
+
+    chain = db.kv_get(market.K_CHAIN, None)
+    if chain and (chain.get("ts") or "")[:10] == now_ist().date().isoformat():
+        market.oi_baseline(db, chain)
+
+
 class Archiver:
     """Keeps each day's candles while the market is open, every few minutes."""
 
@@ -109,6 +118,7 @@ class Archiver:
             try:
                 if self.due():
                     await asyncio.to_thread(archive_today, self.db)
+                    await asyncio.to_thread(_chain_baseline, self.db)
             except Exception:  # an archive gap must never take the API down
                 pass
             await asyncio.sleep(ARCHIVE_EVERY_SEC)

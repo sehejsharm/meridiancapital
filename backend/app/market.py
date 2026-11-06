@@ -99,8 +99,108 @@ def option_chain(db) -> dict:
                 "reason": "The option chain streams through a running engine's Angel session. Start "
                           "any strategy algorithm — paper is fine — during market hours."}
     age = _age(chain.get("ts"))
-    return {"available": True, **chain, "age_seconds": round(age, 1) if age is not None else None,
-            "stale": age is None or age > CHAIN_STALE_SEC}
+    stale = age is None or age > CHAIN_STALE_SEC
+    if not stale:
+        oi_baseline(db, chain)
+    return {"available": True, **chain, **chain_analytics(chain, db.kv_get(_open_key(chain), None)),
+            "age_seconds": round(age, 1) if age is not None else None, "stale": stale}
+
+
+# ── what the chain says beyond each contract's own quote ─────────────────────
+# Angel's quote carries open interest but not its change, so the first OI the
+# desk sees for each contract each day is kept, and the change is measured from
+# there ("since 09:16"), never presented as the change from yesterday's close.
+K_CHAIN_OPEN = "market:chain:oi-open:{day}"
+SKEW_STRIKES = 3   # out-of-the-money distance for the skew, in strikes
+
+
+def _open_key(chain: dict) -> str:
+    return K_CHAIN_OPEN.format(day=(chain.get("ts") or "")[:10])
+
+
+def oi_baseline(db, chain: dict | None = None) -> None:
+    """Keep the day's first OI reading for every contract the chain shows."""
+    chain = chain if chain is not None else db.kv_get(K_CHAIN, None)
+    if not chain or not chain.get("ts"):
+        return
+    key = _open_key(chain)
+    base = db.kv_get(key, None) or {"ts": chain["ts"], "oi": {}}
+    added = False
+    for row in chain.get("rows") or []:
+        for side in ("ce", "pe"):
+            q = row.get(side) or {}
+            tok, oi = q.get("token"), q.get("oi")
+            if tok and oi is not None and tok not in base["oi"]:
+                base["oi"][tok] = {"oi": oi, "ts": chain["ts"]}
+                added = True
+    if added:
+        db.kv_set(key, base)
+
+
+def chain_analytics(chain: dict, base: dict | None) -> dict:
+    """Put/call ratios, max pain, the heaviest strikes, IV skew and each contract's OI change.
+
+    All of it over the strikes the chain shows (about 8 either side of the money),
+    which is where nearly all of a weekly expiry's open interest sits; the panel says so.
+    """
+    rows = chain.get("rows") or []
+    opened = (base or {}).get("oi") or {}
+    since = (base or {}).get("ts")
+
+    def val(row, side, key):
+        q = row.get(side) or {}
+        v = q.get(key)
+        return float(v) if isinstance(v, (int, float)) else None
+
+    ce_oi = {r["strike"]: val(r, "ce", "oi") or 0.0 for r in rows}
+    pe_oi = {r["strike"]: val(r, "pe", "oi") or 0.0 for r in rows}
+    ce_vol = sum(val(r, "ce", "volume") or 0.0 for r in rows)
+    pe_vol = sum(val(r, "pe", "volume") or 0.0 for r in rows)
+    total_ce, total_pe = sum(ce_oi.values()), sum(pe_oi.values())
+
+    # Max pain: the expiry level at which option holders, all strikes together, would collect least.
+    max_pain = None
+    if total_ce + total_pe > 0:
+        def payout(s):
+            return sum(oi * max(0.0, s - k) for k, oi in ce_oi.items()) + sum(oi * max(0.0, k - s) for k, oi in pe_oi.items())
+        max_pain = min(ce_oi, key=payout)
+
+    # Each contract's change in OI since the desk first saw it today.
+    changes = {}
+    for r in rows:
+        for side in ("ce", "pe"):
+            q = r.get(side) or {}
+            first = opened.get(q.get("token") or "")
+            if first and q.get("oi") is not None and first.get("ts") == since:
+                changes[q["token"]] = q["oi"] - first["oi"]
+
+    atm = chain.get("atm")
+    strikes = [r["strike"] for r in rows]
+    skew = None
+    if atm in strikes:
+        i = strikes.index(atm)
+        lo, hi = i - SKEW_STRIKES, i + SKEW_STRIKES
+        if lo >= 0 and hi < len(rows):
+            put_iv, call_iv = val(rows[lo], "pe", "iv"), val(rows[hi], "ce", "iv")
+            if put_iv is not None and call_iv is not None:
+                skew = {"put_strike": rows[lo]["strike"], "call_strike": rows[hi]["strike"],
+                        "put_iv": put_iv, "call_iv": call_iv, "skew": round(put_iv - call_iv, 2)}
+    atm_row = next((r for r in rows if r["strike"] == atm), None)
+    atm_ivs = [v for v in (val(atm_row, "ce", "iv"), val(atm_row, "pe", "iv")) if v is not None] if atm_row else []
+
+    return {"analytics": {
+        "pcr_oi": round(total_pe / total_ce, 2) if total_ce else None,
+        "pcr_volume": round(pe_vol / ce_vol, 2) if ce_vol else None,
+        "max_pain": max_pain,
+        "max_call_oi": max(ce_oi, key=ce_oi.get) if total_ce else None,
+        "max_put_oi": max(pe_oi, key=pe_oi.get) if total_pe else None,
+        "max_oi": max([*ce_oi.values(), *pe_oi.values()], default=0.0),
+        "atm_iv": round(sum(atm_ivs) / len(atm_ivs), 2) if atm_ivs else None,
+        "skew": skew,
+        "oi_change": changes,
+        "oi_since": since if changes else None,
+        "strikes_shown": len(rows),
+    }}
 
 
 # ── a standalone program's contract, without asking Angel for anything ───────

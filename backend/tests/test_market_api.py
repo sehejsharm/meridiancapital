@@ -81,3 +81,64 @@ def test_an_old_chain_is_marked_stale(tmp_db):
     assert market.option_chain(tmp_db)["stale"] is True
     tmp_db.kv_set(K_CHAIN, {"ts": _now_iso(5), "rows": []})
     assert market.option_chain(tmp_db)["stale"] is False
+
+
+# ── what the chain says beyond each quote ────────────────────────────────────
+def _side(token, oi, vol=0.0, iv=None):
+    return {"token": token, "oi": oi, "volume": vol, "iv": iv}
+
+
+def _chain(ts, oi_shift=0.0):
+    # Strikes 24300..24700; calls heaviest at 24700, puts heaviest at 24300.
+    strikes = [24300, 24400, 24500, 24600, 24700]
+    ce = [100.0, 200.0, 300.0, 400.0, 900.0]
+    pe = [800.0, 400.0, 300.0, 200.0, 100.0]
+    ivs = [(14.0, 16.5), (13.5, 15.6), (13.2, 14.9), (12.9, 14.4), (12.7, 14.0)]
+    return {"ts": ts, "atm": 24500, "spot": 24510.0, "rows": [
+        {"strike": k, "ce": _side(f"c{k}", c + oi_shift, 10.0, iv[0]), "pe": _side(f"p{k}", p, 30.0, iv[1])}
+        for k, c, p, iv in zip(strikes, ce, pe, ivs)]}
+
+
+def test_put_call_ratios_heaviest_strikes_and_atm_iv():
+    a = market.chain_analytics(_chain("2026-11-06T10:00:00"), None)["analytics"]
+    assert a["pcr_oi"] == round(1800 / 1900, 2) and a["pcr_volume"] == 3.0
+    assert a["max_call_oi"] == 24700 and a["max_put_oi"] == 24300 and a["max_oi"] == 900.0
+    assert a["atm_iv"] == round((13.2 + 14.9) / 2, 2)
+    assert a["oi_change"] == {} and a["oi_since"] is None
+
+
+def test_max_pain_is_where_holders_collect_least():
+    a = market.chain_analytics(_chain("2026-11-06T10:00:00"), None)["analytics"]
+    # Worked by hand: holders collect 2.0L at 24300, 1.1L at 24400, 0.8L at 24500, 1.1L at 24600, 2.0L at 24700.
+    assert a["max_pain"] == 24500
+
+
+def test_skew_compares_puts_and_calls_the_same_distance_out():
+    wide = _chain("2026-11-06T10:00:00")
+    for k, extra in ((24200, 24800), (24100, 24900)):
+        wide["rows"].insert(0, {"strike": k, "ce": _side(f"c{k}", 1.0, 0, 15.0), "pe": _side(f"p{k}", 1.0, 0, 18.0)})
+        wide["rows"].append({"strike": extra, "ce": _side(f"c{extra}", 1.0, 0, 12.0), "pe": _side(f"p{extra}", 1.0, 0, 13.0)})
+    wide["rows"].sort(key=lambda r: r["strike"])
+    s = market.chain_analytics(wide, None)["analytics"]["skew"]
+    assert s == {"put_strike": 24200, "call_strike": 24800, "put_iv": 18.0, "call_iv": 12.0, "skew": 6.0}
+    assert market.chain_analytics(_chain("2026-11-06T10:00:00"), None)["analytics"]["skew"] is None, "not enough strikes"
+
+
+def test_oi_change_is_measured_from_the_days_first_reading(tmp_db):
+    tmp_db.kv_set(K_CHAIN, {**_chain(_now_iso(5))})
+    first = market.option_chain(tmp_db)
+    assert first["analytics"]["oi_change"]["c24700"] == 0.0
+    since = first["analytics"]["oi_since"]
+    later = {**_chain(_now_iso(1), oi_shift=50.0)}
+    later["rows"].append({"strike": 24800, "ce": _side("c24800", 10.0), "pe": _side("p24800", 10.0)})
+    tmp_db.kv_set(K_CHAIN, later)
+    a = market.option_chain(tmp_db)["analytics"]
+    assert a["oi_change"]["c24700"] == 50.0 and a["oi_change"]["p24300"] == 0.0
+    assert a["oi_since"] == since
+    assert "c24800" not in a["oi_change"], "a strike first seen later has no change from the open to show"
+
+
+def test_a_stale_chain_sets_no_baseline(tmp_db):
+    tmp_db.kv_set(K_CHAIN, _chain(_now_iso(300)))
+    market.option_chain(tmp_db)
+    assert tmp_db.kv_get(market._open_key(_chain(_now_iso(300))), None) is None

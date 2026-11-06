@@ -791,6 +791,23 @@ export interface ChainPayload {
   stale?: boolean;
   /** A running standalone program's own contract, when the chain is not fetched. */
   program?: ProgramContract | null;
+  /** Worked out on the server from the strikes shown (backend/app/market.py). */
+  analytics?: ChainAnalytics;
+}
+
+export interface ChainAnalytics {
+  pcr_oi: number | null;
+  pcr_volume: number | null;
+  max_pain: number | null;
+  max_call_oi: number | null;
+  max_put_oi: number | null;
+  max_oi: number;
+  atm_iv: number | null;
+  skew: { put_strike: number; call_strike: number; put_iv: number; call_iv: number; skew: number } | null;
+  /** Change in OI since the day's first reading, by contract token. */
+  oi_change: Record<string, number>;
+  oi_since: string | null;
+  strikes_shown: number;
 }
 
 export interface ProgramContract {

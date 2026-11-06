@@ -5,8 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge, Card, Empty } from "@/components/ui";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { apiGet } from "@/lib/client-api";
+import { oiPct, signedCompact, skewChart } from "@/lib/chain";
+import { istTime } from "@/lib/format";
 import { calendarDay } from "@/lib/holidays";
-import type { ChainPayload, ChainSide, ProgramContract } from "@/lib/types";
+import type { ChainAnalytics, ChainPayload, ChainRow, ChainSide, ProgramContract } from "@/lib/types";
 
 const fmt = (v: number | null | undefined, digits = 2) =>
   v === null || v === undefined || !Number.isFinite(v) ? "—" : v.toFixed(digits);
@@ -95,6 +97,7 @@ export function OptionChain() {
       ) : (
         <div className="space-y-4">
           {focus && <ContractDetail focus={focus} holding={hl} />}
+          {chain.analytics && <ChainSummary a={chain.analytics} spot={chain.spot ?? null} />}
 
           <div className="-mx-4 overflow-x-auto px-4">
             <table className="w-full text-2xs tabular-nums">
@@ -123,7 +126,7 @@ export function OptionChain() {
                     held ? "bg-brand-dim text-brand font-semibold" : itm ? "bg-surface-raised/60" : "";
                   return (
                     <tr key={row.strike} className="border-b border-hairline/60 last:border-0">
-                      <td className={`hidden py-1.5 pr-2 text-right md:table-cell ${cell(heldCe, itmCe)}`}>{compact(row.ce?.oi)}</td>
+                      <OiCell side={row.ce} a={chain.analytics} align="right" tone={cell(heldCe, itmCe)} />
                       <td className={`hidden py-1.5 pr-2 text-right md:table-cell ${cell(heldCe, itmCe)}`}>{compact(row.ce?.volume)}</td>
                       <td className={`py-1.5 pr-2 text-right ${cell(heldCe, itmCe)}`}>{fmt(row.ce?.iv, 1)}</td>
                       <td className={`py-1.5 pr-2 text-right ${cell(heldCe, itmCe)}`}>{fmt(row.ce?.delta, 2)}</td>
@@ -135,19 +138,110 @@ export function OptionChain() {
                       <td className={`py-1.5 pl-2 text-left ${cell(heldPe, !itmCe)}`}>{fmt(row.pe?.delta, 2)}</td>
                       <td className={`py-1.5 pl-2 text-left ${cell(heldPe, !itmCe)}`}>{fmt(row.pe?.iv, 1)}</td>
                       <td className={`hidden py-1.5 pl-2 text-left md:table-cell ${cell(heldPe, !itmCe)}`}>{compact(row.pe?.volume)}</td>
-                      <td className={`hidden py-1.5 pl-2 text-left md:table-cell ${cell(heldPe, !itmCe)}`}>{compact(row.pe?.oi)}</td>
+                      <OiCell side={row.pe} a={chain.analytics} align="left" tone={cell(heldPe, !itmCe)} />
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+          <SkewChartPanel rows={chain.rows!} spot={chain.spot ?? null} />
           <p className="text-2xs text-ink-muted">
-            Shaded cells are in the money; the gold cell is the contract held. {chain.model}.
+            Shaded cells are in the money; the gold cell is the contract held. Bars show each strike&apos;s open
+            interest against the heaviest one shown
+            {chain.analytics?.oi_since ? `; the figure under it is the change since ${istTime(chain.analytics.oi_since)}, the desk's first reading today` : ""}.
+            PCR, max pain and the walls are over the {chain.analytics?.strikes_shown ?? chain.rows!.length} strikes shown. {chain.model}.
           </p>
         </div>
       )}
     </Card>
+  );
+}
+
+function OiCell({ side, a, align, tone }: { side: ChainSide | null; a?: ChainAnalytics; align: "left" | "right"; tone: string }) {
+  const pct = oiPct(side?.oi, a?.max_oi);
+  const change = side ? a?.oi_change?.[side.token] : undefined;
+  return (
+    <td className={`relative hidden py-1.5 md:table-cell ${align === "right" ? "pr-2 text-right" : "pl-2 text-left"} ${tone}`}>
+      <span
+        aria-hidden
+        className={`absolute inset-y-1 rounded-sm bg-brand/15 ${align === "right" ? "right-0" : "left-0"}`}
+        style={{ width: `${pct}%` }}
+      />
+      <span className="relative">{compact(side?.oi)}</span>
+      {change !== undefined && (
+        <span className={`relative block text-[10px] ${change > 0 ? "text-good" : change < 0 ? "text-critical" : "text-ink-muted"}`}>
+          {signedCompact(change)}
+        </span>
+      )}
+    </td>
+  );
+}
+
+function ChainSummary({ a, spot }: { a: ChainAnalytics; spot: number | null }) {
+  const away = (k: number | null) => (k != null && spot != null ? `${k >= spot ? "+" : "−"}${Math.abs(k - spot).toFixed(0)} pts` : undefined);
+  const items: { label: string; value: string; hint?: string }[] = [
+    { label: "PCR (OI)", value: fmt(a.pcr_oi), hint: a.pcr_volume != null ? `volume ${fmt(a.pcr_volume)}` : undefined },
+    { label: "Max pain", value: a.max_pain != null ? String(a.max_pain) : "—", hint: away(a.max_pain) },
+    { label: "Call wall", value: a.max_call_oi != null ? String(a.max_call_oi) : "—", hint: "most call OI" },
+    { label: "Put wall", value: a.max_put_oi != null ? String(a.max_put_oi) : "—", hint: "most put OI" },
+    { label: "ATM IV", value: a.atm_iv != null ? `${fmt(a.atm_iv, 1)}%` : "—" },
+    {
+      label: "Skew",
+      value: a.skew ? `${a.skew.skew >= 0 ? "+" : ""}${fmt(a.skew.skew, 1)} pts` : "—",
+      hint: a.skew ? `${a.skew.put_strike}P vs ${a.skew.call_strike}C IV` : undefined,
+    },
+  ];
+  return (
+    <dl className="grid grid-cols-3 gap-x-4 gap-y-3 rounded-lg border border-hairline px-3 py-3 sm:grid-cols-6">
+      {items.map((i) => (
+        <div key={i.label} className="min-w-0">
+          <dt className="text-2xs uppercase tracking-[0.1em] text-ink-muted">{i.label}</dt>
+          <dd className="mt-0.5 truncate text-xs font-semibold tabular-nums text-ink">{i.value}</dd>
+          {i.hint && <dd className="truncate text-[10px] text-ink-muted">{i.hint}</dd>}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+const SKEW_W = 600;
+const SKEW_H = 110;
+
+function SkewChartPanel({ rows, spot }: { rows: ChainRow[]; spot: number | null }) {
+  const c = skewChart(rows, SKEW_W, SKEW_H);
+  if (!c) return null;
+  const k0 = rows[0].strike;
+  const k1 = rows[rows.length - 1].strike;
+  const spotIn = spot != null && spot >= k0 && spot <= k1;
+  return (
+    <figure className="space-y-1.5">
+      <figcaption className="flex flex-wrap items-center justify-between gap-2 text-2xs text-ink-muted">
+        <span className="uppercase tracking-[0.12em]">Implied volatility by strike</span>
+        <span className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-brand" />Calls</span>
+          <span className="inline-flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-ink-secondary" />Puts</span>
+        </span>
+      </figcaption>
+      <div className="relative">
+        <svg viewBox={`0 0 ${SKEW_W} ${SKEW_H}`} preserveAspectRatio="none" className="h-28 w-full" role="img"
+          aria-label={`Implied volatility from ${fmt(c.lo, 1)}% to ${fmt(c.hi, 1)}% across strikes ${k0} to ${k1}`}>
+          <line x1={0} x2={SKEW_W} y1={SKEW_H - 0.5} y2={SKEW_H - 0.5} stroke="var(--baseline)" vectorEffect="non-scaling-stroke" />
+          {spotIn && (
+            <line x1={c.x(spot!)} x2={c.x(spot!)} y1={0} y2={SKEW_H} stroke="var(--text-muted)" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+          )}
+          <path d={c.pe} fill="none" stroke="var(--text-secondary)" strokeWidth={1.4} vectorEffect="non-scaling-stroke" />
+          <path d={c.ce} fill="none" stroke="var(--brand)" strokeWidth={1.6} vectorEffect="non-scaling-stroke" />
+        </svg>
+        <span className="pointer-events-none absolute left-1 top-0 text-[10px] tabular-nums text-ink-muted">{fmt(c.hi, 1)}%</span>
+        <span className="pointer-events-none absolute bottom-0.5 left-1 text-[10px] tabular-nums text-ink-muted">{fmt(c.lo, 1)}%</span>
+      </div>
+      <div className="flex justify-between text-[10px] tabular-nums text-ink-muted">
+        <span>{k0}</span>
+        {spotIn && <span>spot {fmt(spot, 0)}</span>}
+        <span>{k1}</span>
+      </div>
+    </figure>
   );
 }
 
