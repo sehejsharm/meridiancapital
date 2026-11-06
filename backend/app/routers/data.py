@@ -49,9 +49,11 @@ async def events(
     after_id: int | None = None,
     level: list[str] | None = Query(None),
     algo: str | None = Query(None, max_length=80),
+    day: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
 ) -> dict:
-    """The journal, optionally for one algorithm (or ``system`` for desk-wide events)."""
-    return {"events": ctx().db.events(limit=limit, after_id=after_id, levels=level, algo_id=algo)}
+    """The journal, optionally for one algorithm (or ``system`` for desk-wide
+    events) and one IST calendar day."""
+    return {"events": ctx().db.events(limit=limit, after_id=after_id, levels=level, algo_id=algo, day=day)}
 
 
 @router.get("/equity")

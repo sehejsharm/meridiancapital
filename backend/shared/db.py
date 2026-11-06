@@ -12,6 +12,7 @@ import json
 import sqlite3
 import threading
 from contextlib import contextmanager
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -299,9 +300,16 @@ class Database:
         after_id: int | None = None,
         levels: list[str] | None = None,
         algo_id: str | None = None,
+        day: str | None = None,
     ) -> list[dict]:
         sql = "SELECT * FROM events"
         where, args = [], []
+        if day:
+            # One IST calendar day: ts is a naive IST ISO string, so a range on the
+            # ts index is the day exactly ("2026-11-06" <= ts < "2026-11-07").
+            nxt = (date.fromisoformat(day[:10]) + timedelta(days=1)).isoformat()
+            where.append("ts >= ? AND ts < ?")
+            args.extend([day[:10], nxt])
         if after_id is not None:
             where.append("id > ?")
             args.append(after_id)

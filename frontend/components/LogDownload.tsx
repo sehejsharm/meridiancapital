@@ -15,7 +15,7 @@ interface LogSummary {
   last_ts: string | null;
 }
 
-function istToday(): string {
+export function istToday(): string {
   // The desk runs on IST; the browser may not.
   const now = new Date();
   const ist = new Date(now.getTime() + (330 + now.getTimezoneOffset()) * 60_000);
@@ -33,8 +33,19 @@ function istToday(): string {
  * keeps the session cookie doing the authenticating and lets the browser name
  * the file.
  */
-export function LogDownload({ algoId }: { algoId?: string }) {
-  const [day, setDay] = useState(istToday);
+export function LogDownload({
+  algoId,
+  day: controlledDay,
+  onDay,
+}: {
+  algoId?: string;
+  /** The day shown, when the page owns it (the journal's list follows the same date). */
+  day?: string;
+  onDay?: (day: string) => void;
+}) {
+  const [ownDay, setOwnDay] = useState(istToday);
+  const day = controlledDay ?? ownDay;
+  const setDay = onDay ?? setOwnDay;
   const [summary, setSummary] = useState<LogSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,8 +74,8 @@ export function LogDownload({ algoId }: { algoId?: string }) {
 
   return (
     <Card
-      title="Daily log"
-      subtitle="Every event the desk recorded on a given day"
+      title="Selected day"
+      subtitle="Pick a date: its summary is here, and the journal below lists that day"
       action={
         summary ? (
           <Badge tone={summary.errors > 0 ? "critical" : summary.events ? "good" : "neutral"}>

@@ -393,3 +393,19 @@ def test_a_refused_command_names_the_program_it_cannot_reach(client, auth):
         assert "reads no commands" in detail and "Stop on its card" in detail
     actions = [x["action"] for x in client.get("/api/commands", headers=auth).json()["commands"]]
     assert not {"halt", "resume", "flatten"} & set(actions), "nothing was queued for an engine that is off"
+
+
+def test_the_journal_can_be_read_for_one_day(client, auth):
+    """The journal's date picker filtered only the day's summary; the list kept
+    scrolling back through earlier days. /events takes the day too."""
+    from app.deps import ctx
+
+    db = ctx().db
+    for ts, msg in (("2026-11-05T15:20:00", "yesterday"), ("2026-11-06T09:05:00", "today open"),
+                    ("2026-11-06T15:25:12", "today close"), ("2026-11-07T09:00:00", "tomorrow")):
+        eid = db.add_event("info", msg, source="program", algo_id="og")
+        with db.conn() as c:
+            c.execute("UPDATE events SET ts=? WHERE id=?", (ts, eid))
+    r = client.get("/api/events?day=2026-11-06&algo=og", headers=auth)
+    assert [e["message"] for e in r.json()["events"]] == ["today close", "today open"]
+    assert client.get("/api/events?day=06-11-2026", headers=auth).status_code == 422

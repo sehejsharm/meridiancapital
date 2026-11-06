@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { EventFeed } from "@/components/EventFeed";
-import { LogDownload } from "@/components/LogDownload";
+import { istToday, LogDownload } from "@/components/LogDownload";
 import { Badge, Card, Empty, Field, Skeleton } from "@/components/ui";
 import { fetchAlgos } from "@/lib/algos";
 import { apiGet } from "@/lib/client-api";
@@ -69,6 +69,10 @@ export default function JournalPage() {
   const [algos, setAlgos] = useState<Algo[]>([]);
   const [scope, setScopeState] = useState<string>(ALL);
   const [scopedEvents, setScopedEvents] = useState<EventRow[]>([]);
+  // One date for the page: the day's summary and the journal list both follow
+  // it. The list used to ignore the picker and scroll back through earlier days.
+  const [day, setDay] = useState<string>(istToday);
+  const isToday = day === istToday();
   // undefined: not read yet. null: read, and there is none. Only the second
   // may say "No session has been closed out yet".
   const [report, setReport] = useState<EodReport | null | undefined>(undefined);
@@ -109,16 +113,15 @@ export default function JournalPage() {
     setReport(undefined);
     setRuns(undefined);
     setCommands(undefined);
+    setScopedEvents([]);
     const load = async () => {
       const q = (base: string, extra = "") =>
         `${base}?${[extra, filter].filter(Boolean).join("&")}`;
       const [evts, eod, runList, cmdList] = await Promise.allSettled([
-        scope === ALL
-          ? Promise.resolve({ events: [] as EventRow[] })
-          : apiGet<{ events: EventRow[] }>(q("/events", "limit=200")),
+        apiGet<{ events: EventRow[] }>(q("/events", `limit=1000&day=${day}`)),
         scope === SYSTEM
           ? Promise.resolve({ report: null })
-          : apiGet<{ report: EodReport | null }>(q("/reports/eod")),
+          : apiGet<{ report: EodReport | null }>(q("/reports/eod", isToday ? "" : `date=${day}`)),
         apiGet<{ runs: RunRow[] }>(q("/runs")),
         apiGet<{ commands: CommandRow[] }>(q("/commands")),
       ]);
@@ -134,17 +137,21 @@ export default function JournalPage() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [scope, filter]);
+  }, [scope, filter, day, isToday]);
 
-  // The stream carries every algorithm's lines; a scoped view keeps its own and
-  // adds whatever arrives live between refreshes.
+  // The selected day's events for the scope, plus — on today — whatever arrives
+  // live between refreshes. Nothing from another day is ever listed.
   const events = useMemo(() => {
-    if (scope === ALL) return liveEvents;
     const byId = new Map<number, EventRow>();
     for (const e of scopedEvents) byId.set(e.id, e);
-    for (const e of liveEvents) if (e.algo_id === scope) byId.set(e.id, e);
+    if (isToday) {
+      for (const e of liveEvents) {
+        if (!e.ts?.startsWith(day)) continue;
+        if (scope === ALL || e.algo_id === scope) byId.set(e.id, e);
+      }
+    }
     return [...byId.values()].sort((a, b) => b.id - a.id);
-  }, [scope, scopedEvents, liveEvents]);
+  }, [scope, scopedEvents, liveEvents, day, isToday]);
 
   const scopeName = scope === ALL ? "All strategies" : (names[scope] ?? scope);
 
@@ -160,14 +167,14 @@ export default function JournalPage() {
         onPick={setScope}
       />
 
-      <LogDownload algoId={scope === ALL ? undefined : scope} />
+      <LogDownload algoId={scope === ALL ? undefined : scope} day={day} onDay={setDay} />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <EventFeed
           events={events}
-          limit={200}
-          title="Journal"
-          subtitle={scope === ALL ? "Every strategy, newest first" : scopeName}
+          limit={1000}
+          title={`Journal · ${dayLabel(day)}`}
+          subtitle={`${scope === ALL ? "Every strategy" : scopeName}, newest first${isToday ? " · live" : ""}`}
           algoNames={scope === ALL ? names : undefined}
           emptyText={
             scope === SYSTEM
@@ -179,7 +186,7 @@ export default function JournalPage() {
         <div className="space-y-5">
           {scope !== SYSTEM && (
           <Card
-            title="Last end-of-day report"
+            title={isToday ? "Last end-of-day report" : `End-of-day report · ${dayLabel(day)}`}
             subtitle={
               report
                 ? `Session of ${dayLabel(report.session_date)}${
@@ -198,7 +205,7 @@ export default function JournalPage() {
             {report === undefined ? (
               <Skeleton rows={6} />
             ) : !report ? (
-              <Empty>No session has been closed out yet.</Empty>
+              <Empty>{isToday ? "No session has been closed out yet." : "No session was closed out on this date."}</Empty>
             ) : (
               <dl className="divide-y divide-hairline">
                 <Field
