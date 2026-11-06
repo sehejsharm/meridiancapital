@@ -21,6 +21,12 @@ interface ReplaySession {
   report?: { net: number; trades: number } | null;
 }
 
+/** "CE 24300", else the trading symbol: never "undefined". */
+function contract(t: Pick<TradeRow, "side" | "strike" | "tsym">): string {
+  if (t.strike != null) return `${t.side ?? ""} ${t.strike}`.trim();
+  return t.tsym ?? t.side ?? "—";
+}
+
 const SPEEDS = [1, 4, 15] as const; // timeline minutes per tick
 const LEVEL = { error: "text-critical", critical: "text-critical", warn: "text-warning", ok: "text-good" } as Record<string, string>;
 
@@ -140,7 +146,7 @@ export default function ReplayPage() {
         <StatTile label={`Day's P&L at ${clock(cursor)}`} value={signedMoney(plNow)} tone={plNow == null ? "neutral" : plNow >= 0 ? "profit" : "loss"} />
         <StatTile label="NIFTY" value={idx != null ? idx.toLocaleString("en-IN", { maximumFractionDigits: 1 }) : "—"}
           hint={view.bars.length ? `candles: ${data.bars_source ?? "archived"}` : view.spot.some((p) => p.value != null) ? "from the program's status" : "no index recorded for this day"} />
-        <StatTile label="Position" value={open.length ? open.map((t) => `${t.side} ${t.strike}`).join(", ") : "flat"} />
+        <StatTile label="Position" value={open.length ? open.map(contract).join(", ") : "flat"} />
         <StatTile label="Session result" value={signedMoney(data.trades.reduce((a, t) => a + Number(t.net_angel ?? t.net ?? 0), 0))}
           hint={`${data.trades.length} trade${data.trades.length === 1 ? "" : "s"}`} />
       </div>
@@ -173,11 +179,11 @@ export default function ReplayPage() {
             {view.trades.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline py-1.5 last:border-0">
                 <button type="button" className="text-left text-ink hover:text-brand" onClick={() => t.entry != null && setCursor(t.entry)}>
-                  {t.side} {t.strike} · in {t.entry != null ? clock(t.entry) : "—"} @ {t.entry_prem?.toFixed(2) ?? "—"} · out{" "}
+                  {contract(t)} · in {t.entry != null ? clock(t.entry) : "—"} @ {t.entry_prem?.toFixed(2) ?? "—"} · out{" "}
                   {t.exit != null ? clock(t.exit) : "—"} @ {t.exit_prem?.toFixed(2) ?? "—"} · {t.reason ?? ""}
                 </button>
                 <span className="flex items-center gap-2">
-                  {open.some((o) => o.id === t.id) && <Badge tone="brand" dot>open now</Badge>}
+                  {open.some((o) => o.id === t.id) && <Badge tone="brand" dot>open at {clock(cursor)}</Badge>}
                   <span className={`tabular-nums ${pnlClass(Number(t.net_angel ?? t.net ?? 0))}`}>{signedMoney(Number(t.net_angel ?? t.net ?? 0))}</span>
                 </span>
               </li>
