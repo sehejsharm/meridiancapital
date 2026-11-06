@@ -825,3 +825,45 @@ export interface ProgramContract {
     put: { strike: number; trigger: number | null };
   } | null;
 }
+
+/** A financial year's real-money F&O P&L for the CA (GET /api/tax). */
+export interface TaxTotals {
+  trades: number;
+  wins: number;
+  losses: number;
+  gross_profit: number;
+  gross_loss: number;
+  gross_pnl: number;
+  charges: number;
+  net_pnl: number;
+  /** Sum of each trade's absolute profit or loss (ICAI Guidance Note on Tax Audit, 2022). */
+  turnover: number;
+  buy_value: number;
+  sell_value: number;
+}
+
+export interface TaxReport {
+  fy: string;
+  start: string;
+  end: string;
+  generated_at: string;
+  totals: TaxTotals;
+  open_positions: number;
+  charges_from_program: number;
+  months: (TaxTotals & { month: string })[];
+  instalments: { label: string; due: string; cumulative_pct: number; passed: boolean; net_in_window: number; net_to_date: number }[];
+  notes: string[];
+  years: string[];
+}
+
+/** A week's or month's tear sheet (GET /api/tearsheet); the PDF draws the same. */
+export interface TearSheet {
+  period: "week" | "month";
+  label: string;
+  start: string;
+  end: string;
+  name: string;
+  summary: ReportPayload["summary"];
+  extra: { green_days: number; red_days: number; return_pct: number | null };
+  ratios: { days: number; sharpe: number | null; sortino: number | null; few_days: boolean };
+}

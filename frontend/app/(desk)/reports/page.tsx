@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { LazyMarkedChart } from "@/components/LazyMarkedChart";
+import { TaxPnl } from "@/components/TaxPnl";
+import { TearSheetCard } from "@/components/TearSheetCard";
 import { Badge, Button, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
 import { fetchAlgos } from "@/lib/algos";
@@ -287,6 +289,11 @@ export default function ReportsPage() {
           </p>
         </>
       )}
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <TearSheetCard algoId={algoId} />
+        <TaxPnl />
+      </div>
     </div>
   );
 }

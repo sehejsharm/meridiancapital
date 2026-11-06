@@ -10,7 +10,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import PlainTextResponse
 
-from app import health, logs, market, reports
+from app import health, logs, market, reports, tax, tearsheet
 from app.deps import ctx
 from app.feeds import NewsFeed
 from app.security import require_auth
@@ -177,6 +177,71 @@ async def report_pdf(
         content=content,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{reports.filename(payload, "pdf")}"'},
+    )
+
+
+# ── tax report for the CA ────────────────────────────────────────────────────
+async def _tax(fy: str | None) -> dict:
+    fy = fy or tax.fy_of(now_ist().date().isoformat())
+    try:
+        tax.fy_bounds(fy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return await asyncio.to_thread(tax.build, ctx().db, fy)
+
+
+@router.get("/tax")
+async def tax_report(fy: str | None = Query(None, max_length=7)) -> dict:
+    """A financial year's real-money F&O P&L: totals, months, advance-tax dates, trades."""
+    return await _tax(fy)
+
+
+@router.get("/tax.csv", response_class=PlainTextResponse)
+async def tax_csv(fy: str | None = Query(None, max_length=7)) -> Response:
+    report = await _tax(fy)
+    return Response(
+        content=tax.to_csv(report),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{tax.filename(report, "csv")}"'},
+    )
+
+
+@router.get("/tax.pdf")
+async def tax_pdf(fy: str | None = Query(None, max_length=7)) -> Response:
+    report = await _tax(fy)
+    content = await asyncio.to_thread(tax.to_pdf, report)
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{tax.filename(report, "pdf")}"'},
+    )
+
+
+# ── weekly / monthly tear sheet ──────────────────────────────────────────────
+async def _sheet(period: str, day: str | None, algo_id: str | None) -> dict:
+    day = day or now_ist().date().isoformat()
+    try:
+        tearsheet.period_bounds(period, day)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"{exc}" if "period" in str(exc) else "date must be an ISO date")
+    return await asyncio.to_thread(tearsheet.build, ctx().db, algo_id, period, day)
+
+
+@router.get("/tearsheet")
+async def tearsheet_json(period: str = Query("week", max_length=5), date: str | None = Query(None, max_length=10),
+                         algo_id: str | None = Query(None, max_length=80)) -> dict:
+    return await _sheet(period, date, algo_id)
+
+
+@router.get("/tearsheet.pdf")
+async def tearsheet_pdf(period: str = Query("week", max_length=5), date: str | None = Query(None, max_length=10),
+                        algo_id: str | None = Query(None, max_length=80)) -> Response:
+    sheet = await _sheet(period, date, algo_id)
+    content = await asyncio.to_thread(tearsheet.to_pdf, sheet)
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{tearsheet.filename(sheet)}"'},
     )
 
 
