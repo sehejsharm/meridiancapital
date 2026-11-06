@@ -79,19 +79,20 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="pt-safe relative z-10 border-b border-hairline bg-surface/80 backdrop-blur">
         <div className="mx-auto flex max-w-[2200px] items-center gap-3 px-4 py-3 sm:px-6 xl:px-8">
           <Link href="/" onClick={playSplash} className="-my-1.5 shrink-0 py-1.5" aria-label="Meridian Capital — deck">
-            {/* Between 1024 and 1280 px the full rail and the name do not both
-                fit: the mark alone stands for the name there. */}
-            <Wordmark textClassName="lg:max-xl:hidden" />
+            {/* Below 1536 px the full rail, the name and a "1 on real money" badge
+                do not all fit (1366 and 1440 laptops overflowed): the mark alone
+                stands for the name there. */}
+            <Wordmark textClassName="lg:max-2xl:hidden" />
           </Link>
 
           {/* Full rail from lg up; below that the bottom bar carries navigation. */}
-          <nav aria-label="Sections" className="hidden shrink-0 gap-0.5 lg:flex xl:gap-1">
+          <nav aria-label="Sections" className="hidden shrink-0 gap-0 lg:flex xl:gap-0.5 2xl:gap-1">
             {NAV.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 aria-current={isActive(pathname, item.href) ? "page" : undefined}
-                className={`whitespace-nowrap rounded-md px-2 py-1.5 text-xs font-medium uppercase tracking-[0.08em] transition-colors xl:px-3 xl:tracking-[0.12em] ${
+                className={`whitespace-nowrap rounded-md px-1.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.04em] transition-colors xl:px-2 xl:text-xs xl:tracking-[0.06em] 2xl:px-3 2xl:tracking-[0.12em] ${
                   isActive(pathname, item.href)
                     ? "bg-brand-dim text-brand"
                     : "text-ink-muted hover:text-ink"
@@ -113,7 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-2xs uppercase tracking-[0.12em] text-ink-muted transition-colors hover:text-ink lg:inline-flex"
             >
               <IconSignOut className="h-4 w-4 shrink-0" />
-              <span className="hidden xl:inline">Sign out</span>
+              <span className="hidden 2xl:inline">Sign out</span>
             </button>
           </div>
         </div>
@@ -149,7 +150,8 @@ function FleetChip({ running, live }: { running: number; live: number }) {
     return (
       <span title="Algorithms placing real orders at Angel One right now">
         <Badge tone="critical" dot>
-          {live} on real money{paper > 0 ? ` · ${paper} paper` : ""}
+          {live} <span className="lg:max-2xl:hidden">on </span>real money
+          {paper > 0 && ` · ${paper} paper`}
         </Badge>
       </span>
     );
@@ -158,7 +160,7 @@ function FleetChip({ running, live }: { running: number; live: number }) {
     return (
       <span title="Running on paper: signals and fills are simulated, no orders reach Angel One">
         <Badge tone="good" dot>
-          {running} running · paper
+          {running} <span className="lg:max-2xl:hidden">running · </span>paper
         </Badge>
       </span>
     );
@@ -195,7 +197,7 @@ function DataLink({ ts }: { ts?: string }) {
       <StalenessDot />
       {copy.label && (
         <span
-          className={`text-2xs font-medium uppercase tracking-[0.1em] lg:max-xl:hidden ${
+          className={`text-2xs font-medium uppercase tracking-[0.1em] lg:max-2xl:hidden ${
             state === "live" ? "text-ink-secondary" : state === "offline" ? "text-critical" : "text-warning"
           }`}
         >
