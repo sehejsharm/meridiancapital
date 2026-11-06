@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
-from app import reliability
+from app import notify, reliability
 from app.deps import ctx
 from app.security import Principal, client_ip, require_auth
 
@@ -32,3 +32,18 @@ async def acknowledge(body: AckRequest, request: Request, principal: Principal =
     reliability.clear_cache()
     c.db.audit(principal.subject, "reliability.ack", body.key, client_ip(request))
     return {"ok": True, "alerts": reliability.banner_alerts(c.db)}
+
+
+@router.get("/alerts")
+async def alert_channels() -> dict:
+    """Which alert channels are configured (never the secrets themselves)."""
+    return {"channels": notify.channels(), "kinds": sorted(notify.TITLES)}
+
+
+@router.post("/alerts/test")
+async def test_alert(request: Request, principal: Principal = Depends(require_auth)) -> dict:
+    c = ctx()
+    c.db.audit(principal.subject, "alerts.test", "", client_ip(request))
+    import asyncio
+
+    return await asyncio.to_thread(notify.test_message, c.db)

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { AlertChannels } from "@/components/AlertChannels";
 import { Sparkline } from "@/components/Sparkline";
 import { Badge, Button, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
@@ -178,6 +179,8 @@ export default function ReliabilityPage() {
               )}
             </Card>
           </div>
+
+          <AlertChannels />
 
           <Card title="Uptime by trading day" subtitle="Share of 09:15–15:30 a process was running, for each day it ran">
             {!data.uptime.daily.length ? (
