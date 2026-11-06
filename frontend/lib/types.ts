@@ -161,6 +161,50 @@ export interface SystemStatus {
   operator: string;
   fund: string;
   fleet: FleetOverview;
+  /** Crash loops the operator has not acknowledged (app/reliability.py). */
+  alerts?: CrashAlert[];
+}
+
+export interface CrashEpisode {
+  algo_id: string;
+  name?: string;
+  key: string;
+  first_exit: string;
+  last_exit: string;
+  exits: number;
+  codes: (number | null)[];
+  mode: string | null;
+}
+
+export interface CrashAlert extends CrashEpisode {
+  kind: "crash_loop";
+}
+
+export interface ApiErrorDay {
+  date: string;
+  timeouts: number;
+  rate_limits: number;
+  upstream: number;
+  other_errors: number;
+  total: number;
+}
+
+export interface ReliabilityReport {
+  days: number;
+  since: string;
+  algo_id: string | null;
+  algo_name: string | null;
+  api: {
+    daily: ApiErrorDay[];
+    weekly: (Omit<ApiErrorDay, "date"> & { week_of: string })[];
+    totals: Omit<ApiErrorDay, "date">;
+    trend: { this_week: number; last_week: number; change_pct: number | null } | null;
+  };
+  divergence: { events: { ts: string; pts: number; algo_id: string }[]; count: number; max_pts: number | null };
+  runs: { loops: CrashEpisode[]; crashes: CrashEpisode[]; abnormal_exits: number; total_runs: number };
+  uptime: { daily: { date: string; pct: number; down_min: number }[]; overall_pct: number | null };
+  alerts: CrashAlert[];
+  thresholds: { loop_gap_min: number; loop_threshold: number };
 }
 
 export interface TradeRow {

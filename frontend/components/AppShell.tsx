@@ -4,12 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { CrashLoopBanner } from "@/components/CrashLoopBanner";
 import { Wordmark } from "@/components/Logo";
 import {
   IconAlgos,
   IconControls,
   IconDeck,
   IconJournal,
+  IconPulse,
   IconMore,
   IconReports,
   IconSignOut,
@@ -30,6 +32,7 @@ const NAV = [
   { href: "/trades", label: "Blotter", short: "Trades", Icon: IconTrades },
   { href: "/reports", label: "Reports", short: "Reports", Icon: IconReports },
   { href: "/journal", label: "Journal", short: "Log", Icon: IconJournal },
+  { href: "/reliability", label: "Reliability", short: "Health", Icon: IconPulse },
   { href: "/strategy", label: "Strategy", short: "Tune", Icon: IconTune },
   { href: "/controls", label: "Controls", short: "Controls", Icon: IconControls },
 ];
@@ -64,6 +67,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           {liveCount} algorithm{liveCount === 1 ? "" : "s"} trading real money
         </div>
       )}
+
+      <CrashLoopBanner />
 
       <header className="pt-safe relative z-10 border-b border-hairline bg-surface/80 backdrop-blur">
         <div className="mx-auto flex max-w-[2200px] items-center gap-3 px-4 py-3 sm:px-6 xl:px-8">

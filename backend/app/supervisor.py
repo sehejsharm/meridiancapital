@@ -112,6 +112,9 @@ class SupervisorState:
     blocked_until: float = 0.0
     manual_override: bool = False  # operator stopped it; scheduler must not restart
     stdout_tail: list[str] = field(default_factory=list)
+    # Why a stop was asked for, until the process is gone: the run's record then
+    # says the exit was requested, so a signal's exit code is not read as a crash.
+    stop_requested: str = ""
 
 
 class Supervisor:
@@ -215,6 +218,9 @@ class Supervisor:
 
     def _mark_stopped(self, code: int | None, reason: str) -> None:
         pid = self.state.pid
+        if self.state.stop_requested:
+            reason = f"stopped on request ({self.state.stop_requested}); {reason}"
+            self.state.stop_requested = ""
         if self.state.run_id:
             self.db.end_run(self.state.run_id, code, reason)
         self.db.expire_stale_commands(self.algo_id)
@@ -300,6 +306,7 @@ class Supervisor:
         self.state.started_ts = time.time()
         self.state.last_start_error = ""
         self.state.manual_override = False
+        self.state.stop_requested = ""
         self.state.run_id = self.db.start_run(proc.pid, mode, trigger, algo_id=self.algo_id)
         self.pidfile.write_text(str(proc.pid))
         self.db.add_event(
@@ -315,6 +322,7 @@ class Supervisor:
 
         pid = self.state.pid
         grace = STOP_GRACE_SEC
+        self.state.stop_requested = str(reason or "stop")[:120]
         if self.is_program(pid):
             grace = PROGRAM_STOP_GRACE_SEC
             # A program never reads the engine's command queue. SIGINT is the

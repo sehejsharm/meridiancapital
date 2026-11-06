@@ -97,4 +97,15 @@ def system_status(db: Database, sup: Supervisor, sched: Scheduler, fleet: Fleet)
         "operator": settings.operator,
         "fund": "Meridian Capital",
         "fleet": fleet.overview(),
+        # Crash loops the operator has not acknowledged: the desk's banner.
+        "alerts": _alerts(db),
     }
+
+
+def _alerts(db: Database) -> list[dict]:
+    from app import reliability
+
+    try:
+        return reliability.banner_alerts(db)
+    except Exception:  # a bad record must never take the status feed down
+        return []
