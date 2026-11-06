@@ -6,6 +6,7 @@ import { Badge, Breakable, Button } from "@/components/ui";
 import { duration, istTime, money, signedMoney, pnlClass } from "@/lib/format";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { accountFigures, valueLabel } from "@/lib/account";
+import { gateText } from "@/lib/gate";
 import { recordedAt } from "@/lib/recorded";
 import type { Algo, AlgoLast, AlgoLine, Snapshot } from "@/lib/types";
 
@@ -155,15 +156,7 @@ export function AlgoCard({
 
       <footer className="mt-auto flex items-center justify-between gap-3 border-t border-hairline px-4 py-2.5">
         <span className="min-w-0 text-2xs text-ink-muted">
-          {algo.runtime_kind === "program"
-            ? "standalone program"
-            : algo.runtime_kind === "builtin"
-              ? "built-in engine"
-              : algo.gate.status === "passed"
-                ? "gate passed"
-                : algo.gate.status === "failed"
-                  ? "gate flagged issues"
-                  : "not screened"}
+          {gateText(algo.gate.status, algo.runtime_kind)}
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {algo.kind !== "builtin" && (
@@ -203,11 +196,15 @@ export function ModeBadge({ algo }: { algo: Pick<Algo, "mode" | "enabled" | "run
   const automationOff = status?.schedule ? !status.schedule.enabled : false;
   const running = algo.runtime?.running ?? false;
   if (running) {
+    // Trading now: the only state that pulses. "Live now" leads, so it can never be
+    // mistaken for the armed-for-tomorrow badge below (both used to read "real money").
     const live = algo.runtime?.mode === "live";
     return (
-      <Badge tone={live ? "critical" : "good"} dot>
-        {live ? "Real money" : "Paper"}
-      </Badge>
+      <span title={live ? "Running now on real money: orders it places go to Angel One" : "Running now on paper: no orders are sent"}>
+        <Badge tone={live ? "critical" : "good"} dot glow={live}>
+          {live ? "Live now · real money" : "Running · paper"}
+        </Badge>
+      </span>
     );
   }
   if (algo.enabled && automationOff) {
@@ -220,8 +217,10 @@ export function ModeBadge({ algo }: { algo: Pick<Algo, "mode" | "enabled" | "run
   if (algo.enabled) {
     const live = algo.mode === "live";
     return (
-      <span title={`Armed: starts itself at 09:05 on trading days, on ${live ? "real money" : "paper"}`}>
-        <Badge tone={live ? "critical" : "neutral"}>Auto · {live ? "real money" : "paper"}</Badge>
+      <span title={`Not running now. Armed: starts itself at 09:05 on the next trading day, on ${live ? "real money" : "paper"}`}>
+        <Badge tone={live ? "warning" : "neutral"} dashed>
+          Armed · {live ? "real money" : "paper"} at 09:05
+        </Badge>
       </span>
     );
   }

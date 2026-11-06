@@ -144,14 +144,22 @@ export function Badge({
   children,
   tone = "neutral",
   dot = false,
+  glow = false,
+  dashed = false,
 }: {
   children: ReactNode;
   tone?: keyof typeof BADGE_TONE;
   dot?: boolean;
+  /** Happening right now (trading real money this minute): it pulses. */
+  glow?: boolean;
+  /** A future or standing arrangement (armed for tomorrow): an outline, never filled. */
+  dashed?: boolean;
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-2xs font-medium uppercase tracking-[0.1em] ${BADGE_TONE[tone]}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-2xs font-medium uppercase tracking-[0.1em] ${BADGE_TONE[tone]} ${
+        glow ? "live-glow bg-critical/15" : ""
+      } ${dashed ? "border-dashed bg-transparent" : ""}`}
     >
       {dot && <span className="live-dot h-1.5 w-1.5 rounded-full bg-current" />}
       {children}

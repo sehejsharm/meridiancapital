@@ -151,6 +151,22 @@ body {
 
 /* A stale feed has to be noticeable without being watched. Slow enough to read
    through, and disabled entirely for anyone who asked for less motion. */
+/* "Live right now" — actually trading — glows; "armed for later" never does
+   (an armed algorithm and a trading one used to wear the same red pill). */
+@keyframes live-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-critical) 55%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-critical) 0%, transparent); }
+}
+.live-glow {
+  animation: live-glow 1.8s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-glow {
+    animation: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--status-critical) 45%, transparent);
+  }
+}
+
 @keyframes stale-pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.45; }
