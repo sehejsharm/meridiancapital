@@ -6,7 +6,7 @@ import { LazyMarkedChart } from "@/components/LazyMarkedChart";
 import { Badge, Button, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
 import { fetchAlgos } from "@/lib/algos";
-import { istDateTime, istTime, money, pnlClass, signedMoney } from "@/lib/format";
+import { dayLabel, istDateTime, istTime, money, pnlClass, signedMoney } from "@/lib/format";
 import type { AlgoList, ReportPayload } from "@/lib/types";
 
 function isoDaysAgo(days: number): string {
@@ -207,7 +207,7 @@ export default function ReportsPage() {
                         </span>
                       </div>
                       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-2xs tabular-nums text-ink-muted">
-                        <span>{t.session_date}</span>
+                        <span>{dayLabel(t.session_date)}</span>
                         <span>
                           {t.entry_prem?.toFixed(2) ?? "—"} → {t.exit_prem?.toFixed(2) ?? "open"}
                         </span>
@@ -237,7 +237,7 @@ export default function ReportsPage() {
                     <tbody className="divide-y divide-hairline">
                       {report.trades.map((t) => (
                         <tr key={t.id}>
-                          <td className="whitespace-nowrap py-2 pr-3 text-ink-secondary">{t.session_date}</td>
+                          <td className="whitespace-nowrap py-2 pr-3 text-ink-secondary">{dayLabel(t.session_date)}</td>
                           <td className="py-2 pr-3">
                             <Badge tone={t.mode === "live" ? "critical" : "neutral"}>{t.mode}</Badge>
                           </td>

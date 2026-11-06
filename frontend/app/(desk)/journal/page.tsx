@@ -7,7 +7,7 @@ import { LogDownload } from "@/components/LogDownload";
 import { Badge, Card, Empty, Field, Skeleton } from "@/components/ui";
 import { fetchAlgos } from "@/lib/algos";
 import { apiGet } from "@/lib/client-api";
-import { duration, istDateTime, money, percent, signedMoney } from "@/lib/format";
+import { dayLabel, duration, istDateTime, money, percent, signedMoney } from "@/lib/format";
 import { useLiveFeed } from "@/lib/LiveContext";
 import type { Algo, CommandRow, EventRow } from "@/lib/types";
 
@@ -182,7 +182,7 @@ export default function JournalPage() {
             title="Last end-of-day report"
             subtitle={
               report
-                ? `Session ${report.session_date}${
+                ? `Session of ${dayLabel(report.session_date)}${
                     !isAlgo && report.algo_id ? ` · ${names[report.algo_id] ?? report.algo_id}` : ""
                   }`
                 : undefined

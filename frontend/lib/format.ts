@@ -67,21 +67,37 @@ export function istTime(iso: string | null | undefined): string {
   return time.slice(0, 8);
 }
 
-export function istDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const [date, time] = iso.split("T");
-  if (!time) return iso;
-  return `${date} ${time.slice(0, 5)}`;
-}
-
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** A trade time, "12 Oct 10:30", from either "2026-10-12T10:30" or "2026-10-12 10:30". */
+/**
+ * The desk's one date format: "06 Nov 2026" — day first, month in words, so it
+ * cannot be misread the way 07/10/2026 can. The blotter said "6 Nov 12:14", the
+ * equity table and event log "2026-11-06", version history "21 Oct 10:45".
+ * Timestamps are naive IST strings and are never re-zoned.
+ */
+export function dayLabel(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  return `${m[3]} ${MONTHS[Number(m[2]) - 1] ?? m[2]} ${m[1]}`;
+}
+
+/** "06 Nov 2026, 12:14" from "2026-11-06T12:14:05" or "2026-11-06 12:14"; the date alone if there is no time. */
+export function dateTimeLabel(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?/.exec(iso);
+  if (!m) return iso;
+  return m[2] ? `${dayLabel(m[1])}, ${m[2]}` : dayLabel(m[1]);
+}
+
+/** Kept for its callers: the standard date and time. */
+export function istDateTime(iso: string | null | undefined): string {
+  return dateTimeLabel(iso);
+}
+
+/** A trade time, in the standard format. */
 export function tradeTime(ts: string | null | undefined): string {
-  if (!ts) return "—";
-  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}:\d{2})/.exec(ts);
-  if (!m) return ts;
-  return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1] ?? m[2]} ${m[4]}`;
+  return dateTimeLabel(ts);
 }
 
 export function secondsSince(iso: string | null | undefined, nowIso?: string): number | null {

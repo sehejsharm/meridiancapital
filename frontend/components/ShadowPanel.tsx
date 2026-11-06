@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Empty } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
-import { money, pnlClass, signedMoney } from "@/lib/format";
+import { dayLabel, money, pnlClass, signedMoney } from "@/lib/format";
 import type { ShadowComparison } from "@/lib/types";
 
 /**
@@ -148,9 +148,9 @@ export function ShadowPanel({ algoId }: { algoId: string }) {
                 </thead>
                 <tbody className="divide-y divide-hairline">
                   {data.sessions!.slice(0, 30).map((s) => (
-                    <tr key={s.session_date}>
+                    <tr key={dayLabel(s.session_date)}>
                       <td className="py-2 pr-3 tabular-nums text-ink-secondary">
-                        {s.session_date}
+                        {dayLabel(s.session_date)}
                       </td>
                       <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">
                         {s.paper.trades ? signedMoney(s.paper.net) : "—"}

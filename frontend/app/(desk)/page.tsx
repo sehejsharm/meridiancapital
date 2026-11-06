@@ -21,7 +21,7 @@ import { Badge, Card, Empty, Pending, Skeleton, StatTile } from "@/components/ui
 import { apiGet, apiPost } from "@/lib/client-api";
 import { accountFigures, valueLabel, type AccountFigures } from "@/lib/account";
 import { fetchAlgos } from "@/lib/algos";
-import { money, signedMoney } from "@/lib/format";
+import { dayLabel, money, signedMoney } from "@/lib/format";
 import { useLinkView } from "@/lib/link";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { recordedAt, useDeskSnapshot } from "@/lib/recorded";
@@ -184,7 +184,7 @@ export default function DeckPage() {
           hint={
             account
               ? [figures.charges != null ? `after ${money(figures.charges)} charges` : null,
-                 asOf ? `session of ${recordedAt(snapshot!.ts).split(" ").slice(0, -1).join(" ")}` : null]
+                 asOf ? `session of ${dayLabel(snapshot!.ts)}` : null]
                   .filter(Boolean).join(" · ") || undefined
               : undefined
           }
@@ -281,7 +281,7 @@ export default function DeckPage() {
             title="Day's trading P&L"
             subtitle={
               equityDay?.recorded
-                ? `Last session, ${recordedAt(`${equityDay.date}T`).trim()} · after charges · every buy and sell marked`
+                ? `Last session, ${dayLabel(equityDay.date)} · after charges · every buy and sell marked`
                 : "After charges, minute by minute · every buy marked as it fills, every sell with its result"
             }
           >

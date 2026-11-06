@@ -6,6 +6,7 @@ import { Sparkline } from "@/components/Sparkline";
 import { Badge, Button, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
 import { useLiveFeed } from "@/lib/LiveContext";
+import { dayLabel } from "@/lib/format";
 import { recordedAt } from "@/lib/recorded";
 import { API_KINDS, trendText, uptimeTone } from "@/lib/reliability";
 import type { ReliabilityReport } from "@/lib/types";
@@ -184,7 +185,7 @@ export default function ReliabilityPage() {
             ) : (
               <div className="flex h-28 items-end gap-1" role="img" aria-label="Uptime per trading day">
                 {data.uptime.daily.map((d) => (
-                  <div key={d.date} className="group relative flex h-full min-w-0 flex-1 items-end" title={`${d.date}: ${d.pct}% · ${d.down_min} min down`}>
+                  <div key={d.date} className="group relative flex h-full min-w-0 flex-1 items-end" title={`${dayLabel(d.date)}: ${d.pct}% · ${d.down_min} min down`}>
                     <div
                       className={`w-full rounded-t-sm ${{ good: "bg-good/70", warning: "bg-warning/80", critical: "bg-critical/80", neutral: "bg-series" }[uptimeTone(d.pct)]}`}
                       style={{ height: `${Math.max(2, d.pct)}%` }}
@@ -220,7 +221,7 @@ function ApiBars({ report }: { report: ReliabilityReport }) {
     <div>
       <div className="flex h-40 items-end gap-[3px]" role="img" aria-label="Angel API errors per day, stacked by kind">
         {report.api.daily.map((d) => (
-          <div key={d.date} className="flex h-full min-w-0 flex-1 flex-col-reverse" title={`${d.date}: ${d.timeouts} timeouts, ${d.rate_limits} rate limits, ${d.upstream} upstream, ${d.other_errors} other`}>
+          <div key={d.date} className="flex h-full min-w-0 flex-1 flex-col-reverse" title={`${dayLabel(d.date)}: ${d.timeouts} timeouts, ${d.rate_limits} rate limits, ${d.upstream} upstream, ${d.other_errors} other`}>
             {API_KINDS.map((k) => {
               const n = d[k.key];
               return n ? <div key={k.key} className={`${k.className} w-full opacity-80`} style={{ height: `${(100 * n) / max}%` }} /> : null;
@@ -229,7 +230,7 @@ function ApiBars({ report }: { report: ReliabilityReport }) {
         ))}
       </div>
       <div className="mt-2 flex flex-wrap justify-between gap-2 text-2xs text-ink-muted">
-        <span>{report.api.daily[0]?.date}</span>
+        <span>{dayLabel(report.api.daily[0]?.date)}</span>
         <span className="flex flex-wrap gap-3">
           {API_KINDS.map((k) => (
             <span key={k.key} className="inline-flex items-center gap-1.5">
@@ -238,7 +239,7 @@ function ApiBars({ report }: { report: ReliabilityReport }) {
             </span>
           ))}
         </span>
-        <span>{report.api.daily[report.api.daily.length - 1]?.date}</span>
+        <span>{dayLabel(report.api.daily[report.api.daily.length - 1]?.date)}</span>
       </div>
     </div>
   );

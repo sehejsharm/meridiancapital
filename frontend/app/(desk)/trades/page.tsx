@@ -6,7 +6,7 @@ import { EquityChart, type ChartPoint } from "@/components/EquityChart";
 import { Badge, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
 import { matchLine, matchOf } from "@/lib/blotter";
-import { minutes, money, percent, signedMoney, signedPercent, tradeTime } from "@/lib/format";
+import { dayLabel, minutes, money, percent, signedMoney, signedPercent, tradeTime } from "@/lib/format";
 import type { DailyEquityPoint, TradeRow, TradeStats } from "@/lib/types";
 
 /**
@@ -100,14 +100,14 @@ export default function BlotterPage() {
         title="Angel balance at each close"
         subtitle={
           provisionalDay
-            ? `Each session's closing balance: the next morning's opening ledger balance. ${provisionalDay.session_date} is provisional until tomorrow's opening is read.`
+            ? `Each session's closing balance: the next morning's opening ledger balance. ${dayLabel(provisionalDay.session_date)} is provisional until tomorrow's opening is read.`
             : "Each session's closing balance: the next morning's opening ledger balance, and today's live trading balance"
         }
       >
         <EquityChart
           points={dailyPoints}
           emptyMessage="Two or more completed sessions are needed to draw this."
-          xLabel={(p) => p.label}
+          xLabel={(p) => dayLabel(p.label)}
         />
         {split && (
           <p className="mt-3 text-2xs text-ink-muted">

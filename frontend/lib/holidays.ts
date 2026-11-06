@@ -3,12 +3,12 @@ import type { Closure, Closures } from "@/lib/types";
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** "Fri 2 Oct" for an ISO date. Read as a calendar day, never shifted by time zone. */
+/** "Fri 02 Oct" (with the year, "Fri 02 Oct 2026") for an ISO date. Read as a calendar day, never shifted by time zone. */
 export function calendarDay(iso: string | null | undefined, withYear = false): string {
   if (!iso) return "—";
   const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return iso;
-  const text = `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+  const text = `${DAYS[d.getUTCDay()]} ${String(d.getUTCDate()).padStart(2, "0")} ${MONTHS[d.getUTCMonth()]}`;
   return withYear ? `${text} ${d.getUTCFullYear()}` : text;
 }
 
