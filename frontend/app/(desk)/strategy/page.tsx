@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { KellyReference } from "@/components/KellyReference";
 import { ProgramConfigCard, useProgramConfigs } from "@/components/ProgramConfig";
 import { Badge, Button, Card } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
@@ -251,6 +252,7 @@ export default function StrategyPage() {
                   </div>
                 );
               })}
+            {group === "Sizing" && <KellyReference />}
           </div>
         </Card>
       ))}

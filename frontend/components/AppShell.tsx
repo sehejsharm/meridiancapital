@@ -8,6 +8,7 @@ import { CrashLoopBanner } from "@/components/CrashLoopBanner";
 import { Wordmark } from "@/components/Logo";
 import {
   IconAlgos,
+  IconChart,
   IconControls,
   IconDeck,
   IconJournal,
@@ -31,6 +32,7 @@ const NAV = [
   { href: "/algos", label: "Algorithms", short: "Algos", Icon: IconAlgos },
   { href: "/trades", label: "Blotter", short: "Trades", Icon: IconTrades },
   { href: "/reports", label: "Reports", short: "Reports", Icon: IconReports },
+  { href: "/analytics", label: "Analytics", short: "Stats", Icon: IconChart },
   { href: "/journal", label: "Journal", short: "Log", Icon: IconJournal },
   { href: "/reliability", label: "Reliability", short: "Health", Icon: IconPulse },
   { href: "/strategy", label: "Strategy", short: "Tune", Icon: IconTune },
