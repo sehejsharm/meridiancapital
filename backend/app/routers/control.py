@@ -51,6 +51,13 @@ class ModeRequest(BaseModel):
 
 class ConfirmRequest(BaseModel):
     confirm: str = ""
+    # Which engine: omitted or the built-in's id acts on the built-in; an
+    # uploaded program's id acts on that program (Option A, below).
+    algo_id: str | None = Field(default=None, max_length=80)
+
+
+class TargetRequest(BaseModel):
+    algo_id: str | None = Field(default=None, max_length=80)
 
 
 class ScheduleRequest(BaseModel):
@@ -59,6 +66,7 @@ class ScheduleRequest(BaseModel):
 
 class ResumeRequest(BaseModel):
     week: bool = False
+    algo_id: str | None = Field(default=None, max_length=80)
 
 
 class HolidayRequest(BaseModel):
@@ -161,9 +169,84 @@ def _builtin_off(c) -> str:
     )
 
 
+# A standalone program reads no command queue. What reaches it is Ctrl-C
+# (SIGINT), on which it sells any open position through its own exit path and
+# exits. So for a program (the operator's choice, "Option A", 7 Nov 2026):
+#   Flatten - stop it: it sells what it holds and stays off for the day.
+#   Halt    - stop it, but only once it is confirmed flat; holding, a stop
+#             would sell, which is Flatten's job, not Halt's.
+#   Resume  - start it again through the normal start (paper or real money).
+#   Clear weekly kill - not available: its weekly kill lives in its own state.
+# Both stops keep it armed for the next session; the manual override keeps
+# the scheduler from bringing it back today.
+STATUS_FRESH_SEC = 180.0
+
+
+def _program_target(c, algo_id: str | None):
+    """(algo, supervisor) when the request names an uploaded program, else None."""
+    if not algo_id or algo_id == c.sup.algo_id:
+        return None
+    algo = c.db.algo(algo_id)
+    if not algo:
+        raise HTTPException(status_code=404, detail="no such algorithm")
+    sup = c.fleet.get(algo_id) if c.fleet is not None else None
+    if sup is None:
+        raise HTTPException(status_code=404, detail="no such algorithm")
+    sup.refresh()
+    return algo, sup
+
+
+def _program_position(c, algo_id: str, sup) -> tuple[str, str | None]:
+    """("flat" | "holding" | "unknown", symbol) from the program's own fresh status."""
+    from datetime import datetime
+
+    from engine.clock import now_ist
+    from shared.db import snapshot_key
+
+    snap = c.db.kv_get(snapshot_key(algo_id), None) or {}
+    if (snap.get("engine") or {}).get("pid") != sup.state.pid:
+        return "unknown", None
+    try:
+        age = (now_ist().replace(tzinfo=None) - datetime.fromisoformat(str(snap.get("ts")))).total_seconds()
+    except (TypeError, ValueError):
+        return "unknown", None
+    if age > STATUS_FRESH_SEC:
+        return "unknown", None
+    pos = snap.get("position")
+    return ("holding", pos.get("tsym")) if pos else ("flat", None)
+
+
+def _name(algo: dict) -> str:
+    return algo.get("name") or algo["id"]
+
+
 @router.post("/halt")
-async def halt(request: Request, principal: Principal = Depends(require_auth)) -> dict:
+async def halt(
+    request: Request, body: TargetRequest | None = None, principal: Principal = Depends(require_auth)
+) -> dict:
     c = ctx()
+    target = _program_target(c, body.algo_id if body else None)
+    if target:
+        algo, sup = target
+        _audit(request, principal, "risk.halt", algo["id"])
+        if not sup.state.running:
+            raise HTTPException(status_code=409, detail=f"{_name(algo)} is not running")
+        state, tsym = _program_position(c, algo["id"], sup)
+        if state == "holding":
+            raise HTTPException(status_code=409, detail=(
+                f"{_name(algo)} holds {tsym}. Halting a standalone program means stopping it, and a stop "
+                f"sells the position — use Flatten to sell and stop, or halt once it is flat."))
+        if state == "unknown":
+            raise HTTPException(status_code=409, detail=(
+                f"cannot confirm {_name(algo)} is flat (no fresh status from it) — use Flatten, which "
+                f"sells anything it holds and stops it, or check the Angel One app."))
+        res = await asyncio.to_thread(c.fleet.stop, algo["id"], reason=f"halt from Controls by {principal.subject}")
+        if not res.get("ok"):
+            raise HTTPException(status_code=409, detail=res.get("detail"))
+        c.db.add_event("warn", f"HALT: {_name(algo)} stopped by {principal.subject} while flat — no new entries "
+                               f"today; still armed for the next session", source="api", algo_id=algo["id"])
+        return {"ok": True, "detail": f"{_name(algo)} stopped while flat: no new entries today. "
+                                      f"It stays armed for the next session; Resume starts it again."}
     _audit(request, principal, "risk.halt")
     if not c.sup.state.running:
         raise HTTPException(status_code=409, detail=_builtin_off(c))
@@ -176,6 +259,17 @@ async def resume(
     body: ResumeRequest, request: Request, principal: Principal = Depends(require_auth)
 ) -> dict:
     c = ctx()
+    target = _program_target(c, body.algo_id)
+    if target:
+        algo, sup = target
+        _audit(request, principal, "risk.resume", f"{algo['id']} week={body.week}")
+        if body.week:
+            raise HTTPException(status_code=409, detail=(
+                f"not available for {_name(algo)}: a standalone program keeps its weekly kill in its own "
+                f"state file, which the desk does not edit under it."))
+        raise HTTPException(status_code=409, detail=(
+            f"{_name(algo)} is resumed by starting it again — use Resume on Controls or Start on its card, "
+            f"which asks paper or real money."))
     _audit(request, principal, "risk.resume", f"week={body.week}")
     if not c.sup.state.running:
         raise HTTPException(status_code=409, detail=_builtin_off(c))
@@ -193,6 +287,25 @@ async def flatten(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"flatten requires confirm == '{FLATTEN_PHRASE}'",
         )
+    target = _program_target(c, body.algo_id)
+    if target:
+        algo, sup = target
+        _audit(request, principal, "risk.flatten", algo["id"])
+        if not sup.state.running:
+            raise HTTPException(status_code=409, detail=(
+                f"{_name(algo)} is not running — if anything is still open, square it off in the Angel One app"))
+        state, tsym = _program_position(c, algo["id"], sup)
+        c.db.add_event(
+            "critical", f"FLATTEN requested for {_name(algo)} by {principal.subject} — stopping it with Ctrl-C "
+                        f"so it sells {tsym or 'any open position'} on its way out", source="api", algo_id=algo["id"])
+        res = await asyncio.to_thread(c.fleet.stop, algo["id"], reason=f"flatten from Controls by {principal.subject}")
+        if not res.get("ok"):
+            raise HTTPException(status_code=409, detail=(
+                f"{res.get('detail')} — square off {tsym or 'any open position'} in the Angel One app now"))
+        held = f"It held {tsym} and sold it on its way out" if state == "holding" else (
+            "It was flat" if state == "flat" else "If it held a position it sold it on its way out")
+        return {"ok": True, "detail": f"{_name(algo)} stopped. {held}; check the blotter and the Angel One app. "
+                                      f"It stays off today and armed for the next session."}
     _audit(request, principal, "risk.flatten")
     if not c.sup.state.running:
         raise HTTPException(

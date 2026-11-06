@@ -1,14 +1,18 @@
 import type { FleetAlgo } from "@/lib/types";
 
 /**
- * Which running engine each in-session control actually reaches.
+ * What each in-session control does to each engine.
  *
- * Halt, Resume, Clear weekly kill and Flatten travel through the command queue,
- * which only the built-in engine reads. An uploaded program reads no commands:
- * those buttons never reached the program trading real money, and the page
- * said only "for the built-in engine" — easy to miss mid-session. What does
- * reach a program today is a stop (SIGINT, on which it sells any open position
- * through its own exit path and ends its day) and the emergency stop.
+ * The built-in engine reads a command queue: Halt, Resume, Clear weekly kill
+ * and Flatten act on it within seconds and it keeps running. An uploaded
+ * program reads no commands; what reaches it is Ctrl-C, on which it sells any
+ * open position through its own exit path and exits. So for a program
+ * (the operator's choice, 7 Nov 2026):
+ *   Flatten - stops it: it sells what it holds and stays off for today.
+ *   Halt    - stops it, only while it is confirmed flat.
+ *   Resume  - starts it again (asks paper or real money).
+ *   Clear weekly kill - not available.
+ * Both stops keep it armed for the next session.
  */
 export interface ControlTarget {
   algoId: string;
@@ -16,36 +20,46 @@ export interface ControlTarget {
   kind: "builtin" | "uploaded";
   running: boolean;
   mode: "paper" | "live";
-  /** Halt / Resume / Clear weekly kill / Flatten reach it. */
-  commands: boolean;
-  /** What to use instead when they do not. */
-  instead: string | null;
+  pid: number | null;
+  halt: string;
+  flatten: string;
+  resume: string;
+  clearWeek: string | null; // null: not available
 }
 
 export function controlTargets(algos: FleetAlgo[] | undefined): ControlTarget[] {
-  return (algos ?? []).map((a) => ({
-    algoId: a.algo_id,
-    name: a.name,
-    kind: a.kind,
-    running: a.running,
-    mode: a.mode,
-    commands: a.kind === "builtin",
-    instead:
-      a.kind === "builtin"
-        ? null
-        : "Stop on its card (it sells any open position, then stops for the day) or Stop everything",
-  }));
+  return (algos ?? []).map((a) =>
+    a.kind === "builtin"
+      ? {
+          algoId: a.algo_id, name: a.name, kind: a.kind, running: a.running, mode: a.mode, pid: a.pid,
+          halt: "No new entries today; it keeps managing any open trade.",
+          flatten: "Sends a market exit for the open position and halts further entries.",
+          resume: "Re-arms entries.",
+          clearWeek: "Clears the weekly kill so it can trade again this week.",
+        }
+      : {
+          algoId: a.algo_id, name: a.name, kind: a.kind, running: a.running, mode: a.mode, pid: a.pid,
+          halt: "Stops it for the rest of today — only while it is flat (holding, use Flatten). Stays armed for the next session.",
+          flatten: "Stops it with Ctrl-C: it sells any open position on its way out and stays off for today. Stays armed for the next session.",
+          resume: "Starts it again; you choose paper or real money.",
+          clearWeek: null,
+        },
+  );
 }
 
-/** The running engines these controls do not reach — the ones to warn about. */
-export function unreachedRunning(targets: ControlTarget[]): ControlTarget[] {
-  return targets.filter((t) => t.running && !t.commands);
+/** The engine the controls should open on: one trading real money, else one running, else the built-in. */
+export function defaultTarget(targets: ControlTarget[]): string | null {
+  const pick =
+    targets.find((t) => t.running && t.mode === "live") ??
+    targets.find((t) => t.running) ??
+    targets.find((t) => t.kind === "builtin") ??
+    targets[0];
+  return pick?.algoId ?? null;
 }
 
 /** "Applies to" line for the in-session controls. */
-export function appliesTo(targets: ControlTarget[]): string {
-  const builtin = targets.find((t) => t.kind === "builtin");
-  const name = builtin?.name ?? "the built-in engine";
-  if (!builtin?.running) return `Applies to: ${name} (built-in) — not running, so these are off`;
-  return `Applies to: ${name} (built-in), ${builtin.mode === "live" ? "on real money" : "on paper"}`;
+export function appliesTo(t: ControlTarget | undefined): string {
+  if (!t) return "Applies to: —";
+  const state = !t.running ? "not running" : t.mode === "live" ? "running on real money" : "running on paper";
+  return `Applies to: ${t.name} (${t.kind === "builtin" ? "built-in engine" : "uploaded program"}) — ${state}`;
 }

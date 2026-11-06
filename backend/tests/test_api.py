@@ -409,3 +409,74 @@ def test_the_journal_can_be_read_for_one_day(client, auth):
     r = client.get("/api/events?day=2026-11-06&algo=og", headers=auth)
     assert [e["message"] for e in r.json()["events"]] == ["today close", "today open"]
     assert client.get("/api/events?day=06-11-2026", headers=auth).status_code == 422
+
+
+# ── Option A: in-session controls on an uploaded program (7 Nov 2026) ────────
+def _program(status_ts=None, position=None):
+    from app.deps import ctx
+    from app.program_status import program_snapshot
+    from engine.clock import now_ist
+    from shared.db import snapshot_key
+
+    c = ctx()
+    c.db.upsert_algo("og", "ganesh_kavach_og_real (3)")
+    c.db.set_algo_fields("og", enabled=1, mode="live")
+    sup = c.fleet.get("og")
+    sup.state.running, sup.state.mode, sup.state.pid = True, "live", 4242
+    ts = status_ts or now_ist().replace(tzinfo=None).isoformat(timespec="seconds")
+    raw = {"ts": ts, "pid": 4242, "equity": 45000.0, "day_pnl": 0.0, "position": position}
+    c.db.kv_set(snapshot_key("og"), program_snapshot(raw, name="og", mode="live", pid=4242))
+    return c, sup
+
+
+HOLDING = {"tsym": "NIFTY10NOV2624500CE", "right": "CE", "strike": 24500, "qty": 65, "lots": 1,
+           "entry": 150.0, "live_premium": 160.0}
+
+
+def test_flatten_stops_a_program_so_it_sells_and_stays_armed(client, auth):
+    c, sup = _program(position=HOLDING)
+    r = client.post("/api/control/flatten", json={"confirm": "FLATTEN", "algo_id": "og"}, headers=auth)
+    assert r.status_code == 200, r.text
+    assert "held NIFTY10NOV2624500CE and sold it" in r.json()["detail"]
+    assert sup.calls and sup.calls[0][0] == "stop" and "flatten from Controls" in sup.calls[0][1]
+    assert sup.state.manual_override is True, "the scheduler must not bring it back today"
+    assert c.db.algo("og")["enabled"] == 1, "still armed for the next session"
+    assert any("FLATTEN requested for ganesh_kavach_og_real (3)" in e["message"] for e in c.db.events(limit=20))
+
+
+def test_flatten_on_a_program_still_needs_the_phrase(client, auth):
+    _, sup = _program(position=HOLDING)
+    assert client.post("/api/control/flatten", json={"algo_id": "og"}, headers=auth).status_code == 400
+    assert not sup.calls
+
+
+def test_halt_stops_a_program_only_when_it_is_flat(client, auth):
+    _, sup = _program(position=None)
+    r = client.post("/api/control/halt", json={"algo_id": "og"}, headers=auth)
+    assert r.status_code == 200, r.text
+    assert "stopped while flat" in r.json()["detail"]
+    assert sup.calls[0][0] == "stop" and "halt from Controls" in sup.calls[0][1]
+
+
+def test_halt_refuses_a_program_holding_a_position(client, auth):
+    _, sup = _program(position=HOLDING)
+    r = client.post("/api/control/halt", json={"algo_id": "og"}, headers=auth)
+    assert r.status_code == 409
+    assert "holds NIFTY10NOV2624500CE" in r.json()["detail"] and "Flatten" in r.json()["detail"]
+    assert not sup.calls, "a halt must never sell"
+
+
+def test_halt_refuses_when_the_programs_status_is_stale(client, auth):
+    _, sup = _program(status_ts="2026-11-06T09:30:00", position=None)
+    r = client.post("/api/control/halt", json={"algo_id": "og"}, headers=auth)
+    assert r.status_code == 409 and "cannot confirm" in r.json()["detail"]
+    assert not sup.calls
+
+
+def test_a_programs_weekly_kill_cannot_be_cleared_and_resume_means_start(client, auth):
+    _, sup = _program()
+    r = client.post("/api/control/resume", json={"week": True, "algo_id": "og"}, headers=auth)
+    assert r.status_code == 409 and "not available" in r.json()["detail"]
+    r = client.post("/api/control/resume", json={"algo_id": "og"}, headers=auth)
+    assert r.status_code == 409 and "paper or real money" in r.json()["detail"]
+    assert not sup.calls

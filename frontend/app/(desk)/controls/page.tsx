@@ -6,7 +6,7 @@ import { EmergencyStop } from "@/components/EmergencyStop";
 import { RunModeDialog } from "@/components/RunModeDialog";
 import { Badge, Button, Card, Empty, Field, Pending } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
-import { appliesTo, controlTargets, unreachedRunning } from "@/lib/controlTargets";
+import { appliesTo, controlTargets, defaultTarget } from "@/lib/controlTargets";
 import { istDateTime } from "@/lib/format";
 import { calendarDay } from "@/lib/holidays";
 import { useLiveFeed } from "@/lib/LiveContext";
@@ -53,10 +53,16 @@ export default function ControlsPage() {
   // Starting asks paper or real money here too, exactly as the deck does.
   const [asking, setAsking] = useState(false);
   const builtinId = status?.fleet?.algos.find((a) => a.kind === "builtin")?.algo_id ?? "gk50k";
-  // Which running engines these controls reach. They reach the built-in only;
-  // a running program is named, with what does reach it.
+  // Which engine the in-session controls act on. It opens on the one trading
+  // real money; the operator can pick another, and the card says which.
   const targets = controlTargets(status?.fleet?.algos);
-  const unreached = unreachedRunning(targets);
+  const [picked, setPicked] = useState<string | null>(null);
+  const targetId = picked && targets.some((t) => t.algoId === picked) ? picked : defaultTarget(targets);
+  const target = targets.find((t) => t.algoId === targetId);
+  const isProgram = target?.kind === "uploaded";
+  // A program's own position, from the desk's snapshot when it is that program's.
+  const programSnap = isProgram && snapshot && target?.pid != null && snapshot.engine.pid === target.pid ? snapshot : null;
+  const [resuming, setResuming] = useState(false);
 
   return (
     <div className="space-y-5">
@@ -73,6 +79,22 @@ export default function ControlsPage() {
           );
         }}
         onCancel={() => setAsking(false)}
+      />
+      <RunModeDialog
+        name={target?.name ?? "this program"}
+        open={resuming}
+        busy={busy !== null}
+        onPick={(mode) => {
+          setResuming(false);
+          const id = target?.algoId;
+          if (!id) return;
+          void run(
+            "resume",
+            () => apiPost(`/algos/${id}/start`, { mode }),
+            mode === "live" ? "started again on real money" : "started again on paper",
+          );
+        }}
+        onCancel={() => setResuming(false)}
       />
       {notice && (
         <div
@@ -241,69 +263,96 @@ export default function ControlsPage() {
           )}
         </Card>
 
-        <Card
-          title="In-session risk"
-          subtitle={`${appliesTo(targets)}. Takes effect on its next loop, within seconds.`}
-        >
-          {unreached.length > 0 && (
-            <div role="alert" className="mb-4 rounded-md border border-critical/50 bg-critical/10 px-3 py-2.5 text-2xs leading-relaxed text-critical">
-              {unreached.map((t) => (
-                <p key={t.algoId}>
-                  <strong className="font-semibold">
-                    {t.name} is running{t.mode === "live" ? " on real money" : " on paper"} and these buttons do not reach it
-                  </strong>{" "}
-                  — it reads no commands, so Halt, Resume, Clear weekly kill and Flatten never act on it. To stop
-                  it trading now: {t.instead}.
-                </p>
+        <Card title="In-session risk" subtitle={appliesTo(target)}>
+          {targets.length > 1 && (
+            <div className="mb-3 flex flex-wrap gap-1" role="radiogroup" aria-label="Engine these controls act on">
+              {targets.map((t) => (
+                <button
+                  key={t.algoId}
+                  type="button"
+                  role="radio"
+                  aria-checked={t.algoId === targetId}
+                  onClick={() => setPicked(t.algoId)}
+                  className={`rounded-md border px-2.5 py-1 text-2xs font-medium touch:min-h-[36px] ${
+                    t.algoId === targetId ? "border-brand/60 bg-brand-dim text-brand" : "border-hairline text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  {t.name}
+                  {t.running && <span className={`ml-1.5 ${t.mode === "live" ? "text-critical" : "text-good"}`}>●</span>}
+                </button>
               ))}
             </div>
           )}
-          <dl className="divide-y divide-hairline">
-            <Field label="Entries halted" value={own ? (own.guards.halted ? "Yes" : "No") : "—"} />
-            <Field label="Weekly kill active" value={own ? (own.guards.week_halted ? "Yes" : "No") : "—"} />
-            <Field label="Open position" value={own ? (own.position?.tsym ?? "flat") : "—"} />
-          </dl>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              disabled={!running || busy !== null}
-              onClick={() =>
-                void run("halt", () => apiPost("/control/halt"), "no new entries will be taken")
-              }
-            >
-              Halt new entries
-            </Button>
-            <Button
-              disabled={!running || busy !== null}
-              onClick={() => void run("resume", () => apiPost("/control/resume"), "entries re-armed")}
-            >
-              Resume
-            </Button>
-            <Button
-              disabled={!running || busy !== null}
+          {!isProgram ? (
+            <dl className="divide-y divide-hairline">
+              <Field label="Entries halted" value={own ? (own.guards.halted ? "Yes" : "No") : "—"} />
+              <Field label="Weekly kill active" value={own ? (own.guards.week_halted ? "Yes" : "No") : "—"} />
+              <Field label="Open position" value={own ? (own.position?.tsym ?? "flat") : "—"} />
+            </dl>
+          ) : (
+            <dl className="divide-y divide-hairline">
+              <Field label="Running" value={target?.running ? (target.mode === "live" ? "Yes — real money" : "Yes — paper") : "No"} />
+              <Field label="Open position" value={programSnap ? (programSnap.position?.tsym ?? "flat") : "—"} />
+              <Field label="Weekly kill" value="kept by the program itself" mono={false} />
+            </dl>
+          )}
+
+          <div className="mt-4 space-y-2">
+            <ControlRow
+              label="Halt new entries"
+              does={target?.halt ?? ""}
+              disabled={!target?.running || busy !== null}
               onClick={() =>
                 void run(
-                  "resume-week",
-                  () => apiPost("/control/resume", { week: true }),
-                  "weekly kill cleared",
+                  "halt",
+                  () => apiPost("/control/halt", isProgram ? { algo_id: target?.algoId } : undefined),
+                  "no new entries will be taken",
                 )
               }
-            >
-              Clear weekly kill
-            </Button>
+            />
+            <ControlRow
+              label="Resume"
+              does={target?.resume ?? ""}
+              disabled={busy !== null || (isProgram ? Boolean(target?.running) : !target?.running)}
+              onClick={() =>
+                isProgram
+                  ? setResuming(true)
+                  : void run("resume", () => apiPost("/control/resume"), "entries re-armed")
+              }
+            />
+            <ControlRow
+              label="Clear weekly kill"
+              does={target?.clearWeek ?? "Not available for an uploaded program: it keeps its weekly kill in its own state."}
+              disabled={!target?.clearWeek || !target?.running || busy !== null}
+              onClick={() => void run("resume-week", () => apiPost("/control/resume", { week: true }), "weekly kill cleared")}
+            />
           </div>
 
           <FlattenControl
-            running={running}
-            hasPosition={hasPosition}
-            heldElsewhere={heldElsewhere}
+            running={Boolean(target?.running)}
+            hasPosition={isProgram ? true : hasPosition}
+            heldElsewhere={isProgram ? null : heldElsewhere}
             busy={busy}
             onRun={run}
+            algoId={isProgram ? (target?.algoId ?? null) : null}
+            does={target?.flatten ?? ""}
           />
         </Card>
       </div>
 
       <HolidayCalendar onNotice={setNotice} today={schedule?.now_ist?.slice(0, 10)} />
+    </div>
+  );
+}
+
+function ControlRow({ label, does, disabled, onClick }: { label: string; does: string; disabled: boolean; onClick: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <Button disabled={disabled} onClick={onClick}>
+        {label}
+      </Button>
+      <span className="min-w-0 flex-1 text-2xs leading-relaxed text-ink-muted">{does}</span>
     </div>
   );
 }
@@ -314,12 +363,17 @@ function FlattenControl({
   heldElsewhere,
   busy,
   onRun,
+  algoId,
+  does,
 }: {
   running: boolean;
   hasPosition: boolean;
   heldElsewhere: string | null;
   busy: string | null;
   onRun: (k: string, a: () => Promise<{ detail?: string }>, s: string) => Promise<void>;
+  /** An uploaded program: flatten stops it (it sells on its way out). */
+  algoId: string | null;
+  does: string;
 }) {
   const [confirm, setConfirm] = useState("");
 
@@ -329,7 +383,7 @@ function FlattenControl({
         Emergency flatten
       </div>
       <p className="mt-1 text-2xs text-ink-secondary">
-        Sends a market exit for the open position immediately and halts further entries. Type{" "}
+        {does} Type{" "}
         <code className="rounded bg-surface-raised px-1 py-0.5 text-critical">FLATTEN</code> to
         confirm.
       </p>
@@ -348,8 +402,8 @@ function FlattenControl({
           onClick={() =>
             void onRun(
               "flatten",
-              () => apiPost("/control/flatten", { confirm }),
-              "exit order queued",
+              () => apiPost("/control/flatten", algoId ? { confirm, algo_id: algoId } : { confirm }),
+              algoId ? "stopped; it sold any open position on its way out" : "exit order queued",
             ).then(() => setConfirm(""))
           }
         >
