@@ -4,6 +4,7 @@ import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
 
 import { ModeBadge } from "@/components/AlgoCard";
+import { CodeDiff } from "@/components/CodeDiff";
 import { GateReport } from "@/components/GateReport";
 import { RunModeDialog } from "@/components/RunModeDialog";
 import { ShadowPanel } from "@/components/ShadowPanel";
@@ -341,6 +342,8 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
           </ul>
         )}
       </Card>
+
+      {algo.versions.length >= 2 && <CodeDiff key={algo.versions[0]?.id} algoId={id} versions={algo.versions} />}
     </div>
   );
 }

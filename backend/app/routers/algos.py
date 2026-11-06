@@ -8,16 +8,17 @@ paper or real money. The choice is made when an algorithm is started.
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from app.algo_store import MAX_SOURCE_BYTES, run_gate, sha256, slugify
 from app.program_status import compact_snapshot
 from app.programs import mode_arguments, runtime_of
 from app.deps import ctx
-from app import shadow
+from app import code_redact, shadow
 from app.security import Principal, client_ip, require_auth
 from engine import versions
 from engine.clock import now_ist
@@ -97,7 +98,7 @@ def _algo_view(db, algo: dict) -> dict:
     return {
         **algo,
         "enabled": bool(algo.get("enabled")),
-        "versions": history,
+        "versions": [_safe_version(v) for v in history],
         "active": {k: v for k, v in (active or {}).items() if k != "source"} or None,
         "gate": versions.summary(active),
         "runtime_kind": (
@@ -205,7 +206,7 @@ async def upload_algo(
         "version_id": version_id,
         "version": version["version"],
         "passed": passed,
-        "report": report,
+        "report": code_redact.scrub_strings(report),
         "mode": mode,
         "kind": kind,
         "next": (
@@ -227,12 +228,37 @@ async def get_algo(algo_id: str) -> dict:
     return _algo_view(db, algo)
 
 
+def _safe_version(v: dict) -> dict:
+    """A version row fit for the browser: never its source (it carries the operator's Angel
+    credentials), and its gate report with anything shaped like a secret blanked."""
+    out = {k: val for k, val in v.items() if k != "source"}
+    if out.get("gate_report"):
+        try:
+            out["gate_report"] = json.dumps(code_redact.scrub_strings(json.loads(out["gate_report"])))
+        except (TypeError, ValueError):
+            out["gate_report"] = None
+    return out
+
+
 @router.get("/{algo_id}/versions/{version_id}")
 async def get_version(algo_id: str, version_id: int) -> dict:
     v = ctx().db.version(version_id)
     if not v or v["algo_id"] != algo_id:
         raise HTTPException(status_code=404, detail="no such version")
-    return v
+    return _safe_version(v)
+
+
+@router.get("/{algo_id}/diff")
+async def diff_versions(algo_id: str, a: int, b: int, context: int = Query(3, ge=0, le=100_000)) -> dict:
+    """What changed between two uploaded versions, with every credential line blanked on
+    the server before the diff is taken: no line of either file leaves unredacted."""
+    db = ctx().db
+    va, vb = db.version(a), db.version(b)
+    if not va or not vb or va["algo_id"] != algo_id or vb["algo_id"] != algo_id:
+        raise HTTPException(status_code=404, detail="no such version")
+    out = await asyncio.to_thread(code_redact.diff, va.get("source") or "", vb.get("source") or "", context)
+    meta = ("id", "version", "created_ts", "uploaded_by", "sha256", "status")
+    return {"algo_id": algo_id, "a": {k: va.get(k) for k in meta}, "b": {k: vb.get(k) for k in meta}, **out}
 
 
 @router.post("/{algo_id}/activate")
