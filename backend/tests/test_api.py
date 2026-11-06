@@ -371,3 +371,25 @@ def test_a_tuning_change_is_audited(client, auth):
     client.post("/api/tuning", json={"values": {"TARGET_PTS": 80}}, headers=auth)
     actions = [a["action"] for a in client.get("/api/audit", headers=auth).json()["entries"]]
     assert "tuning.save" in actions
+
+
+def test_a_refused_command_names_the_program_it_cannot_reach(client, auth):
+    """6 Nov 2026: Halt, Resume, Clear weekly kill and Flatten reach only the
+    built-in engine. With only an uploaded program trading, the refusal said
+    "engine is not running" — read beside a live program as "nothing is
+    trading". It now names the program and what does reach it."""
+    from app.deps import ctx
+
+    c = ctx()
+    c.db.upsert_algo("og", "ganesh_kavach_og_real (3)")
+    sup = c.fleet.get("og")
+    sup.state.running, sup.state.mode = True, "live"
+    for path, body in (("/api/control/halt", None), ("/api/control/resume", {}),
+                       ("/api/control/flatten", {"confirm": "FLATTEN"})):
+        r = client.post(path, json=body, headers=auth)
+        assert r.status_code == 409
+        detail = r.json()["detail"]
+        assert "ganesh_kavach_og_real (3) (real money)" in detail
+        assert "reads no commands" in detail and "Stop on its card" in detail
+    actions = [x["action"] for x in client.get("/api/commands", headers=auth).json()["commands"]]
+    assert not {"halt", "resume", "flatten"} & set(actions), "nothing was queued for an engine that is off"

@@ -6,6 +6,7 @@ import { EmergencyStop } from "@/components/EmergencyStop";
 import { RunModeDialog } from "@/components/RunModeDialog";
 import { Badge, Button, Card, Empty, Field } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
+import { appliesTo, controlTargets, unreachedRunning } from "@/lib/controlTargets";
 import { istDateTime } from "@/lib/format";
 import { calendarDay } from "@/lib/holidays";
 import { useLiveFeed } from "@/lib/LiveContext";
@@ -52,6 +53,10 @@ export default function ControlsPage() {
   // Starting asks paper or real money here too, exactly as the deck does.
   const [asking, setAsking] = useState(false);
   const builtinId = status?.fleet?.algos.find((a) => a.kind === "builtin")?.algo_id ?? "gk50k";
+  // Which running engines these controls reach. They reach the built-in only;
+  // a running program is named, with what does reach it.
+  const targets = controlTargets(status?.fleet?.algos);
+  const unreached = unreachedRunning(targets);
 
   return (
     <div className="space-y-5">
@@ -226,8 +231,21 @@ export default function ControlsPage() {
 
         <Card
           title="In-session risk"
-          subtitle="For the built-in engine; takes effect on its next loop, within seconds"
+          subtitle={`${appliesTo(targets)}. Takes effect on its next loop, within seconds.`}
         >
+          {unreached.length > 0 && (
+            <div role="alert" className="mb-4 rounded-md border border-critical/50 bg-critical/10 px-3 py-2.5 text-2xs leading-relaxed text-critical">
+              {unreached.map((t) => (
+                <p key={t.algoId}>
+                  <strong className="font-semibold">
+                    {t.name} is running{t.mode === "live" ? " on real money" : " on paper"} and these buttons do not reach it
+                  </strong>{" "}
+                  — it reads no commands, so Halt, Resume, Clear weekly kill and Flatten never act on it. To stop
+                  it trading now: {t.instead}.
+                </p>
+              ))}
+            </div>
+          )}
           <dl className="divide-y divide-hairline">
             <Field label="Entries halted" value={own ? (own.guards.halted ? "Yes" : "No") : "—"} />
             <Field label="Weekly kill active" value={own ? (own.guards.week_halted ? "Yes" : "No") : "—"} />

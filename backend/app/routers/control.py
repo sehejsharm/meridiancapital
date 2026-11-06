@@ -143,12 +143,30 @@ async def set_mode(
 
 
 # ── in-session risk controls ─────────────────────────────────────────────────
+def _builtin_off(c) -> str:
+    """Why a command cannot go anywhere: the built-in is off. A running program
+    is named — it reads no commands — so "engine is not running" is never read
+    as "nothing is trading" while a program holds real money."""
+    progs = []
+    for algo_id, sup in (c.fleet.all().items() if c.fleet is not None else []):
+        if algo_id != c.sup.algo_id and sup.state.running:
+            algo = c.db.algo(algo_id) or {}
+            progs.append(f"{algo.get('name') or algo_id} ({'real money' if sup.state.mode == 'live' else 'paper'})")
+    if not progs:
+        return "the built-in engine is not running"
+    return (
+        "the built-in engine is not running; this command reaches it only. "
+        f"Running now: {', '.join(progs)} — a standalone program reads no commands. "
+        "To stop it trading, use Stop on its card (it sells any open position first) or Stop everything."
+    )
+
+
 @router.post("/halt")
 async def halt(request: Request, principal: Principal = Depends(require_auth)) -> dict:
     c = ctx()
     _audit(request, principal, "risk.halt")
     if not c.sup.state.running:
-        raise HTTPException(status_code=409, detail="engine is not running")
+        raise HTTPException(status_code=409, detail=_builtin_off(c))
     cmd_id = c.db.enqueue_command("halt", issued_by=principal.subject)
     return {"ok": True, "command_id": cmd_id, "detail": "no new entries will be taken today"}
 
@@ -160,7 +178,7 @@ async def resume(
     c = ctx()
     _audit(request, principal, "risk.resume", f"week={body.week}")
     if not c.sup.state.running:
-        raise HTTPException(status_code=409, detail="engine is not running")
+        raise HTTPException(status_code=409, detail=_builtin_off(c))
     cmd_id = c.db.enqueue_command("resume", {"week": body.week}, issued_by=principal.subject)
     return {"ok": True, "command_id": cmd_id}
 
@@ -179,7 +197,7 @@ async def flatten(
     if not c.sup.state.running:
         raise HTTPException(
             status_code=409,
-            detail="engine is not running — square off in the Angel One app directly",
+            detail=_builtin_off(c) + " — or square off in the Angel One app directly",
         )
     cmd_id = c.db.enqueue_command("flatten", issued_by=principal.subject)
     c.db.add_event(
