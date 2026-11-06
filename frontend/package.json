@@ -2,13 +2,14 @@
   "name": "meridian-dashboard",
   "version": "1.0.0",
   "private": true,
-  "description": "Meridian Capital — trading desk dashboard",
+  "description": "Meridian Capital \u2014 trading desk dashboard",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"tests/**/*.test.ts\""
   },
   "dependencies": {
     "lightweight-charts": "^5.2.1",

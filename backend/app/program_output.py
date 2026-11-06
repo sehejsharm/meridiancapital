@@ -14,7 +14,8 @@ import time
 
 from app import programs
 from app.ledger import money_log
-from app.program_status import program_snapshot, read_status
+from app import session_close
+from app.program_status import has_figures, program_snapshot, read_status
 from app.program_trades import TradeLogs
 from shared.db import snapshot_key
 
@@ -80,6 +81,7 @@ class ProgramOutput:
         self._board: dict[str, dict] = {}  # algo -> where in a status board it is
         self.trade_logs = TradeLogs(db)
         self._sampled: dict[str, float] = {}
+        self._eod_pending: set[str] = set()
         self._task: asyncio.Task | None = None
 
     def pump(self) -> int:
@@ -121,6 +123,7 @@ class ProgramOutput:
                 # dropped here, leaving a stopped card with no cause on it.
                 lines.append(self._partial.pop(algo_id, ""))
                 del self._offsets[algo_id]
+            filed = 0
             for raw in lines[-MAX_LINES_PER_POLL:]:
                 line = redact(ANSI.sub("", raw).strip())
                 if not line:
@@ -128,11 +131,49 @@ class ProgramOutput:
                 for keep in self._filter(algo_id, line):
                     self.db.add_event(classify(keep), keep[:500], source="program", algo_id=algo_id)
                     moved += 1
+                    filed += 1
+                    if session_close.EOD_HEADER.search(keep):
+                        self._eod_pending.add(algo_id)
             if not running:
                 for held in self._board.pop(algo_id, {}).get("held", []):
                     self.db.add_event(classify(held), held[:500], source="program", algo_id=algo_id)
                     moved += 1
+            # The end-of-day block is printed in one go; once a poll brings no
+            # more of it (or the program has exited) it is complete in the journal.
+            if algo_id in self._eod_pending and (filed == 0 or not running):
+                self.close_session(algo_id)
         return moved
+
+    def close_session(self, algo_id: str) -> bool:
+        """File the program's printed end of day as the desk's end-of-day record."""
+        self._eod_pending.discard(algo_id)
+        try:
+            report = session_close.refresh(self.db, algo_id, force=True)
+        except Exception as e:  # the record not updating is no reason to stop following
+            self.db.add_event("warn", f"could not file {algo_id}'s end-of-day report: {e}",
+                              source="api", algo_id=algo_id)
+            return False
+        if report:
+            self.db.add_event(
+                "info", f"end-of-day report filed for {report['session_date']}: "
+                f"{report['trades']} trade(s), net Rs {report['net'] or 0:,.2f}",
+                source="api", algo_id=algo_id,
+            )
+        return report is not None
+
+    def backfill_sessions(self) -> int:
+        """Every program's last end of day already in the journal, filed once at startup."""
+        n = 0
+        for algo in self.db.algos():
+            if algo.get("kind") == "builtin":
+                continue
+            try:
+                if session_close.refresh(self.db, algo["id"]):
+                    n += 1
+            except Exception as e:
+                self.db.add_event("warn", f"could not file {algo['id']}'s end-of-day report: {e}",
+                                  source="api", algo_id=algo["id"])
+        return n
 
     def _filter(self, algo_id: str, line: str) -> list[str]:
         """The lines worth logging, with a periodic status board taken out.
@@ -283,6 +324,15 @@ class ProgramOutput:
             raw = read_status(sup.program_path.parent, sup.state.pid)
             if raw is None or raw.get("ts") == self._status_ts.get(algo_id):
                 return False
+            if not has_figures(raw):
+                # Its last words ("STOPPED", no figures). Published, the missing
+                # equity became Rs 0.00 over the session's real closing figures
+                # (6 Nov 2026: "Equity ₹0.00" after a +₹3,847.64 day). The last
+                # status with figures stays the desk's record of the session.
+                self._status_ts[algo_id] = raw.get("ts")
+                prev = self.db.kv_get(snapshot_key(algo_id), None)
+                if isinstance(prev, dict) and prev.get("account"):
+                    return False
             algo = self.db.algo(algo_id) or {}
             started = sup.state.started_ts or time.time()
             snap = program_snapshot(
@@ -305,6 +355,10 @@ class ProgramOutput:
             return False
 
     async def start(self) -> None:
+        try:
+            await asyncio.to_thread(self.backfill_sessions)
+        except Exception as e:  # a bad record must not keep the follower from starting
+            self.db.add_event("warn", f"end-of-day backfill: {e}", source="api")
         self._task = asyncio.create_task(self._loop(), name="meridian-program-output")
 
     async def stop(self) -> None:

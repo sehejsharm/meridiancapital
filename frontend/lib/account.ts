@@ -39,7 +39,8 @@ interface AccountLike {
   money?: AngelMoney | null;
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+// "+ 0" turns a rounded -0 (a balance a hair under its parts) into 0.
+const round2 = (n: number) => Math.round(n * 100) / 100 + 0;
 
 export function accountFigures(account: AccountLike | null | undefined, inTrade = false): AccountFigures {
   if (!account) {
@@ -47,6 +48,13 @@ export function accountFigures(account: AccountLike | null | undefined, inTrade 
   }
   const m = account.money;
   if (!m || m.balance == null || m.opening_balance == null) {
+    // An account at exactly zero with no P&L and none of Angel's figures is a
+    // record that never had figures (a program's "STOPPED" status turned into
+    // zeros), not an empty account: 6 Nov 2026 read "Equity ₹0.00 · opening
+    // ₹0.00 · ₹0.00 trading" after a +₹3,847.64 day. Unknown shows as "—".
+    if (!account.equity && !account.day_pl) {
+      return { fromAngel: false, inTrade, value: null, opening: null, trading: null, other: null, charges: null };
+    }
     const opening = account.equity != null && account.day_pl != null ? round2(account.equity - account.day_pl) : null;
     return { fromAngel: false, inTrade, value: account.equity, opening, trading: account.day_pl, other: null, charges: null };
   }

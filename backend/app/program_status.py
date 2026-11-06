@@ -59,6 +59,19 @@ def read_status(folder: Path, pid: int | None) -> dict | None:
     return raw
 
 
+def has_figures(raw: dict) -> bool:
+    """Whether a status carries the account at all.
+
+    A program's periodic status always has its equity (and v8's, Angel's money).
+    The one it writes on the way out — ``write_status(state="STOPPED", reason=...)``
+    — has neither: it says the program stopped, not that the account is at zero.
+    """
+    if _num(raw.get("equity")) is not None:
+        return True
+    m = raw.get("money")
+    return isinstance(m, dict) and _num(m.get("balance")) is not None
+
+
 def _num(v) -> float | None:
     try:
         f = float(v)

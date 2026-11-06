@@ -319,6 +319,24 @@ class Database:
             rows = c.execute(sql, args).fetchall()
         return [_event_row(r) for r in rows]
 
+    def find_events(self, algo_id: str, contains: str, limit: int = 1) -> list[dict]:
+        """One algorithm's events whose text contains ``contains``, newest first."""
+        with self.conn() as c:
+            rows = c.execute(
+                "SELECT * FROM events WHERE algo_id = ? AND message LIKE ? ORDER BY id DESC LIMIT ?",
+                (algo_id, f"%{contains}%", limit),
+            ).fetchall()
+        return [_event_row(r) for r in rows]
+
+    def events_following(self, algo_id: str, after_id: int, limit: int = 60) -> list[dict]:
+        """One algorithm's events after ``after_id``, oldest first: a printed block in order."""
+        with self.conn() as c:
+            rows = c.execute(
+                "SELECT * FROM events WHERE algo_id = ? AND id > ? ORDER BY id ASC LIMIT ?",
+                (algo_id, after_id, limit),
+            ).fetchall()
+        return [_event_row(r) for r in rows]
+
     def prune_events(self, keep: int = 50_000) -> int:
         with self.conn() as c:
             cur = c.execute(
