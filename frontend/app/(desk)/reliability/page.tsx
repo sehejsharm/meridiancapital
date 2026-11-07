@@ -142,7 +142,7 @@ export default function ReliabilityPage() {
               ) : (
                 <>
                   <Sparkline values={data.divergence.events.map((e) => e.pts)} height={48} className="text-warning" label="Divergence size, oldest to newest" />
-                  <ol className="mt-3 max-h-56 space-y-1 overflow-auto text-xs">
+                  <ol className="mt-3 max-h-56 space-y-1 overflow-y-auto break-words text-xs">
                     {[...data.divergence.events].reverse().map((e, i) => (
                       <li key={`${e.ts}-${i}`} className="flex justify-between gap-3 border-b border-hairline pb-1 last:border-0">
                         <span className="tabular-nums text-ink-secondary">{recordedAt(e.ts)} IST</span>
@@ -158,7 +158,7 @@ export default function ReliabilityPage() {
               {!data.runs.loops.length && !data.runs.crashes.length ? (
                 <Empty>No abnormal exits in this period.</Empty>
               ) : (
-                <ol className="max-h-72 space-y-2 overflow-auto text-xs">
+                <ol className="max-h-72 space-y-2 overflow-y-auto break-words text-xs">
                   {[...data.runs.loops.map((e) => ({ ...e, loop: true })), ...data.runs.crashes.map((e) => ({ ...e, loop: false }))]
                     .sort((a, b) => b.last_exit.localeCompare(a.last_exit))
                     .map((e) => (

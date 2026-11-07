@@ -203,17 +203,19 @@ function Heatmap({ daily }: { daily: Map<string, number> }) {
     return a > 0.66 ? "bg-loss/90" : a > 0.33 ? "bg-loss/60" : "bg-loss/35";
   };
   return (
-    <div className="overflow-x-auto">
-      <div className="inline-flex gap-1">
-        <div className="mr-1 flex flex-col gap-1 text-2xs text-ink-muted">
-          {["Mon", "Tue", "Wed", "Thu", "Fri"].map((d) => <span key={d} className="h-3.5 leading-[0.875rem]">{d}</span>)}
-        </div>
+    // The weeks share the width there is (up to 14 px each) instead of scrolling
+    // sideways: a long history draws narrower cells, never a scroll bar.
+    <div className="flex gap-1">
+      <div className="mr-1 flex shrink-0 flex-col gap-1 text-2xs text-ink-muted">
+        {["Mon", "Tue", "Wed", "Thu", "Fri"].map((d) => <span key={d} className="h-3.5 leading-[0.875rem]">{d}</span>)}
+      </div>
+      <div className="flex min-w-0 flex-1 gap-[3px]">
         {weeks.map((week) => (
-          <div key={week[0].day} className="flex flex-col gap-1">
+          <div key={week[0].day} className="flex min-w-0 max-w-[14px] flex-1 flex-col gap-1">
             {week.map((c) => (
               <span
                 key={c.day}
-                className={`block h-3.5 w-3.5 rounded-sm ${tone(c.net)}`}
+                className={`block h-3.5 w-full rounded-sm ${tone(c.net)}`}
                 title={`${dayLabel(c.day)}: ${c.net === null ? "no trade" : signedMoney(c.net)}`}
               />
             ))}

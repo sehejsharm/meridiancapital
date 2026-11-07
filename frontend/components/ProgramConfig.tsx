@@ -83,7 +83,7 @@ export function ProgramConfigCard({ report, builtin }: { report: ProgramConfigRe
           ? ` It differs from that form on ${diffs.length} value${diffs.length === 1 ? "" : "s"}: ${diffs.join("; ")}.`
           : " Every value it reports matches that form."}
       </p>
-      <div className="overflow-x-auto">
+      <div>
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">

@@ -99,7 +99,7 @@ export function OptionChain() {
           {focus && <ContractDetail focus={focus} holding={hl} />}
           {chain.analytics && <ChainSummary a={chain.analytics} spot={chain.spot ?? null} />}
 
-          <div className="-mx-4 overflow-x-auto px-4">
+          <div>
             <table className="w-full text-2xs tabular-nums">
               <thead>
                 <tr className="border-b border-hairline text-ink-muted">

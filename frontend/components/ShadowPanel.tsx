@@ -135,15 +135,15 @@ export function ShadowPanel({ algoId }: { algoId: string }) {
           )}
 
           {(data.sessions?.length ?? 0) > 0 && (
-            <div className="-mx-4 overflow-x-auto px-4">
-              <table className="w-full min-w-[520px] text-xs">
+            <div>
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">
                     <th className="py-2 pr-3 font-medium">Session</th>
                     <th className="py-2 pr-3 text-right font-medium">Paper</th>
                     <th className="py-2 pr-3 text-right font-medium">Live</th>
                     <th className="py-2 pr-3 text-right font-medium">Drag</th>
-                    <th className="py-2 font-medium">Paired</th>
+                    <th className="hidden py-2 font-medium sm:table-cell">Paired</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-hairline">
@@ -161,7 +161,7 @@ export function ShadowPanel({ algoId }: { algoId: string }) {
                       <td className={`py-2 pr-3 text-right tabular-nums ${pnlClass(-s.drag)}`}>
                         {s.both_traded ? signedMoney(-s.drag) : "—"}
                       </td>
-                      <td className="py-2">
+                      <td className="hidden py-2 sm:table-cell">
                         {s.both_traded ? (
                           <span className="text-good">yes</span>
                         ) : (

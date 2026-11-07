@@ -44,7 +44,7 @@ export function CrashNotice({
         </p>
       )}
 
-      <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-raised p-3 text-2xs text-ink-secondary">
+      <pre className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-surface-raised p-3 text-2xs text-ink-secondary">
         {message}
         {error?.digest ? `\n\ndigest ${error.digest}` : ""}
       </pre>

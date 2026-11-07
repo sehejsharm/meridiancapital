@@ -105,8 +105,15 @@ export function CodeDiff({ algoId, versions }: { algoId: string; versions: AlgoV
                 No differences in the code shown. Lines holding credentials are hidden on both sides and not compared.
               </Empty>
             ) : (
-              <div className="max-h-[32rem] overflow-auto rounded-md border border-hairline">
-                <table className="w-full border-collapse font-mono text-[11px] leading-5">
+              <div className="max-h-[32rem] overflow-y-auto rounded-md border border-hairline">
+                <table className="w-full table-fixed border-collapse font-mono text-[11px] leading-5">
+                  {/* Fixed columns, and long lines wrap: the code never scrolls sideways. */}
+                  <colgroup>
+                    <col className="w-9 sm:w-11" />
+                    <col className="w-9 sm:w-11" />
+                    <col className="w-4" />
+                    <col />
+                  </colgroup>
                   <tbody>
                     {diff.hunks.map((h, hi) => (
                       <HunkRows key={hi} hunk={h} showHeader={!whole} />
@@ -134,10 +141,15 @@ function HunkRows({ hunk, showHeader }: { hunk: Diff["hunks"][number]; showHeade
         const hidden = isHidden(l.text);
         return (
           <tr key={i} className={ROW[l.kind]}>
-            <td className="w-10 select-none px-2 text-right align-top text-ink-muted">{l.a ?? ""}</td>
-            <td className="w-10 select-none px-2 text-right align-top text-ink-muted">{l.b ?? ""}</td>
+            <td className="w-9 select-none pr-1.5 text-right align-top text-ink-muted sm:w-11 sm:pr-2">{l.a ?? ""}</td>
+            <td className="w-9 select-none pr-1.5 text-right align-top text-ink-muted sm:w-11 sm:pr-2">{l.b ?? ""}</td>
             <td className={`w-4 select-none align-top ${SIGN[l.kind]}`}>{l.kind === " " ? "" : l.kind === "-" ? "−" : "+"}</td>
-            <td className={`whitespace-pre pr-4 align-top ${hidden ? "italic text-ink-muted" : "text-ink"}`}>{l.text}</td>
+            <td
+              className={`whitespace-pre-wrap pr-3 align-top [overflow-wrap:anywhere] ${hidden ? "italic text-ink-muted" : "text-ink"}`}
+              title={hidden ? "A line that holds, or might hold, a credential: blanked on the server, never sent" : undefined}
+            >
+              {hidden ? l.text.replace(/#.*$/, "# ··· hidden ···") : l.text}
+            </td>
           </tr>
         );
       })}

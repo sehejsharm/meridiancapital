@@ -100,6 +100,12 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  /* A word longer than its line (a contract symbol, a long algorithm name, a
+     file path) breaks onto the next line rather than pushing its box sideways.
+     "break-word", not "anywhere": a table never squeezes a column by splitting
+     short words ("REM OVE"); a cell that holds long identifiers opts in to
+     breaking anywhere itself. */
+  overflow-wrap: break-word;
 }
 
 /* Faint survey grid, echoing the plate the mark sits on. */
@@ -217,7 +223,18 @@ button,
 /* Rubber-band overscroll on the page itself drags the fixed bars around. */
 html,
 body {
-  overscroll-behavior-y: none;
+  overscroll-behavior: none;
+}
+
+/* The page never scrolls sideways, on a phone or a desktop: anything too wide
+   for the screen must wrap or drop columns instead (tests/noSideScroll.test.ts
+   keeps sideways scroll boxes out of the code). "clip", unlike "hidden", does
+   not turn the body into a scroll container, so sticky and fixed bars keep working. */
+@supports (overflow: clip) {
+  html,
+  body {
+    overflow-x: clip;
+  }
 }
 
 /* ── the mark, faint, over every page ──────────────────────────────────────

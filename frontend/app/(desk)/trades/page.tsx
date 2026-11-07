@@ -202,8 +202,8 @@ export default function BlotterPage() {
             })}
           </ul>
 
-          <div className="-mx-4 hidden overflow-x-auto px-4 lg:block">
-            <table className="w-full min-w-[56rem] border-collapse text-xs">
+          <div className="hidden lg:block">
+            <table className="w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">
                   <th className="py-2 pr-3 font-medium">Result</th>
@@ -213,8 +213,8 @@ export default function BlotterPage() {
                   <th className="py-2 pr-3 text-right font-medium">Lots</th>
                   <th className="py-2 pr-3 text-right font-medium">In</th>
                   <th className="py-2 pr-3 text-right font-medium">Out</th>
-                  <th className="py-2 pr-3 text-right font-medium">Peak</th>
-                  <th className="py-2 pr-3 text-right font-medium">Charges</th>
+                  <th className="hidden py-2 pr-3 text-right font-medium xl:table-cell">Peak</th>
+                  <th className="hidden py-2 pr-3 text-right font-medium xl:table-cell">Charges</th>
                   <th className="py-2 pr-3 text-right font-medium">Net</th>
                   <th className="py-2 pr-3 font-medium">Why</th>
                   <th className="py-2 text-right font-medium">Held</th>
@@ -250,10 +250,10 @@ export default function BlotterPage() {
                       <td className="py-2 pr-3 text-right text-ink-secondary">
                         {t.exit_prem?.toFixed(2) ?? "—"}
                       </td>
-                      <td className="py-2 pr-3 text-right text-ink-secondary">
+                      <td className="hidden py-2 pr-3 text-right text-ink-secondary xl:table-cell">
                         {t.peak_pct != null ? signedPercent(t.peak_pct / 100, 0) : "—"}
                       </td>
-                      <td className="whitespace-nowrap py-2 pr-3 text-right text-ink-muted">
+                      <td className="hidden whitespace-nowrap py-2 pr-3 text-right text-ink-muted xl:table-cell">
                         {charges != null ? money(charges) : "—"}
                       </td>
                       <td

@@ -155,7 +155,7 @@ export default function ControlsPage() {
               <p className="text-2xs uppercase tracking-wide text-ink-muted">
                 What the engine said before it died
               </p>
-              <pre className="mt-1.5 max-h-40 overflow-auto rounded-lg bg-surface-raised p-2.5 text-2xs leading-relaxed text-warning">
+              <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-surface-raised p-2.5 text-2xs leading-relaxed text-warning">
                 {status.engine.last_output.join("\n")}
               </pre>
             </div>

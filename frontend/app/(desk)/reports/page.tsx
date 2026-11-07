@@ -219,17 +219,16 @@ export default function ReportsPage() {
                     </li>
                   ))}
                 </ul>
-                <div className="-mx-4 hidden overflow-x-auto px-4 md:block">
-                  <table className="w-full min-w-[42rem] text-xs lg:min-w-[860px]">
+                <div className="hidden md:block">
+                  <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">
                         <th className="py-2 pr-3 font-medium">Date</th>
                         <th className="py-2 pr-3 font-medium">Mode</th>
                         <th className="py-2 pr-3 font-medium">Contract</th>
-                        {/* The result straight after the contract: on a narrow screen
-                            the table scrolls, and Net is the column never to lose. */}
+                        {/* The result straight after the contract, where the eye lands. */}
                         <th className="py-2 pr-3 text-right font-medium">Net</th>
-                        <th className="py-2 pr-3 text-right font-medium">Charges</th>
+                        <th className="hidden py-2 pr-3 text-right font-medium lg:table-cell">Charges</th>
                         <th className="py-2 pr-3 text-right font-medium">Entry</th>
                         <th className="py-2 pr-3 text-right font-medium">Exit</th>
                         <th className="hidden py-2 pr-3 text-right font-medium lg:table-cell">Lots</th>
@@ -243,13 +242,13 @@ export default function ReportsPage() {
                           <td className="py-2 pr-3">
                             <Badge tone={t.mode === "live" ? "critical" : "neutral"}>{t.mode}</Badge>
                           </td>
-                          <td className="whitespace-nowrap py-2 pr-3 font-mono text-2xs text-ink">
+                          <td className="break-all py-2 pr-3 font-mono text-2xs text-ink">
                             {t.tsym ?? ([t.strike, t.side].filter((v) => v != null).join(" ") || "—")}
                           </td>
                           <td className={`whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums ${pnlClass(t.net)}`}>
                             {t.net === null ? "—" : signedMoney(t.net)}
                           </td>
-                          <td className="py-2 pr-3 text-right tabular-nums text-ink-muted">
+                          <td className="hidden py-2 pr-3 text-right tabular-nums text-ink-muted lg:table-cell">
                             {t.charges?.toFixed(2) ?? "—"}
                           </td>
                           <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">
@@ -259,7 +258,7 @@ export default function ReportsPage() {
                             {t.exit_prem?.toFixed(2) ?? "open"}
                           </td>
                           <td className="hidden py-2 pr-3 text-right tabular-nums text-ink-secondary lg:table-cell">{t.lots ?? "—"}</td>
-                          <td className="whitespace-nowrap py-2 text-ink-secondary">{t.reason ?? "—"}</td>
+                          <td className="py-2 text-ink-secondary">{t.reason ?? "—"}</td>
                         </tr>
                       ))}
                     </tbody>

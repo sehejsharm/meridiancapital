@@ -209,14 +209,14 @@ export default function AlgosPage() {
             ))}
           </ul>
 
-          <div className="-mx-4 hidden overflow-x-auto px-4 lg:block">
-            <table className="w-full min-w-[640px] text-xs">
+          <div className="hidden lg:block">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">
                   <th className="py-2 pr-3 font-medium">Name</th>
-                  <th className="py-2 pr-3 font-medium">Kind</th>
+                  <th className="hidden py-2 pr-3 font-medium xl:table-cell">Kind</th>
                   <th className="py-2 pr-3 font-medium">Trading</th>
-                  <th className="py-2 pr-3 font-medium">Version</th>
+                  <th className="py-2 pr-3 font-medium">Ver.</th>
                   <th className="py-2 pr-3 font-medium">Gate</th>
                   <th className="py-2 pr-3 font-medium">State</th>
                   <th className="py-2 font-medium sr-only">Actions</th>
@@ -226,12 +226,12 @@ export default function AlgosPage() {
                 {data.algos.map((a) => (
                   <tr key={a.id}>
                     <td className="py-2.5 pr-3">
-                      <Link href={`/algos/${a.id}`} className="font-medium text-ink hover:text-brand">
+                      <Link href={`/algos/${a.id}`} className="font-medium text-ink [overflow-wrap:anywhere] hover:text-brand">
                         {a.name}
                       </Link>
                       <div className="text-2xs text-ink-muted">{istDateTime(a.created_ts)}</div>
                     </td>
-                    <td className="py-2.5 pr-3 text-ink-secondary">{a.kind}</td>
+                    <td className="hidden py-2.5 pr-3 text-ink-secondary xl:table-cell">{a.kind}</td>
                     <td className="py-2.5 pr-3">
                       <ModeBadge algo={a} />
                     </td>
@@ -258,7 +258,7 @@ export default function AlgosPage() {
                     </td>
                     <td className="py-2.5 text-right">
                       {a.kind === "builtin" ? null : removing === a.id ? (
-                        <span className="inline-flex gap-1.5">
+                        <span className="inline-flex gap-1.5 whitespace-nowrap">
                           <Button variant="danger" disabled={busy} onClick={() => void remove(a.id)}>
                             {a.runtime.running ? "Stop and remove" : "Remove"}
                           </Button>
@@ -267,7 +267,7 @@ export default function AlgosPage() {
                           </Button>
                         </span>
                       ) : (
-                        <span className="inline-flex gap-1.5">
+                        <span className="inline-flex gap-1.5 whitespace-nowrap">
                           <Button disabled={busy} onClick={() => updateCode(a.id)}>
                             Update code
                           </Button>
