@@ -1,4 +1,4 @@
-import type { Closure, Closures } from "@/lib/types";
+import type { Closure, Closures, SpecialSession } from "@/lib/types";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -63,4 +63,41 @@ export function closureNotice(closures: Closures | undefined, todayIso: string |
     };
   }
   return null;
+}
+
+/**
+ * The deck's notice for a session NSE holds outside its calendar (Muhurat
+ * trading): on that day nothing starts on its own, so the operator is told to
+ * start what they want traded, and until when it runs.
+ */
+export function specialNotice(
+  schedule:
+    | { now_ist: string; special_today?: (SpecialSession & { runs_from: string; stops_at: string }) | null; in_special_window?: boolean; special_upcoming?: SpecialSession[] }
+    | undefined,
+): { tone: "today" | "ahead"; title: string; detail: string } | null {
+  if (!schedule) return null;
+  const now = schedule.now_ist.slice(11, 16);
+  const t = schedule.special_today;
+  if (t) {
+    if (now >= t.stops_at) return null; // over for today
+    const span = `${t.open}–${t.close} IST`;
+    return schedule.in_special_window
+      ? {
+          tone: "today",
+          title: `${t.label} now, ${span}`,
+          detail: `What you start keeps running until ${t.stops_at}, then stops. To change which algorithm trades, use Switch on its page.`,
+        }
+      : {
+          tone: "today",
+          title: `${t.label} today, ${span}`,
+          detail: `Nothing starts on its own today. Start the algorithm you want trading from ${t.runs_from}; it runs until ${t.stops_at}. Its own entry window still decides whether it trades.`,
+        };
+  }
+  const next = (schedule.special_upcoming ?? []).find((s) => s.day > schedule.now_ist.slice(0, 10));
+  if (!next) return null;
+  return {
+    tone: "ahead",
+    title: `${next.label} on ${calendarDay(next.day)}, ${next.open}–${next.close} IST`,
+    detail: "A special session: nothing starts on its own that day. Start the algorithm you want trading from 30 minutes before the open.",
+  };
 }

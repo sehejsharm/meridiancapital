@@ -23,9 +23,15 @@ from app.security import Principal, client_ip, require_auth
 from engine import versions
 from engine.clock import now_ist
 from engine.gate import check_catalogue
-from shared.db import SYSTEM_ALGO, snapshot_key
+from shared.db import DEFAULT_ALGO, SYSTEM_ALGO, snapshot_key
 
-router = APIRouter(prefix="/api/algos", tags=["algos"], dependencies=[Depends(require_auth)])
+def _not_retired(request: Request) -> None:
+    """The retired built-in answers like an algorithm that does not exist, on every route."""
+    if request.path_params.get("algo_id") == DEFAULT_ALGO and ctx().db.builtin_retired():
+        raise HTTPException(status_code=404, detail="no such algorithm — the built-in has been removed")
+
+
+router = APIRouter(prefix="/api/algos", tags=["algos"], dependencies=[Depends(require_auth), Depends(_not_retired)])
 
 SHADOW_SUFFIX = "-shadow"
 # The lines a card shows while a run has not reported yet, or after it stopped.
@@ -355,6 +361,95 @@ async def start_algo(
         source="api", algo_id=algo_id,
     )
     return {**res, "mode": mode}
+
+
+class SwitchRequest(BaseModel):
+    # The dashboard asks first: switching stops whatever trades real money now.
+    confirm: bool = False
+
+
+def _live_now(algo_id: str) -> list[tuple[str, str]]:
+    """(id, name) of every other algorithm trading real money right now."""
+    db, fleet = ctx().db, ctx().fleet
+    out = []
+    for other_id, sup in fleet.all().items():
+        if other_id == algo_id:
+            continue
+        sup.refresh()
+        if sup.state.running and sup.state.mode == "live":
+            out.append((other_id, (db.algo(other_id) or {}).get("name") or other_id))
+    return out
+
+
+@router.post("/{algo_id}/switch")
+async def switch_live(
+    algo_id: str, request: Request, body: SwitchRequest | None = None,
+    principal: Principal = Depends(require_auth),
+) -> dict:
+    """Move real-money trading to this algorithm in one step.
+
+    Whatever trades real money now is stopped first, exactly as its Stop button
+    would (a program sells any open position on its way out, and is disarmed),
+    then this one starts on real money and is armed. Only one algorithm may trade
+    real money on the account, so this is the way to change which one does,
+    in a normal session or a special one such as Muhurat trading.
+    """
+    db, fleet = ctx().db, ctx().fleet
+    algo = db.algo(algo_id)
+    if not algo:
+        raise HTTPException(status_code=404, detail="no such algorithm")
+    if algo.get("shadow_of"):
+        raise HTTPException(status_code=409, detail="a shadow is a paper twin and cannot place real orders")
+    if algo.get("kind") != "builtin" and not algo.get("active_version"):
+        raise HTTPException(
+            status_code=409,
+            detail="this algorithm has no active version — open it and activate one, or upload it again",
+        )
+    me = fleet.get(algo_id)
+    if me is None:
+        raise HTTPException(status_code=404, detail="no such algorithm")
+    me.refresh()
+    if me.state.running and me.state.mode == "live":
+        raise HTTPException(status_code=409, detail=f"'{algo['name']}' is already trading real money")
+    current = _live_now(algo_id)
+    if not (body and body.confirm):
+        what = (f"stops {', '.join(n for _, n in current)} (a program sells any open position first) and "
+                if current else "")
+        raise HTTPException(status_code=409, detail=f"confirm the switch: it {what}starts '{algo['name']}' on real money")
+
+    who = principal.subject
+    _audit(request, principal, "algo.switch", f"{', '.join(i for i, _ in current) or 'none'} -> {algo_id}")
+    for other_id, name in current:
+        res = await asyncio.to_thread(fleet.stop, other_id, reason=f"switch to {algo['name']} by {who}")
+        if not res.get("ok"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"could not stop '{name}' ({res.get('detail')}) — nothing was switched; it is still trading",
+            )
+        db.set_algo_fields(other_id, enabled=0)
+        db.add_event("critical", f"SWITCH: '{name}' stopped by {who} to move real money to '{algo['name']}'",
+                     source="api", algo_id=other_id)
+    if me.state.running:
+        # On paper now: stopped and started again on real money. Not an operator
+        # stop, so nothing is held down afterwards.
+        await asyncio.to_thread(fleet.stop, algo_id, reason=f"restarting on real money for {who}", manual=False)
+    fleet.set_mode(algo_id, "live")
+    res = await asyncio.to_thread(fleet.start, algo_id, trigger=f"switch:{who}")
+    stopped = ", ".join(n for _, n in current)
+    if not res.get("ok"):
+        db.add_event("critical", f"SWITCH: '{algo['name']}' did not start ({res.get('detail')})"
+                     + (f" after {stopped} was stopped — nothing is trading real money" if stopped else ""),
+                     source="api", algo_id=algo_id)
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{algo['name']}' did not start: {res.get('detail')}"
+            + (f". {stopped} has been stopped, so nothing is trading real money now." if stopped else ""),
+        )
+    db.set_algo_fields(algo_id, enabled=1)
+    db.add_event("critical", f"SWITCH: '{algo['name']}' started on REAL MONEY by {who}"
+                 + (f", replacing {stopped}" if stopped else ""), source="api", algo_id=algo_id)
+    return {**res, "mode": "live", "stopped": [i for i, _ in current],
+            "detail": f"Real money moved to '{algo['name']}'" + (f" from {stopped}." if stopped else ".")}
 
 
 @router.post("/{algo_id}/stop")

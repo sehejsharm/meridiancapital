@@ -169,11 +169,17 @@ export interface SystemStatus {
     last_decision: string;
     manual_override: boolean;
     max_restarts_per_session: number;
+    /** Today's special session (Muhurat trading), when there is one. */
+    special_today?: (SpecialSession & { runs_from: string; stops_at: string }) | null;
+    in_special_window?: boolean;
+    special_upcoming?: SpecialSession[];
   };
   offline_note: { ts: string; reason: string; mode: string } | null;
   operator: string;
   fund: string;
   fleet: FleetOverview;
+  /** The built-in engine is removed from the desk: its panels are not shown. */
+  builtin_retired?: boolean;
   /** Crash loops the operator has not acknowledged (app/reliability.py). */
   alerts?: CrashAlert[];
 }
@@ -883,4 +889,12 @@ export interface TearSheet {
   summary: ReportPayload["summary"];
   extra: { green_days: number; red_days: number; return_pct: number | null };
   ratios: { days: number; sharpe: number | null; sortino: number | null; few_days: boolean };
+}
+
+/** A session NSE holds outside its calendar, such as Muhurat trading (backend/app/special_sessions.py). */
+export interface SpecialSession {
+  day: string;
+  open: string;
+  close: string;
+  label: string;
 }

@@ -1,13 +1,16 @@
 "use client";
 
-import { closureNotice } from "@/lib/holidays";
+import { closureNotice, specialNotice } from "@/lib/holidays";
 import { useLiveFeed } from "@/lib/LiveContext";
 
-/** The deck's notice that the market is shut today, or will be at the next weekday. */
+/**
+ * The deck's notice that the market is shut today, or will be at the next
+ * weekday — or, first, that a special session (Muhurat trading) is coming.
+ */
 export function HolidayNotice() {
   const { status } = useLiveFeed();
   const schedule = status?.schedule;
-  const notice = closureNotice(schedule?.closures, schedule?.now_ist);
+  const notice = specialNotice(schedule) ?? closureNotice(schedule?.closures, schedule?.now_ist);
   if (!notice) return null;
   const today = notice.tone === "today";
   return (

@@ -14,6 +14,7 @@ import { fetchAlgo } from "@/lib/algos";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { istDateTime } from "@/lib/format";
 import { gateText } from "@/lib/gate";
+import { switchPlan } from "@/lib/switchLive";
 import type { Algo, GateReport as Report } from "@/lib/types";
 
 type Notice = { tone: "good" | "critical"; text: string } | null;
@@ -25,6 +26,7 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
   const [algo, setAlgo] = useState<Algo | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [asking, setAsking] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [openReport, setOpenReport] = useState<number | null>(null);
@@ -166,6 +168,38 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Active version" value={algo.active ? `v${algo.active.version}` : "none"} />
             <Field label="Gate" value={gateText(algo.gate.status, algo.runtime_kind)} />
           </dl>
+
+          {(() => {
+            // Real money is trading on another algorithm: move it here in one step.
+            const plan = switchPlan(status?.fleet?.algos, id, algo.name);
+            if (!plan) return null;
+            return switching ? (
+              <div role="alertdialog" aria-label="Confirm the switch" className="mt-4 rounded-md border border-critical/50 bg-critical/10 p-3">
+                <p className="text-xs text-ink">{plan.confirm}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    variant="danger"
+                    disabled={busy}
+                    onClick={() => {
+                      setSwitching(false);
+                      void act(() => apiPost(`/algos/${id}/switch`, { confirm: true }), "Real money moved here.");
+                    }}
+                  >
+                    Stop {plan.from.map((a) => a.name).join(", ")} and start this on real money
+                  </Button>
+                  <Button variant="ghost" disabled={busy} onClick={() => setSwitching(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4">
+                <Button variant="default" disabled={busy} onClick={() => setSwitching(true)}>
+                  {plan.button}
+                </Button>
+              </div>
+            );
+          })()}
 
           <div className="mt-4 flex flex-wrap gap-2">
             {running ? (

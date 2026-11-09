@@ -40,14 +40,42 @@ function storeFor(p: TuningParam, v: string): string {
 }
 
 export default function StrategyPage() {
-  const { refresh } = useLiveFeed();
+  const { refresh, status } = useLiveFeed();
+  const configs = useProgramConfigs();
+  // The built-in engine is removed from the desk: this page is then only what
+  // each uploaded program runs, and the built-in's form is not shown.
+  if (status?.builtin_retired) {
+    return (
+      <div className="space-y-5">
+        <p className="text-xs leading-relaxed text-ink-muted">
+          What each uploaded program is running, as it logged it at startup. A program carries its own parameters in
+          its code: to change one, edit the code and upload it again (compare versions on its page).
+        </p>
+        {!configs ? (
+          <div className="text-xs text-ink-muted">Loading…</div>
+        ) : configs.programs.length ? (
+          configs.programs.map((report) => (
+            <ProgramConfigCard key={report.algo_id} report={report} builtin={configs.builtin} showBuiltin={false} />
+          ))
+        ) : (
+          <div className="rounded-lg border border-hairline px-4 py-3 text-xs text-ink-muted">
+            No uploaded program yet. Upload one on the Algorithms page.
+          </div>
+        )}
+        <KellyReference />
+      </div>
+    );
+  }
+  return <BuiltinStrategy refresh={refresh} configs={configs} />;
+}
+
+function BuiltinStrategy({ refresh, configs }: { refresh: () => void; configs: ReturnType<typeof useProgramConfigs> }) {
   const [data, setData] = useState<TuningPayload | null>(null);
   const [draft, setDraft] = useState<Draft>({});
   const [confirm, setConfirm] = useState("");
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const configs = useProgramConfigs();
 
   const load = useCallback(async () => {
     try {

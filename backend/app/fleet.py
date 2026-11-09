@@ -43,8 +43,10 @@ class Fleet:
         """Create a supervisor for every registered algorithm, drop the rest."""
         with self._lock:
             registered = {a["id"]: a for a in self.db.algos()}
-            # The built-in always exists, even before anything is registered.
-            registered.setdefault(DEFAULT_ALGO, {"id": DEFAULT_ALGO, "mode": "paper"})
+            # The built-in exists, even before anything is registered, unless it
+            # has been retired from the desk.
+            if not self.db.builtin_retired():
+                registered.setdefault(DEFAULT_ALGO, {"id": DEFAULT_ALGO, "mode": "paper"})
 
             for algo_id in list(self._sups):
                 if algo_id not in registered:
@@ -90,6 +92,8 @@ class Fleet:
         return bool(sup.state.running)
 
     def start(self, algo_id: str, trigger: str = "manual") -> dict:
+        if algo_id == DEFAULT_ALGO and self.db.builtin_retired():
+            return {"ok": False, "detail": "the built-in algorithm has been removed from this desk"}
         sup = self.get(algo_id)
         if not sup:
             return {"ok": False, "detail": "no such algorithm"}

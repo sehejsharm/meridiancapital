@@ -66,6 +66,48 @@ def next_transition(now: datetime, holidays: set[str]) -> dict:
     return {"action": "start", "at": start.isoformat(timespec="seconds"), "day": nxt.isoformat()}
 
 
+# ── special sessions ─────────────────────────────────────────────────────────
+# NSE holds a few sessions outside its calendar, Muhurat trading on Diwali above
+# all (8 Nov 2026, a Sunday). On such a day nothing starts on its own: the
+# operator starts what they want traded, from SPECIAL_LEAD_MIN before the open,
+# and the scheduler leaves it running until SPECIAL_STOP_BEFORE_MIN before the
+# close (as it stops at 15:25 on a normal day, so a program can still sell before
+# the market shuts), then stops it. Each session is
+# {"open": "14:20", "close": "15:30", "label": ...}.
+SPECIAL_LEAD_MIN = 30
+SPECIAL_STOP_BEFORE_MIN = 5
+
+
+def _hm(s: str) -> tuple[int, int]:
+    h, m = str(s).split(":")
+    return int(h), int(m)
+
+
+def special_window(d: date, specials: dict[str, dict]) -> tuple[datetime, datetime] | None:
+    """When algorithms may run on a special-session day: from SPECIAL_LEAD_MIN before
+    the open (time to start or switch one) until SPECIAL_STOP_BEFORE_MIN before the
+    close. None on any other day."""
+    s = specials.get(d.isoformat())
+    if not s:
+        return None
+    return (_at(d, _hm(s["open"])) - timedelta(minutes=SPECIAL_LEAD_MIN),
+            _at(d, _hm(s["close"])) - timedelta(minutes=SPECIAL_STOP_BEFORE_MIN))
+
+
+def in_special_session(now: datetime, specials: dict[str, dict]) -> dict | None:
+    """The special session whose window ``now`` falls in, with its day, or None."""
+    w = special_window(now.date(), specials)
+    if w and w[0] <= now < w[1]:
+        return {"day": now.date().isoformat(), **specials[now.date().isoformat()]}
+    return None
+
+
+def upcoming_specials(today: date, specials: dict[str, dict], days: int = 14) -> list[dict]:
+    """Special sessions from today to ``days`` ahead, soonest first, for the deck's banner."""
+    last = (today + timedelta(days=days)).isoformat()
+    return [{"day": d, **specials[d]} for d in sorted(specials) if today.isoformat() <= d <= last]
+
+
 def calendar_configured(holidays: set[str], year: int) -> bool:
     prefix = f"{year}-"
     return any(h.startswith(prefix) for h in holidays)

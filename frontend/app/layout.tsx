@@ -7,7 +7,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Meridian Capital",
-  description: "Trading desk — GANESH KAVACH 50K",
+  description: "Meridian Capital trading desk",
   applicationName: "Meridian Capital",
   robots: { index: false, follow: false, nocache: true },
   // Added to the home screen, the desk opens full-screen under its own name

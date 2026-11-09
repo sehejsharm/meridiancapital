@@ -10,7 +10,7 @@ import { appliesTo, controlTargets, defaultTarget } from "@/lib/controlTargets";
 import { istDateTime } from "@/lib/format";
 import { calendarDay } from "@/lib/holidays";
 import { useLiveFeed } from "@/lib/LiveContext";
-import type { Holiday } from "@/lib/types";
+import type { Holiday, SpecialSession } from "@/lib/types";
 
 type Notice = { tone: "good" | "critical"; text: string } | null;
 
@@ -112,95 +112,97 @@ export default function ControlsPage() {
       <EmergencyStop onDone={refresh} />
 
       <div className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
+        {!status?.builtin_retired && (
         <Card
-          title="Built-in engine"
-          subtitle="Ganesh Kavach 50K. Uploaded algorithms are started from the deck."
-          action={
-            !status ? (
-              <Pending width="4.5rem" />
-            ) : (
-              <Badge tone={live ? "critical" : running ? "good" : "neutral"} dot={running}>
-                {live ? "Real money" : running ? "Paper" : "Stopped"}
-              </Badge>
-            )
-          }
-        >
-          <dl className="divide-y divide-hairline">
-            <Field
-              label="Trading"
-              value={
-                !status
-                  ? <Pending width="8rem" />
-                  : !running
-                  ? "Off — you pick paper or real money when you start it"
-                  : live
-                    ? "Real money — orders go to Angel One"
-                    : "Paper — simulated, no orders"
-              }
-              mono={false}
-            />
-            <Field label="Process id" value={status?.engine.pid ?? "—"} />
-            <Field
-              label="Stopped by operator"
-              value={!schedule ? <Pending /> : schedule.manual_override ? "Yes — automation will not restart it" : "No"}
-            />
-            <Field label="Restarts this session" value={!status ? <Pending /> : (status.engine.restarts_this_session ?? 0)} />
-            {status?.engine.last_stop_reason && (
-              <Field label="Last stop" value={status.engine.last_stop_reason} mono={false} />
-            )}
-          </dl>
-
-          {status?.engine.last_output?.length ? (
-            <div className="mt-4">
-              <p className="text-2xs uppercase tracking-wide text-ink-muted">
-                What the engine said before it died
-              </p>
-              <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-surface-raised p-2.5 text-2xs leading-relaxed text-warning">
-                {status.engine.last_output.join("\n")}
-              </pre>
+            title="Built-in engine"
+            subtitle="Ganesh Kavach 50K. Uploaded algorithms are started from the deck."
+            action={
+              !status ? (
+                <Pending width="4.5rem" />
+              ) : (
+                <Badge tone={live ? "critical" : running ? "good" : "neutral"} dot={running}>
+                  {live ? "Real money" : running ? "Paper" : "Stopped"}
+                </Badge>
+              )
+            }
+          >
+            <dl className="divide-y divide-hairline">
+              <Field
+                label="Trading"
+                value={
+                  !status
+                    ? <Pending width="8rem" />
+                    : !running
+                    ? "Off — you pick paper or real money when you start it"
+                    : live
+                      ? "Real money — orders go to Angel One"
+                      : "Paper — simulated, no orders"
+                }
+                mono={false}
+              />
+              <Field label="Process id" value={status?.engine.pid ?? "—"} />
+              <Field
+                label="Stopped by operator"
+                value={!schedule ? <Pending /> : schedule.manual_override ? "Yes — automation will not restart it" : "No"}
+              />
+              <Field label="Restarts this session" value={!status ? <Pending /> : (status.engine.restarts_this_session ?? 0)} />
+              {status?.engine.last_stop_reason && (
+                <Field label="Last stop" value={status.engine.last_stop_reason} mono={false} />
+              )}
+            </dl>
+  
+            {status?.engine.last_output?.length ? (
+              <div className="mt-4">
+                <p className="text-2xs uppercase tracking-wide text-ink-muted">
+                  What the engine said before it died
+                </p>
+                <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-surface-raised p-2.5 text-2xs leading-relaxed text-warning">
+                  {status.engine.last_output.join("\n")}
+                </pre>
+              </div>
+            ) : null}
+  
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                disabled={running || busy !== null}
+                onClick={() => setAsking(true)}
+              >
+                {busy === "start" ? "Starting…" : "Start"}
+              </Button>
+              <Button
+                disabled={!running || busy !== null}
+                onClick={() =>
+                  void run(
+                    "stop",
+                    () => apiPost("/control/engine/stop", { reason: "operator stop" }),
+                    "engine stopped",
+                  )
+                }
+              >
+                {busy === "stop" ? "Stopping…" : "Stop"}
+              </Button>
+              <Button
+                disabled={!running || busy !== null}
+                onClick={() =>
+                  void run("restart", () => apiPost("/control/engine/restart"), "engine restarted")
+                }
+              >
+                Restart
+              </Button>
             </div>
-          ) : null}
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              variant="primary"
-              disabled={running || busy !== null}
-              onClick={() => setAsking(true)}
-            >
-              {busy === "start" ? "Starting…" : "Start"}
-            </Button>
-            <Button
-              disabled={!running || busy !== null}
-              onClick={() =>
-                void run(
-                  "stop",
-                  () => apiPost("/control/engine/stop", { reason: "operator stop" }),
-                  "engine stopped",
-                )
-              }
-            >
-              {busy === "stop" ? "Stopping…" : "Stop"}
-            </Button>
-            <Button
-              disabled={!running || busy !== null}
-              onClick={() =>
-                void run("restart", () => apiPost("/control/engine/restart"), "engine restarted")
-              }
-            >
-              Restart
-            </Button>
-          </div>
-          {hasPosition && (
-            <p className="mt-3 text-2xs text-warning">
-              A position is open. Stopping is refused until it is flat — flatten it first, or square
-              off in the Angel One app.
-            </p>
-          )}
-        </Card>
+            {hasPosition && (
+              <p className="mt-3 text-2xs text-warning">
+                A position is open. Stopping is refused until it is flat — flatten it first, or square
+                off in the Angel One app.
+              </p>
+            )}
+          </Card>
+        )}
 
         <Card
           title="Automation"
-          subtitle="Master switch. When armed, every algorithm you have started comes up at 09:05 and stops at 15:25 IST on NSE trading days; when disarmed, nothing starts itself."
+          subtitle="Master switch. When armed, every algorithm you have started comes up at 09:05 and stops at 15:25 IST on NSE trading days; when disarmed, nothing starts itself. On a special session (Muhurat trading) nothing starts itself: what you start runs until 5 minutes before its close."
           action={
             !schedule ? (
               <Pending width="4.5rem" />
@@ -224,7 +226,14 @@ export default function ControlsPage() {
                       : "No"
               }
             />
-            <Field label="Inside session window" value={!schedule ? <Pending /> : schedule.in_session_window ? "Yes" : "No"} />
+            <Field label="Inside session window" value={!schedule ? <Pending /> : schedule.in_session_window || schedule.in_special_window ? "Yes" : "No"} />
+            {schedule?.special_today && (
+              <Field
+                label="Special session today"
+                value={`${schedule.special_today.label} ${schedule.special_today.open}–${schedule.special_today.close} · start from ${schedule.special_today.runs_from}, stops ${schedule.special_today.stops_at}`}
+                mono={false}
+              />
+            )}
             <Field
               label="Next transition"
               value={
@@ -341,6 +350,7 @@ export default function ControlsPage() {
         </Card>
       </div>
 
+      <SpecialSessions onNotice={setNotice} today={schedule?.now_ist?.slice(0, 10)} onChange={refresh} />
       <HolidayCalendar onNotice={setNotice} today={schedule?.now_ist?.slice(0, 10)} />
     </div>
   );
@@ -420,6 +430,118 @@ function FlattenControl({
           <p className="mt-2 text-2xs text-ink-muted">Nothing to flatten — the book is empty.</p>
         ))}
     </div>
+  );
+}
+
+type Specials = { sessions: SpecialSession[]; lead_min: number; stop_before_min: number };
+
+/**
+ * Sessions NSE holds outside its calendar (Muhurat trading). On such a day
+ * nothing starts on its own; what the operator starts runs from the lead time
+ * before the open until a few minutes before the close. Published closing
+ * times can differ, so each session can be corrected here.
+ */
+function SpecialSessions({ onNotice, today, onChange }: { onNotice: (n: Notice) => void; today?: string; onChange: () => void }) {
+  const [data, setData] = useState<Specials | null>(null);
+  const [edit, setEdit] = useState<SpecialSession | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    apiGet<Specials>("/control/special-sessions").then(setData).catch(() => setData({ sessions: [], lead_min: 30, stop_before_min: 5 }));
+  }, []);
+
+  const save = async (s: SpecialSession) => {
+    setBusy(true);
+    try {
+      setData(await apiPost<Specials>("/control/special-sessions", s));
+      setEdit(null);
+      onNotice({ tone: "good", text: `${s.label} on ${calendarDay(s.day, true)} set to ${s.open}–${s.close} IST` });
+      onChange();
+    } catch (e) {
+      onNotice({ tone: "critical", text: e instanceof Error ? e.message : "could not save" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async (s: SpecialSession) => {
+    try {
+      setData(await apiDelete<Specials>(`/control/special-sessions/${s.day}`));
+      onNotice({ tone: "good", text: `${s.label} removed from the calendar` });
+      onChange();
+    } catch (e) {
+      onNotice({ tone: "critical", text: e instanceof Error ? e.message : "could not remove" });
+    }
+  };
+
+  const now = today ?? "";
+  const sessions = (data?.sessions ?? []).filter((s) => s.day >= now);
+  const input = "mt-1 w-full rounded-md border border-hairline bg-surface-raised px-3 py-2 text-sm text-ink outline-none focus:border-brand";
+
+  return (
+    <Card
+      title="Special sessions"
+      subtitle={
+        data
+          ? `Muhurat trading and other sessions outside the calendar. Nothing starts on its own: start what you want traded from ${data.lead_min} minutes before the open; it runs until ${data.stop_before_min} minutes before the close.`
+          : "Muhurat trading and other sessions outside the calendar."
+      }
+    >
+      {!data ? (
+        <Empty>Loading…</Empty>
+      ) : (
+        <ul className="space-y-2">
+          {sessions.length === 0 && <li className="text-xs text-ink-muted">None ahead.</li>}
+          {sessions.map((s) =>
+            edit?.day === s.day ? (
+              <li key={s.day} className="rounded-md border border-brand/50 px-3 py-3">
+                <p className="text-xs font-medium text-ink">{calendarDay(s.day, true)}</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <label className="col-span-2 text-2xs uppercase tracking-[0.12em] text-ink-muted">
+                    Name
+                    <input value={edit.label} onChange={(e) => setEdit({ ...edit, label: e.target.value })} className={input} />
+                  </label>
+                  <label className="text-2xs uppercase tracking-[0.12em] text-ink-muted">
+                    Opens
+                    <input type="time" value={edit.open} onChange={(e) => setEdit({ ...edit, open: e.target.value })} className={input} />
+                  </label>
+                  <label className="text-2xs uppercase tracking-[0.12em] text-ink-muted">
+                    Closes
+                    <input type="time" value={edit.close} onChange={(e) => setEdit({ ...edit, close: e.target.value })} className={input} />
+                  </label>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="primary" disabled={busy} onClick={() => void save(edit)}>Save</Button>
+                  <Button variant="ghost" onClick={() => setEdit(null)}>Cancel</Button>
+                </div>
+              </li>
+            ) : (
+              <li
+                key={s.day}
+                className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 ${s.day === now ? "border-brand/60 bg-brand-dim" : "border-hairline"}`}
+              >
+                <span className="min-w-0 text-xs">
+                  <span className="block font-medium text-ink">
+                    {s.label}
+                    {s.day === now && <span className="ml-2 text-2xs uppercase tracking-[0.1em] text-brand">today</span>}
+                  </span>
+                  <span className="block tabular-nums text-ink-muted">
+                    {calendarDay(s.day, true)} · {s.open}–{s.close} IST
+                  </span>
+                </span>
+                <span className="flex gap-1">
+                  <Button variant="ghost" onClick={() => setEdit({ ...s })}>Edit</Button>
+                  <Button variant="ghost" onClick={() => void remove(s)}>Remove</Button>
+                </span>
+              </li>
+            ),
+          )}
+        </ul>
+      )}
+      <p className="mt-3 text-2xs text-ink-muted">
+        NSE announces each special session&apos;s times in a circular; if they change or sources disagree, set the
+        earlier close here so nothing is left running past it.
+      </p>
+    </Card>
   );
 }
 

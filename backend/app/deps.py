@@ -47,6 +47,17 @@ def _seed_builtin(db: Database) -> None:
     db.set_algo_fields(BUILTIN_ID, mode=db.kv_get(K_MODE, "paper"))
 
 
+def _load_special_sessions(db: Database) -> None:
+    """NSE's sessions outside the calendar (Muhurat trading), each loaded once."""
+    from app import special_sessions
+    from shared.nse_holidays import SPECIAL_SESSIONS
+
+    for day in special_sessions.seed(db, SPECIAL_SESSIONS):
+        s = SPECIAL_SESSIONS[day]
+        db.add_event("info", f"special session on the calendar: {s['label']} {day} {s['open']}–{s['close']} IST",
+                     source="scheduler")
+
+
 def _load_nse_holidays(db: Database) -> None:
     """NSE's published closures go into the calendar without anyone typing them."""
     added = db.seed_holidays(NSE_HOLIDAYS, source=NSE)
@@ -64,13 +75,18 @@ def build_context() -> Context:
     global _ctx
     db = Database(settings.db_path)
     _seed_builtin(db)
+    if db.builtin_retired():
+        # Removed from the desk: disarmed, so nothing can bring it back at the open.
+        db.set_algo_fields(BUILTIN_ID, enabled=0)
     _load_nse_holidays(db)
+    _load_special_sessions(db)
     sup = Supervisor(db)
     sched = Scheduler(db, sup)
     fleet = Fleet(db, supervisor_factory=Supervisor)
     # The built-in's supervisor is shared with the scheduler, so automatic
     # start/stop and manual fleet control cannot disagree about its state.
-    fleet._sups[BUILTIN_ID] = sup
+    if not db.builtin_retired():
+        fleet._sups[BUILTIN_ID] = sup
     # And the scheduler drives the rest of the fleet through the same window.
     sched.fleet = fleet
     hub = Hub(
@@ -97,6 +113,8 @@ def system_status(db: Database, sup: Supervisor, sched: Scheduler, fleet: Fleet)
         "operator": settings.operator,
         "fund": "Meridian Capital",
         "fleet": fleet.overview(),
+        # The built-in engine is removed from the desk: its panels are not shown.
+        "builtin_retired": db.builtin_retired(),
         # Crash loops the operator has not acknowledged: the desk's banner.
         "alerts": _alerts(db),
     }

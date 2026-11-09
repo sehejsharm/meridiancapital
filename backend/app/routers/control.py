@@ -14,6 +14,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 
+from app import special_sessions
 from app.deps import ctx
 from app.security import Principal, client_ip, require_auth
 from shared.nse_holidays import YEARS_COVERED
@@ -67,6 +68,13 @@ class ScheduleRequest(BaseModel):
 class ResumeRequest(BaseModel):
     week: bool = False
     algo_id: str | None = Field(default=None, max_length=80)
+
+
+class SpecialSessionRequest(BaseModel):
+    day: str
+    open: str
+    close: str
+    label: str = "Special session"
 
 
 class HolidayRequest(BaseModel):
@@ -185,6 +193,11 @@ STATUS_FRESH_SEC = 180.0
 def _program_target(c, algo_id: str | None):
     """(algo, supervisor) when the request names an uploaded program, else None."""
     if not algo_id or algo_id == c.sup.algo_id:
+        if c.db.builtin_retired():
+            raise HTTPException(
+                status_code=409,
+                detail="the built-in algorithm has been removed — choose the algorithm this applies to",
+            )
         return None
     algo = c.db.algo(algo_id)
     if not algo:
@@ -372,6 +385,44 @@ async def remove_holiday(
     c.db.remove_holiday(day)
     _audit(request, principal, "holiday.remove", day)
     return {"ok": True, **_calendar(c.db)}
+
+
+# ── special sessions (Muhurat trading) ───────────────────────────────────────
+def _specials(db) -> dict:
+    from shared.market_calendar import SPECIAL_LEAD_MIN, SPECIAL_STOP_BEFORE_MIN
+
+    rows = [{"day": d, **s} for d, s in sorted(special_sessions.load(db).items())]
+    return {"sessions": rows, "lead_min": SPECIAL_LEAD_MIN, "stop_before_min": SPECIAL_STOP_BEFORE_MIN}
+
+
+@router.get("/special-sessions")
+async def list_special_sessions() -> dict:
+    return _specials(ctx().db)
+
+
+@router.post("/special-sessions")
+async def put_special_session(
+    body: SpecialSessionRequest, request: Request, principal: Principal = Depends(require_auth)
+) -> dict:
+    c = ctx()
+    try:
+        special_sessions.put(c.db, body.day, body.open, body.close, body.label)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    _audit(request, principal, "special_session.put", f"{body.day} {body.open}-{body.close} {body.label}")
+    c.db.add_event("info", f"special session set by {principal.subject}: {body.label} {body.day} "
+                           f"{body.open}–{body.close} IST", source="api")
+    return {"ok": True, **_specials(c.db)}
+
+
+@router.delete("/special-sessions/{day}")
+async def remove_special_session(
+    day: str, request: Request, principal: Principal = Depends(require_auth)
+) -> dict:
+    c = ctx()
+    special_sessions.remove(c.db, day)
+    _audit(request, principal, "special_session.remove", day)
+    return {"ok": True, **_specials(c.db)}
 
 
 # ── emergency stop ───────────────────────────────────────────────────────────

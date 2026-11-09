@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 
+from app import special_sessions
 from app.config import settings
 from app.supervisor import DEFAULT_ALGO, Supervisor
 from engine.clock import now_ist
@@ -22,9 +23,12 @@ from shared.db import K_SCHEDULE, Database
 from shared.market_calendar import (
     calendar_configured,
     closures,
+    in_special_session,
     is_trading_day,
     next_transition,
     should_be_running,
+    special_window,
+    upcoming_specials,
 )
 
 TICK_SECONDS = 15
@@ -80,6 +84,19 @@ class Scheduler:
         self.last_tick_ts = now.isoformat(timespec="seconds")
         self.sup.refresh()
         holidays = self.holiday_set()
+        special = in_special_session(now, special_sessions.load(self.db))
+        if special:
+            # Muhurat trading and the like: the operator chooses what trades. Nothing
+            # is started on its own, and nothing the operator starts is stopped until
+            # the window ends; the next tick after it, ``want`` is False and the
+            # usual end-of-session stop applies.
+            self.last_decision = (
+                f"{special['label']} ({special['open']}–{special['close']}): nothing starts on its "
+                f"own — what you start keeps running until the session ends"
+            )
+            for algo in self.db.algos():
+                self.fleet_decisions[algo["id"]] = "special session — runs only if you start it"
+            return
         want = should_be_running(now, holidays)
         if self.enabled():
             # A failure here must not stop the built-in from being reconciled.
@@ -92,6 +109,18 @@ class Scheduler:
             # Outside the session window the operator's manual stop is forgotten,
             # so tomorrow starts clean.
             self.sup.state.manual_override = False
+
+        if self.db.builtin_retired():
+            # Removed from the desk: never started, and stopped if it is somehow up.
+            if self.sup.state.running:
+                res = self.sup.stop(reason="the built-in algorithm has been removed")
+                self.db.add_event("warn", f"built-in algorithm stopped: it has been removed from the desk "
+                                          f"({res.get('detail')})", source="scheduler", algo_id=self.sup.algo_id)
+            if not self.enabled():
+                self.last_decision = "automation disarmed"
+            else:
+                self.last_decision = "in the session window" if want else "outside the session window"
+            return
 
         if not self.enabled():
             self.last_decision = "automation disarmed"
@@ -205,6 +234,9 @@ class Scheduler:
         now = now_ist()
         names = self.holiday_names()
         holidays = set(names)
+        specials = special_sessions.load(self.db)
+        today_special = specials.get(now.date().isoformat())
+        window = special_window(now.date(), specials)
         return {
             "enabled": self.enabled(),
             "now_ist": now.isoformat(timespec="seconds"),
@@ -214,6 +246,11 @@ class Scheduler:
             "holiday_count": len(holidays),
             "calendar_configured": calendar_configured(holidays, now.year),
             "closures": closures(now.date(), names),
+            "special_today": {"day": now.date().isoformat(), **today_special,
+                              "runs_from": window[0].strftime("%H:%M"), "stops_at": window[1].strftime("%H:%M")}
+            if today_special and window else None,
+            "in_special_window": in_special_session(now, specials) is not None,
+            "special_upcoming": upcoming_specials(now.date(), specials),
             "last_tick": self.last_tick_ts,
             "last_decision": self.last_decision,
             "manual_override": self.sup.state.manual_override,

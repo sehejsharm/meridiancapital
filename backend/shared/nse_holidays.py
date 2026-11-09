@@ -3,8 +3,9 @@
 These are the closures of the equity and equity-derivatives (F&O) segments as
 NSE announced them, including closures it declared after the year's list came
 out (15 Jan 2026, for the Maharashtra municipal elections). Only weekday
-closures are listed: a weekend is never a session anyway. The Sunday Muhurat
-session (8 Nov 2026) is a special evening session the scheduler does not run.
+closures are listed: a weekend is never a session anyway. Sessions NSE holds
+outside its calendar, such as Muhurat trading on a Sunday, are in
+SPECIAL_SESSIONS below: on those days the operator decides what trades.
 
 The list ships with the code, so a fresh install knows the year's closures
 without anyone typing them in. Each date is loaded once (see
@@ -17,6 +18,14 @@ NSE publishes the next year's list in December. Add it here when it does.
 from __future__ import annotations
 
 SOURCE = "NSE"
+
+# Sessions outside the normal calendar. Muhurat trading 2026: Sunday 8 November,
+# trading from 14:20 IST (NSE circular). Published closing times differ (15:30
+# and 15:40); the earlier one is used, so an algorithm is never left running past
+# the close. Edit it on the Controls page once NSE's circular confirms the time.
+SPECIAL_SESSIONS = {
+    "2026-11-08": {"open": "14:20", "close": "15:30", "label": "Muhurat trading (Diwali)"},
+}
 
 NSE_HOLIDAYS: dict[str, str] = {
     "2026-01-15": "Municipal Corporation Election — Maharashtra",

@@ -55,8 +55,19 @@ export function ConfigDriftNotice() {
   );
 }
 
-/** One uploaded program: what it logged at startup, what its code says, and the built-in's form. */
-export function ProgramConfigCard({ report, builtin }: { report: ProgramConfigReport; builtin: ProgramConfigs["builtin"] }) {
+/**
+ * One uploaded program: what it logged at startup and what its code says, and,
+ * while the built-in engine is on the desk, how that compares with its form.
+ */
+export function ProgramConfigCard({
+  report,
+  builtin,
+  showBuiltin = true,
+}: {
+  report: ProgramConfigReport;
+  builtin: ProgramConfigs["builtin"];
+  showBuiltin?: boolean;
+}) {
   const diffs = builtinDifferences(report);
   return (
     <Card
@@ -77,11 +88,17 @@ export function ProgramConfigCard({ report, builtin }: { report: ProgramConfigRe
       }
     >
       <p className="mb-3 text-2xs leading-relaxed text-ink-muted">
-        This program carries its own parameters in its code and never reads the form below, which belongs to
-        the built-in engine ({builtin.name} · {builtin.version}).
-        {diffs.length
-          ? ` It differs from that form on ${diffs.length} value${diffs.length === 1 ? "" : "s"}: ${diffs.join("; ")}.`
-          : " Every value it reports matches that form."}
+        {showBuiltin ? (
+          <>
+            This program carries its own parameters in its code and never reads the form below, which belongs to
+            the built-in engine ({builtin.name} · {builtin.version}).
+            {diffs.length
+              ? ` It differs from that form on ${diffs.length} value${diffs.length === 1 ? "" : "s"}: ${diffs.join("; ")}.`
+              : " Every value it reports matches that form."}
+          </>
+        ) : (
+          "This program carries its own parameters in its code. To change one, edit the code and upload it again."
+        )}
       </p>
       <div>
         <table className="w-full text-xs">
@@ -90,7 +107,7 @@ export function ProgramConfigCard({ report, builtin }: { report: ProgramConfigRe
               <th className="py-1.5 pr-3 font-medium">Parameter</th>
               <th className="py-1.5 pr-3 text-right font-medium">Running</th>
               <th className="py-1.5 pr-3 text-right font-medium">In its code</th>
-              <th className="py-1.5 text-right font-medium">Built-in form</th>
+              {showBuiltin && <th className="py-1.5 text-right font-medium">Built-in form</th>}
             </tr>
           </thead>
           <tbody>
@@ -106,12 +123,14 @@ export function ProgramConfigCard({ report, builtin }: { report: ProgramConfigRe
                 <td className="py-1.5 pr-3 text-right tabular-nums text-ink-secondary">
                   {r.code_known ? formatParam(r.kind, r.code) : "—"}
                 </td>
-                <td
-                  className={`py-1.5 text-right tabular-nums ${r.differs_from_builtin ? "text-warning" : "text-ink-muted"}`}
-                  title={r.differs_from_builtin ? `The program uses ${formatParam(r.kind, effectiveValue(r))}` : undefined}
-                >
-                  {r.builtin_known ? formatParam(r.kind, r.builtin) : "—"}
-                </td>
+                {showBuiltin && (
+                  <td
+                    className={`py-1.5 text-right tabular-nums ${r.differs_from_builtin ? "text-warning" : "text-ink-muted"}`}
+                    title={r.differs_from_builtin ? `The program uses ${formatParam(r.kind, effectiveValue(r))}` : undefined}
+                  >
+                    {r.builtin_known ? formatParam(r.kind, r.builtin) : "—"}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

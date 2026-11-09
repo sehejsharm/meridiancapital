@@ -17,6 +17,9 @@ os.environ.setdefault("MERIDIAN_JWT_SECRET", "x" * 48)
 os.environ.setdefault("MERIDIAN_TRADING_MODE", "paper")
 # Never let a test tick spawn a real engine against a real broker.
 os.environ["MERIDIAN_AUTOSTART"] = "0"
+# The built-in is retired in production; most tests still exercise its machinery.
+# tests/test_builtin_retired.py checks the retired default itself.
+os.environ["MERIDIAN_BUILTIN_RETIRED"] = "0"
 
 import pytest  # noqa: E402
 

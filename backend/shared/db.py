@@ -9,6 +9,7 @@ is restarted, and survives a crash of either side without losing a trade record.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -162,6 +163,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 # Everything written before multi-algo belongs to the built-in build.
 DEFAULT_ALGO = "gk50k"
+K_BUILTIN_RETIRED = "builtin:retired"
 # Events that belong to the desk rather than to one algorithm: the API starting,
 # the scheduler, an emergency stop. They used to default to the built-in's id,
 # which filed every one of them in its journal.
@@ -691,9 +693,24 @@ class Database:
             c.execute("DELETE FROM passkeys WHERE credential_id=?", (credential_id,))
 
     # ── algo registry ────────────────────────────────────────────────────────
-    def algos(self) -> list[dict]:
+    def builtin_retired(self) -> bool:
+        """The built-in engine (GANESH KAVACH 50K) is retired: removed from the desk
+        at the operator's request (7 Nov 2026). It never starts and is listed
+        nowhere; its past trades stay in the record. The engine code stays as the
+        acceptance gate's reference strategy. Retired unless the database says
+        otherwise; MERIDIAN_BUILTIN_RETIRED=0 changes that default (the tests that
+        exercise the built-in engine's machinery set it)."""
+        stored = self.kv_get(K_BUILTIN_RETIRED, None)
+        if stored is not None:
+            return bool(stored)
+        return os.environ.get("MERIDIAN_BUILTIN_RETIRED", "1").strip().lower() not in ("0", "false", "no")
+
+    def algos(self, include_retired: bool = False) -> list[dict]:
         with self.conn() as c:
-            return [dict(r) for r in c.execute("SELECT * FROM algos ORDER BY created_ts")]
+            rows = [dict(r) for r in c.execute("SELECT * FROM algos ORDER BY created_ts")]
+        if not include_retired and self.builtin_retired():
+            rows = [r for r in rows if r["id"] != DEFAULT_ALGO]
+        return rows
 
     def algo(self, algo_id: str) -> dict | None:
         with self.conn() as c:

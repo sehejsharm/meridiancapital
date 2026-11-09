@@ -128,7 +128,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </main>
 
       <footer className="pb-tabbar relative z-10 mx-auto max-w-[2200px] px-4 text-2xs text-ink-muted sm:px-6 lg:pb-8 xl:px-8">
-        Meridian Capital · {snapshot?.engine.banner ?? "GANESH KAVACH 50K"} · all money figures
+        Meridian Capital{snapshot?.engine.banner ? ` · ${snapshot.engine.banner}` : ""} · all money figures
         read from Angel One
       </footer>
 
