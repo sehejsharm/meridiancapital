@@ -10,6 +10,7 @@ import { apiGet } from "@/lib/client-api";
 import { dayLabel, duration, istDateTime, money, percent, signedMoney } from "@/lib/format";
 import { useLiveFeed } from "@/lib/LiveContext";
 import type { Algo, CommandRow, EventRow } from "@/lib/types";
+import { pollWhileVisible } from "@/lib/pollWhileVisible";
 
 /** Where the control plane files events that belong to the desk, not one algorithm. */
 const SYSTEM = "system";
@@ -131,11 +132,10 @@ export default function JournalPage() {
       if (runList.status === "fulfilled") setRuns(runList.value.runs);
       if (cmdList.status === "fulfilled") setCommands(cmdList.value.commands);
     };
-    void load();
-    const timer = setInterval(() => void load(), 30_000);
+    const stop = pollWhileVisible(() => void load(), 30_000);
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      stop();
     };
   }, [scope, filter, day, isToday]);
 

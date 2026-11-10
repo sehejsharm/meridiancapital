@@ -6,7 +6,7 @@ import { useProgramConfigs } from "@/components/ProgramConfig";
 import { Sparkline } from "@/components/Sparkline";
 import { Badge, Card, Empty, Skeleton, StatTile } from "@/components/ui";
 import {
-  byEntryHour, byWeekday, calendarWeeks, closedTrades, dailyPnl, kelly, monteCarlo,
+  byDaysToExpiry, byEntryHour, byWeekday, calendarWeeks, closedTrades, dailyPnl, kelly, monteCarlo,
   rollingSortino, rollingWinRate, underwater, type Bucket,
 } from "@/lib/analytics";
 import { apiGet } from "@/lib/client-api";
@@ -106,6 +106,13 @@ export default function AnalyticsPage() {
           <Buckets buckets={byWeekday(trades)} />
         </Card>
       </div>
+
+      <Card
+        title="By days to expiry"
+        subtitle="How many days the contract had left when it was bought. The backtest holds no 7–8-day contracts, so this is the only record of them"
+      >
+        <Buckets buckets={byDaysToExpiry(trades)} />
+      </Card>
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Card

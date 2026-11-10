@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { EquityChart, type ChartPoint } from "@/components/EquityChart";
@@ -8,6 +9,7 @@ import { apiGet } from "@/lib/client-api";
 import { matchLine, matchOf } from "@/lib/blotter";
 import { dayLabel, minutes, money, percent, signedMoney, signedPercent, tradeTime } from "@/lib/format";
 import type { DailyEquityPoint, TradeRow, TradeStats } from "@/lib/types";
+import { pollWhileVisible } from "@/lib/pollWhileVisible";
 
 /**
  * The chart's change over its range, split into what trades made and what
@@ -58,9 +60,7 @@ export default function BlotterPage() {
         setLoading(false);
       }
     };
-    void load();
-    const timer = setInterval(() => void load(), 30_000);
-    return () => clearInterval(timer);
+    return pollWhileVisible(() => void load(), 30_000);
   }, []);
 
   const dailyPoints: ChartPoint[] = daily.map((d) => ({
@@ -196,6 +196,10 @@ export default function BlotterPage() {
                     {tradeTime(t.entry_ts)}
                     {t.exit_ts ? ` → ${tradeTime(t.exit_ts)}` : ""}
                     {t.reason ? ` · ${t.reason}` : ""}
+                    {" · "}
+                    <Link href={`/replay?day=${t.session_date}`} className="text-brand underline underline-offset-2">
+                      Replay
+                    </Link>
                   </p>
                 </li>
               );
@@ -235,7 +239,15 @@ export default function BlotterPage() {
                           <Badge tone={won ? "good" : "critical"}>{won ? "Win" : "Loss"}</Badge>
                         )}
                       </td>
-                      <td className="whitespace-nowrap py-2 pr-3 text-ink-secondary">{tradeTime(t.entry_ts)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-ink-secondary">
+                        <Link
+                          href={`/replay?day=${t.session_date}`}
+                          title="Replay this session: chart, P&L and journal together"
+                          className="underline decoration-hairline underline-offset-2 hover:text-brand hover:decoration-brand"
+                        >
+                          {tradeTime(t.entry_ts)}
+                        </Link>
+                      </td>
                       <td className="whitespace-nowrap py-2 pr-3 text-ink-secondary">{tradeTime(t.exit_ts)}</td>
                       <td className="py-2 pr-3 text-ink">
                         {t.strike} {t.side}

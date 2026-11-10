@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { apiGet } from "@/lib/client-api";
 import type { NiftyChartPayload } from "@/lib/types";
+import { pollWhileVisible } from "@/lib/pollWhileVisible";
 
 /**
  * Today's NIFTY 50 in one-minute candles.
@@ -36,11 +37,10 @@ export function NiftyChart({ height = 380 }: { height?: number }) {
         if (alive) setError(e instanceof Error ? e.message : "chart unavailable");
       }
     };
-    void load();
-    const timer = setInterval(() => void load(), 30_000);
+    const stop = pollWhileVisible(() => void load(), 30_000);
     return () => {
       alive = false;
-      clearInterval(timer);
+      stop();
     };
   }, []);
 

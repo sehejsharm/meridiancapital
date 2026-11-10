@@ -16,6 +16,7 @@ import { istDateTime } from "@/lib/format";
 import { gateText } from "@/lib/gate";
 import { switchPlan } from "@/lib/switchLive";
 import type { Algo, GateReport as Report } from "@/lib/types";
+import { pollWhileVisible } from "@/lib/pollWhileVisible";
 
 type Notice = { tone: "good" | "critical"; text: string } | null;
 
@@ -40,11 +41,7 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
     }
   }, [id]);
 
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), 8000);
-    return () => clearInterval(t);
-  }, [load]);
+  useEffect(() => pollWhileVisible(() => void load(), 8000), [load]);
 
   const act = useCallback(
     async (fn: () => Promise<unknown>, success: string) => {

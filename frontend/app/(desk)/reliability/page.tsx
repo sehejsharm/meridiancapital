@@ -11,6 +11,7 @@ import { dayLabel } from "@/lib/format";
 import { recordedAt } from "@/lib/recorded";
 import { API_KINDS, trendText, uptimeTone } from "@/lib/reliability";
 import type { ReliabilityReport } from "@/lib/types";
+import { pollWhileVisible } from "@/lib/pollWhileVisible";
 
 const RANGES = [7, 30, 90] as const;
 
@@ -35,11 +36,7 @@ export default function ReliabilityPage() {
     }
   }, [days]);
 
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), 60_000);
-    return () => clearInterval(t);
-  }, [load]);
+  useEffect(() => pollWhileVisible(() => void load(), 60_000), [load]);
 
   const ack = async (key: string) => {
     await apiPost("/reliability/ack", { key });

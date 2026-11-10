@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  byEntryHour, byWeekday, calendarWeeks, closedTrades, dailyPnl, kelly, monteCarlo, prng,
+  byDaysToExpiry, byEntryHour, byWeekday, calendarWeeks, closedTrades, dailyPnl, kelly, monteCarlo, prng,
   rollingWinRate, underwater,
 } from "../lib/analytics.ts";
 import type { TradeRow } from "../lib/types.ts";
@@ -74,4 +74,20 @@ test("the simulation is deterministic and counts kill switches", () => {
   assert.ok(a.pDailyKill > 0.8 && a.pDailyKill < 0.95, String(a.pDailyKill));
   assert.ok(a.final.p50 > 0);
   assert.equal(monteCarlo([1, 2], { dailyKill: 1, weeklyKill: 1, capital: 1 }), null);
+});
+
+test("results by days to expiry, fewest days first; trades without an expiry are left out", () => {
+  const mk = (day: string, expiry: string | null, net: number) =>
+    ({ session_date: day, entry_ts: `${day} 10:20`, exit_ts: `${day} 15:00`, mode: "live", net, net_angel: net, expiry } as unknown as TradeRow);
+  const t = closedTrades([
+    mk("2026-11-02", "2026-11-10", -700),   // Monday, 8 days
+    mk("2026-11-04", "2026-11-10", -1300),  // Wednesday, 6 days
+    mk("2026-11-05", "2026-11-10", 2100),   // Thursday, 5 days
+    mk("2026-11-06", "2026-11-10", 900),    // Friday, 4 days
+    mk("2026-10-29", "2026-11-03", 400),    // Thursday, 5 days
+    mk("2026-10-30", null, 9999),
+  ]);
+  assert.deepEqual(t.map((x) => x.dte), [5, null, 8, 6, 5, 4]);
+  const b = byDaysToExpiry(t);
+  assert.deepEqual(b.map((x) => [x.key, x.n, x.net]), [["4 days", 1, 900], ["5 days", 2, 2500], ["6 days", 1, -1300], ["8 days", 1, -700]]);
 });

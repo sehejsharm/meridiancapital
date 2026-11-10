@@ -7,6 +7,7 @@ import { apiGet } from "@/lib/client-api";
 import { builtinDifferences, driftSummary, effectiveValue, formatParam } from "@/lib/programConfig";
 import { recordedAt } from "@/lib/recorded";
 import type { ProgramConfigReport } from "@/lib/types";
+import { pollWhileVisible } from "@/lib/pollWhileVisible";
 
 export interface ProgramConfigs {
   programs: ProgramConfigReport[];
@@ -26,11 +27,10 @@ export function useProgramConfigs(): ProgramConfigs | null {
         /* the page still renders the built-in's form */
       }
     };
-    void load();
-    const t = setInterval(() => void load(), 60_000);
+    const stop = pollWhileVisible(() => void load(), 60_000);
     return () => {
       cancelled = true;
-      clearInterval(t);
+      stop();
     };
   }, []);
   return data;

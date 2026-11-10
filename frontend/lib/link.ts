@@ -1,4 +1,4 @@
-import { useLiveFeed } from "@/lib/LiveContext";
+import { useLiveClock, useLiveFeed } from "@/lib/LiveContext";
 import type { ConnectionState } from "@/lib/useLive";
 import { DEAD_MS, STALE_MS, useTickAge } from "@/lib/useTickAge";
 
@@ -45,7 +45,8 @@ export function linkView(
  * kept reading "Connected" for as long as the outage lasted.
  */
 export function useLinkView(): LinkView {
-  const { connection, lastUpdate, settlingUntil } = useLiveFeed();
+  const { connection } = useLiveFeed();
+  const { lastUpdate, settlingUntil } = useLiveClock();
   useTickAge(lastUpdate);
   return linkView(connection, lastUpdate, settlingUntil);
 }

@@ -12,6 +12,8 @@ export interface ClosedTrade {
   hour: number;       // entry hour, IST
   weekday: number;    // 0 = Monday … 4 = Friday
   net: number;        // after charges, Angel's figure where known
+  /** Calendar days from the session to the contract's expiry; null when the trade does not say. */
+  dte: number | null;
 }
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -25,12 +27,15 @@ export function closedTrades(trades: TradeRow[], mode: "live" | "paper" = "live"
       const day = t.session_date;
       const d = new Date(`${day}T00:00:00Z`);
       const net = Number(t.net_angel ?? t.net ?? 0);
+      const exp = t.expiry ? Date.parse(`${String(t.expiry).slice(0, 10)}T00:00:00Z`) : NaN;
+      const dte = Number.isFinite(exp) && Number.isFinite(d.getTime()) ? Math.round((exp - d.getTime()) / 86_400_000) : null;
       return {
         day,
         entry,
         hour: Number(entry.slice(11, 13)) || 0,
         weekday: (d.getUTCDay() + 6) % 7,
         net: Number.isFinite(net) ? net : 0,
+        dte: dte !== null && dte >= 0 ? dte : null,
       };
     })
     .sort((a, b) => a.entry.localeCompare(b.entry));
@@ -116,6 +121,18 @@ export function byEntryHour(trades: ClosedTrade[]): Bucket[] {
 /** Results by weekday. */
 export function byWeekday(trades: ClosedTrade[]): Bucket[] {
   return bucketise(trades, (t) => WEEKDAYS[t.weekday], WEEKDAYS);
+}
+
+/**
+ * Results by how many days the contract had left when it was bought. The live
+ * record splits hard on this (to 4 Nov 2026: 3-5 days made money, 6-8 days
+ * lost it), and the backtest has no 7-8-day contracts, so it is worth watching.
+ */
+export function byDaysToExpiry(trades: ClosedTrade[]): Bucket[] {
+  const label = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
+  const known = trades.filter((t) => t.dte !== null);
+  const order = [...new Set(known.map((t) => t.dte as number))].sort((a, b) => a - b).map(label);
+  return bucketise(known, (t) => label(t.dte as number), order);
 }
 
 export interface HeatCell {

@@ -9,6 +9,7 @@ import { oiPct, signedCompact, skewChart } from "@/lib/chain";
 import { istTime } from "@/lib/format";
 import { calendarDay } from "@/lib/holidays";
 import type { ChainAnalytics, ChainPayload, ChainRow, ChainSide, ProgramContract } from "@/lib/types";
+import { pollWhileVisible } from "@/lib/pollWhileVisible";
 
 const fmt = (v: number | null | undefined, digits = 2) =>
   v === null || v === undefined || !Number.isFinite(v) ? "—" : v.toFixed(digits);
@@ -46,11 +47,10 @@ export function OptionChain() {
         if (alive) setError(e instanceof Error ? e.message : "chain unavailable");
       }
     };
-    void load();
-    const timer = setInterval(() => void load(), 15_000);
+    const stop = pollWhileVisible(() => void load(), 15_000);
     return () => {
       alive = false;
-      clearInterval(timer);
+      stop();
     };
   }, []);
 

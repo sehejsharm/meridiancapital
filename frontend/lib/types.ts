@@ -645,6 +645,8 @@ export interface ReportPayload {
   /** Cumulative trading P&L after each closed trade; ends at the period's net. */
   pnl_curve?: EquityPoint[];
   events: EventRow[];
+  /** How many events the period has; `events` is the newest few the page lists. */
+  events_total?: number;
 }
 
 // ── engine room ──────────────────────────────────────────────────────────────

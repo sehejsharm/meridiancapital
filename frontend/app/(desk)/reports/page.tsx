@@ -268,7 +268,14 @@ export default function ReportsPage() {
             )}
           </Card>
 
-          <Card title="Event log" subtitle={`${report.events.length} entries, newest first`}>
+          <Card
+            title="Event log"
+            subtitle={
+              (report.events_total ?? report.events.length) > report.events.length
+                ? `Newest ${report.events.length} of ${(report.events_total ?? 0).toLocaleString("en-IN")} entries — the download has them all`
+                : `${report.events.length} entries, newest first`
+            }
+          >
             {!report.events.length ? (
               <Empty>No events in this window.</Empty>
             ) : (

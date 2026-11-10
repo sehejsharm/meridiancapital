@@ -1,7 +1,7 @@
 "use client";
 
 import { STALE_MS, useTickAge } from "@/lib/useTickAge";
-import { useLiveFeed } from "@/lib/LiveContext";
+import { useLiveClock, useLiveFeed } from "@/lib/LiveContext";
 
 /**
  * Says out loud when the feed stops arriving.
@@ -11,7 +11,8 @@ import { useLiveFeed } from "@/lib/LiveContext";
  * that stopped being true — the bar appears the moment the gap passes 3.5s.
  */
 export function StalenessMonitor() {
-  const { lastUpdate, connection, settlingUntil } = useLiveFeed();
+  const { connection } = useLiveFeed();
+  const { lastUpdate, settlingUntil } = useLiveClock();
   const { ageMs, state } = useTickAge(lastUpdate);
 
   if (state === "fresh") return null;
@@ -52,7 +53,8 @@ export function StalenessMonitor() {
 
 /** Compact form for the header — a dot that turns red and pulses. */
 export function StalenessDot() {
-  const { lastUpdate, connection, settlingUntil } = useLiveFeed();
+  const { connection } = useLiveFeed();
+  const { lastUpdate, settlingUntil } = useLiveClock();
   const { ageMs, state: raw } = useTickAge(lastUpdate);
   const settling = Date.now() < settlingUntil && connection !== "live";
   const state = settling && raw !== "fresh" ? "fresh" : raw;

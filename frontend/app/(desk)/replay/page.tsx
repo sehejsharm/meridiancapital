@@ -59,7 +59,9 @@ export default function ReplayPage() {
   }, []);
 
   useEffect(() => {
-    void load(null);
+    // /replay?day=2026-11-06 opens on that session (the Blotter links here).
+    const asked = new URLSearchParams(window.location.search).get("day");
+    void load(asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : null);
   }, [load]);
 
   useEffect(() => {

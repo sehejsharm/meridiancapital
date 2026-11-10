@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { apiGet } from "@/lib/client-api";
+import { stableKey, statusChanged } from "@/lib/liveStatus";
 import type { EventRow, Snapshot, SystemStatus } from "@/lib/types";
 
 export type ConnectionState = "connecting" | "live" | "polling" | "offline";
@@ -36,17 +37,26 @@ interface Message {
   heartbeat?: number;
 }
 
+/** The feed's data. Changes only when something on it changes. */
 export interface Live {
   snapshot: Snapshot | null;
   status: SystemStatus | null;
   events: EventRow[];
   connection: ConnectionState;
+  refresh: () => void;
+}
+
+/**
+ * When the feed last said anything. Changes with every message, the once-a-second
+ * heartbeat included, so it is kept apart from the data: only the staleness
+ * indicators read it, and a heartbeat no longer re-renders the whole page.
+ */
+export interface LiveClock {
   lastUpdate: number | null;
   /** Until this time (ms) the link is (re)establishing: a brief gap is expected
    *  and is not worth an alarm. Set on open and whenever the app comes back to
    *  the foreground. */
   settlingUntil: number;
-  refresh: () => void;
 }
 
 /** How long a fresh open, or a return from the background, may take to connect
@@ -59,9 +69,9 @@ const SETTLE_MS = 4000;
  * is worse than one that is visibly degraded, so the connection state is part of
  * what this returns rather than hidden.
  */
-export function useLive(): Live {
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [status, setStatus] = useState<SystemStatus | null>(null);
+export function useLive(): { live: Live; clock: LiveClock } {
+  const [snapshot, setSnapshotState] = useState<Snapshot | null>(null);
+  const [status, setStatusState] = useState<SystemStatus | null>(null);
   const [events, setEvents] = useState<EventRow[]>([]);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [lastUpdate, setLastUpdate] = useState<number | null>(null);
@@ -79,10 +89,31 @@ export function useLive(): Live {
     setSettlingUntil(settleRef.current);
   }, []);
 
+  // A status whose only difference is the server's clock, or a snapshot identical
+  // to the one held, is not stored again: storing it re-rendered the whole page
+  // (see lib/liveStatus.ts).
+  const statusHeld = useRef<{ key: string | null; at: number }>({ key: null, at: 0 });
+  const setStatus = useCallback((next: SystemStatus) => {
+    const key = stableKey(next);
+    const now = Date.now();
+    if (!statusChanged(statusHeld.current.key, key, statusHeld.current.at, now)) return;
+    statusHeld.current = { key, at: now };
+    setStatusState(next);
+  }, []);
+  const snapshotHeld = useRef<string | null>(null);
+  const setSnapshot = useCallback((next: Snapshot | null) => {
+    const key = JSON.stringify(next);
+    if (key === snapshotHeld.current) return;
+    snapshotHeld.current = key;
+    setSnapshotState(next);
+  }, []);
+
   const mergeEvents = useCallback((incoming: EventRow[]) => {
     if (!incoming.length) return;
     setEvents((prev) => {
       const byId = new Map(prev.map((e) => [e.id, e]));
+      // Nothing new (a poll returning the lines already held): keep the same list.
+      if (incoming.every((e) => byId.has(e.id))) return prev;
       for (const e of incoming) byId.set(e.id, e);
       return Array.from(byId.values())
         .sort((a, b) => b.id - a.id)
@@ -107,12 +138,15 @@ export function useLive(): Live {
     } catch {
       setConnection((c) => (c === "live" ? c : "offline"));
     }
-  }, [mergeEvents]);
+  }, [mergeEvents, setSnapshot, setStatus]);
 
   const startPolling = useCallback(() => {
     if (pollRef.current) return;
     void pollOnce();
-    pollRef.current = setInterval(() => void pollOnce(), POLL_MS);
+    // Not while hidden: nobody is reading it, and coming back reads at once (below).
+    pollRef.current = setInterval(() => {
+      if (document.visibilityState === "visible") void pollOnce();
+    }, POLL_MS);
   }, [pollOnce]);
 
   const stopPolling = useCallback(() => {
@@ -228,7 +262,7 @@ export function useLive(): Live {
       startPolling();
       retryRef.current = setTimeout(() => void connect(), nextDelay(attemptsRef));
     }
-  }, [mergeEvents, settle, startPolling, stopPolling]);
+  }, [mergeEvents, setSnapshot, setStatus, settle, startPolling, stopPolling]);
 
   // A phone suspends sockets in the background and does not always say so. On
   // return, reconnect at once instead of waiting out a backoff, and read the
@@ -276,8 +310,11 @@ export function useLive(): Live {
     };
   }, [connect, stopPolling]);
 
-  return {
-    snapshot, status, events, connection, lastUpdate, settlingUntil,
-    refresh: () => void pollOnce(),
-  };
+  const refresh = useCallback(() => void pollOnce(), [pollOnce]);
+  const live = useMemo<Live>(
+    () => ({ snapshot, status, events, connection, refresh }),
+    [snapshot, status, events, connection, refresh],
+  );
+  const clock = useMemo<LiveClock>(() => ({ lastUpdate, settlingUntil }), [lastUpdate, settlingUntil]);
+  return { live, clock };
 }

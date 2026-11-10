@@ -28,6 +28,7 @@ import { useLinkView } from "@/lib/link";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { recordedAt, useDeskSnapshot } from "@/lib/recorded";
 import type { AlgoList, EquityPoint, TradeRow } from "@/lib/types";
+import { pollWhileVisible } from "@/lib/pollWhileVisible";
 
 /**
  * The deck.
@@ -71,11 +72,7 @@ export default function DeckPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadAlgos();
-    const t = setInterval(() => void loadAlgos(), 10_000);
-    return () => clearInterval(t);
-  }, [loadAlgos]);
+  useEffect(() => pollWhileVisible(() => void loadAlgos(), 10_000), [loadAlgos]);
 
   // Re-read when a position opens or closes, and every half minute besides.
   // It used to re-read on every engine snapshot — two relay calls a second
@@ -99,9 +96,7 @@ export default function DeckPage() {
         /* chart falls back to its empty state */
       }
     };
-    void load();
-    const t = setInterval(() => void load(), 30_000);
-    return () => clearInterval(t);
+    return pollWhileVisible(() => void load(), 30_000);
   }, [positionKey]);
 
   const control = useCallback(

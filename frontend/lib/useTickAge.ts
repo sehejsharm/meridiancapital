@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 export const STALE_MS = 3500;
 /** Beyond this it is dead. */
 export const DEAD_MS = 15_000;
+/** How often the age is re-read. */
+export const TICK_MS = 500;
 
 export type Freshness = "fresh" | "stale" | "dead";
 
@@ -26,7 +28,10 @@ export function useTickAge(lastUpdate: number | null): {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 250);
+    // Twice a second: a stalled feed is flagged within 3.5-4.0 s. At four times a
+    // second this was the page's main steady cost (a re-layout of the age label
+    // every 250 ms, on every page, all day).
+    const t = setInterval(() => setNow(Date.now()), TICK_MS);
     return () => clearInterval(t);
   }, []);
 

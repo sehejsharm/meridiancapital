@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiGet } from "@/lib/client-api";
 import type { HealthDetail, NewsPayload, TickerPayload } from "@/lib/types";
+import { pollWhileVisible } from "@/lib/pollWhileVisible";
 
 /**
  * Polls one endpoint on an interval and keeps the last good value.
@@ -16,7 +17,6 @@ function usePoll<T>(path: string, intervalMs: number, enabled = true) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const inFlight = useRef(false);
 
   const tick = useCallback(async () => {
@@ -35,12 +35,8 @@ function usePoll<T>(path: string, intervalMs: number, enabled = true) {
 
   useEffect(() => {
     if (!enabled) return;
-    void tick();
-    timer.current = setInterval(() => void tick(), intervalMs);
-    return () => {
-      if (timer.current) clearInterval(timer.current);
-      timer.current = null;
-    };
+    // Only while the page is visible: a background tab made every one of these calls too.
+    return pollWhileVisible(() => void tick(), intervalMs);
   }, [tick, intervalMs, enabled]);
 
   return { data, error, updatedAt, refresh: tick };
