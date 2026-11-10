@@ -31,12 +31,13 @@ from engine import tuning
 
 # Keys a program's configuration is described by, with how to show each.
 KINDS: dict[str, str] = {p.key: p.kind for p in tuning.PARAMS}
-KINDS.update({"LATE_TP_AFTER_MIN": "int", "LATE_TP_FRAC": "pct"})
+KINDS.update({"LATE_TP_AFTER_MIN": "int", "LATE_TP_FRAC": "pct", "RUNNER_AT": "pct", "RUNNER_FRAC": "pct"})
 LABELS: dict[str, str] = {p.key: p.label for p in tuning.PARAMS}
-LABELS.update({"LATE_TP_AFTER_MIN": "Late take-profit after (min)", "LATE_TP_FRAC": "Late take-profit level"})
+LABELS.update({"LATE_TP_AFTER_MIN": "Late take-profit after (min)", "LATE_TP_FRAC": "Late take-profit level",
+               "RUNNER_AT": "Runner lock from", "RUNNER_FRAC": "Runner lock trail"})
 # A key the program is known to print at startup; the rest come from its code only.
 LOGGED = (
-    "TARGET_PTS", "BE_TRIGGER", "TRAIL_FRAC", "LATE_TP_AFTER_MIN", "LATE_TP_FRAC", "STOP_FRAC",
+    "TARGET_PTS", "BE_TRIGGER", "TRAIL_FRAC", "LATE_TP_AFTER_MIN", "LATE_TP_FRAC", "RUNNER_AT", "RUNNER_FRAC", "STOP_FRAC",
     "PER_TRADE_RISK_RS", "DAILY_LOSS_LIMIT_RS", "WEEKLY_LOSS_LIMIT_RS", "CONSEC_LOSS_HALT",
     "DAILY_PROFIT_LOCK_RS", "MAX_TRADES_DAY", "MAX_DRAWDOWN_STOP", "DEPLOY_FRACTION",
     "PER_TRADE_EQUITY_CAP", "MAX_LOTS", "ENTRY_START", "ENTRY_CUTOFF", "FORCE_CLOSE",
@@ -60,6 +61,9 @@ _LOG_RULES: list[tuple[re.Pattern, Any]] = [
     (re.compile(r"trail\s*:\s*past \+(\d+(?:\.\d+)?)% gain"), lambda m: {"TRAIL_FRAC": float(m.group(1)) / 100}),
     (re.compile(r"late TP\s*:\s*from (\d+) min after entry, sell at \+(\d+(?:\.\d+)?)%"),
      lambda m: {"LATE_TP_AFTER_MIN": int(m.group(1)), "LATE_TP_FRAC": float(m.group(2)) / 100}),
+    # v10: "runner lock: past +90% gain, stop rides 10% behind peak"
+    (re.compile(r"runner lock\s*:\s*past \+(\d+(?:\.\d+)?)% gain, stop rides (\d+(?:\.\d+)?)%"),
+     lambda m: {"RUNNER_AT": float(m.group(1)) / 100, "RUNNER_FRAC": float(m.group(2)) / 100}),
     (re.compile(r"hard stop\s*:\s*-(\d+(?:\.\d+)?)%"), lambda m: {"STOP_FRAC": float(m.group(1)) / 100}),
     (re.compile(r"rupee cap\s*:.*?Rs ([\d,]+(?:\.\d+)?)"), lambda m: {"PER_TRADE_RISK_RS": _rs(m.group(1))}),
     (re.compile(r"daily kill\s*:.*?Rs ([\d,]+(?:\.\d+)?)"), lambda m: {"DAILY_LOSS_LIMIT_RS": _rs(m.group(1))}),
@@ -163,11 +167,14 @@ def running_config(db, algo_id: str) -> dict | None:
 
 def code_config(db, algo: dict) -> dict | None:
     """The constants in the algorithm's active uploaded version."""
+    from app.programs import cached_fact
+
     vid = algo.get("active_version")
-    ver = db.version(int(vid)) if vid else None
-    if not ver or not ver.get("source"):
+    ver = db.version_meta(int(vid)) if vid else None
+    if not ver:
         return None
-    values = parse_source_constants(ver["source"])
+    # Parsed once per distinct source (see programs.cached_fact): this is asked every minute.
+    values = cached_fact(db, ver, "constants", parse_source_constants)
     if not values:
         return None
     return {"version": ver.get("version"), "sha256": (ver.get("sha256") or "")[:12], "values": values}

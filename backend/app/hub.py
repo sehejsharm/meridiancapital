@@ -18,6 +18,22 @@ from fastapi import WebSocket
 from shared.db import K_SNAPSHOT, Database
 
 POLL_SECONDS = 1.0
+# The status carries the server's clock and each process's uptime, so its text
+# differed every second and it was pushed every second: 1.6 KB a second to every
+# open dashboard, each one replacing the status at the top of the page and
+# re-rendering all of it. It is pushed when something other than those clocks
+# changes, and otherwise this often, so the clocks in it never go stale.
+STATUS_REFRESH_SECONDS = 15.0
+_VOLATILE = frozenset({"now_ist", "uptime_sec", "restart_backoff_remaining"})
+
+
+def stable_status(value: Any) -> Any:
+    """The status without its clock-like fields: what "did anything change?" is asked of."""
+    if isinstance(value, dict):
+        return {k: stable_status(v) for k, v in value.items() if k not in _VOLATILE}
+    if isinstance(value, list):
+        return [stable_status(v) for v in value]
+    return value
 # Every quiet second carries a heartbeat. The dashboard judges the link by the
 # time since its last message, so with nothing running (no snapshots, no
 # events) a 20-second heartbeat made a healthy connection read as stale after
@@ -38,6 +54,7 @@ class Hub:
         self._last_rev: tuple = ("", -1)
         self._last_event_id = 0
         self._last_status: str = ""
+        self._status_sent_at = 0.0
 
     async def start(self) -> None:
         self._last_event_id = max((e["id"] for e in self.db.events(limit=1)), default=0)
@@ -110,9 +127,11 @@ class Hub:
                         sent = True
 
                     status = await asyncio.to_thread(self.status_provider)
-                    encoded = json.dumps(status, default=str, sort_keys=True)
-                    if encoded != self._last_status:
+                    encoded = json.dumps(stable_status(status), default=str, sort_keys=True)
+                    due = time.monotonic() - self._status_sent_at >= STATUS_REFRESH_SECONDS
+                    if encoded != self._last_status or due:
                         self._last_status = encoded
+                        self._status_sent_at = time.monotonic()
                         await self.broadcast({"type": "status", "data": status})
                         sent = True
 

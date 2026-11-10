@@ -305,9 +305,18 @@ class Database:
         levels: list[str] | None = None,
         algo_id: str | None = None,
         day: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> list[dict]:
         sql = "SELECT * FROM events"
         where, args = [], []
+        if date_from:
+            where.append("ts >= ?")
+            args.append(date_from[:10])
+        if date_to:
+            # Inclusive of the whole IST day, like ``day`` below.
+            where.append("ts < ?")
+            args.append((date.fromisoformat(date_to[:10]) + timedelta(days=1)).isoformat())
         if day:
             # One IST calendar day: ts is a naive IST ISO string, so a range on the
             # ts index is the day exactly ("2026-11-06" <= ts < "2026-11-07").
@@ -769,6 +778,18 @@ class Database:
     def version(self, version_id: int) -> dict | None:
         with self.conn() as c:
             r = c.execute("SELECT * FROM algo_versions WHERE id=?", (version_id,)).fetchone()
+            return dict(r) if r else None
+
+    def version_meta(self, version_id: int) -> dict | None:
+        """One version without its source. A program's source is ~200 KB; the pages
+        that list algorithms are polled every few seconds and never show it."""
+        with self.conn() as c:
+            r = c.execute(
+                """SELECT id, algo_id, version, created_ts, uploaded_by, sha256,
+                          status, gate_report, paper_sessions
+                   FROM algo_versions WHERE id=?""",
+                (version_id,),
+            ).fetchone()
             return dict(r) if r else None
 
     def set_version_status(self, version_id: int, status: str, gate_report: Any = None) -> None:

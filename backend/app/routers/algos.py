@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.algo_store import MAX_SOURCE_BYTES, run_gate, sha256, slugify
 from app.program_status import compact_snapshot
-from app.programs import mode_arguments, runtime_of
+from app.programs import mode_arguments, runtime_of, runtime_of_version
 from app.deps import ctx
 from app import code_redact, shadow
 from app.security import Principal, client_ip, require_auth
@@ -97,7 +97,9 @@ def _recent(db, algo_id: str, sup: dict) -> list[dict]:
 
 def _algo_view(db, algo: dict) -> dict:
     history = db.versions(algo["id"], limit=20)
-    active = db.version(algo["active_version"]) if algo.get("active_version") else None
+    # Metadata only: the source is never shown here, and what is derived from it
+    # (which runtime it needs) is remembered by its hash.
+    active = db.version_meta(algo["active_version"]) if algo.get("active_version") else None
     sup = ctx().fleet.snapshot(algo["id"]) if hasattr(ctx(), "fleet") else {}
     # The card keeps showing the algorithm's last recorded figures once it stops.
     last = compact_snapshot(db.kv_get(snapshot_key(algo["id"]), None))
@@ -109,7 +111,7 @@ def _algo_view(db, algo: dict) -> dict:
         "gate": versions.summary(active),
         "runtime_kind": (
             "builtin" if algo.get("kind") == "builtin"
-            else runtime_of(active["source"]) if active else "none"
+            else runtime_of_version(db, active) if active else "none"
         ),
         "runtime": sup,
         "last": last,

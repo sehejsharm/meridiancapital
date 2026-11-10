@@ -133,16 +133,18 @@ TICKER_FRESH_SEC = 90.0
 
 # Points of the equity curve sent to the results page's chart.
 REPORT_CHART_POINTS = 3000
+# Log lines sent to the results page (it shows this many; the downloads carry all).
+REPORT_PAGE_EVENTS = 300
 
 
 async def _payload(algo_id: str | None, start: str, end: str, title: str,
-                   max_points: int | None = None) -> dict:
+                   max_points: int | None = None, with_equity: bool = True) -> dict:
     if start > end:
         raise HTTPException(status_code=400, detail="start date must not be after end date")
     # Off the event loop: a long period reads every sample in it, and the live
     # feed and every other request would wait for it.
     return await asyncio.to_thread(
-        reports.build_payload, ctx().db, algo_id, start, end, title, max_points
+        reports.build_payload, ctx().db, algo_id, start, end, title, max_points, with_equity
     )
 
 
@@ -152,7 +154,13 @@ async def report_json(
 ) -> dict:
     """The same payload the CSV and PDF are rendered from, for the results page,
     with the curve thinned to what a chart can show."""
-    return await _payload(algo_id, start, end, title, REPORT_CHART_POINTS)
+    # No balance marks: the page draws pnl_curve. They stay in the CSV download.
+    payload = await _payload(algo_id, start, end, title, REPORT_CHART_POINTS, with_equity=False)
+    # The page lists the newest REPORT_PAGE_EVENTS log lines and says how many there
+    # are; the full log is in the CSV and PDF. 2,000 lines were 300 KB a visit.
+    payload["events_total"] = len(payload["events"])
+    payload["events"] = payload["events"][:REPORT_PAGE_EVENTS]
+    return payload
 
 
 @router.get("/reports.csv", response_class=PlainTextResponse)

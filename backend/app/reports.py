@@ -40,7 +40,7 @@ def thin(points: list[dict], limit: int) -> list[dict]:
 
 
 def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
-                  max_points: int | None = None) -> dict:
+                  max_points: int | None = None, with_equity: bool = True) -> dict:
     trades = [
         t for t in db.trades(limit=5000, algo_id=algo_id)
         if start <= (t.get("session_date") or "") <= end
@@ -69,7 +69,9 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
     # the one trading real money (several accounts on one line drew a zigzag
     # between them), and every sample in the window, not the newest 5,000.
     curve_algo = algo_id or ledger.live_algo(db)
-    equity = db.equity_curve(limit=200_000, algo_id=curve_algo, date_from=start, date_to=end)
+    # The minute-by-minute balance marks go into the CSV. The results page and the
+    # tear sheet draw pnl_curve below and never read them: a year is 94,000 rows.
+    equity = db.equity_curve(limit=200_000, algo_id=curve_algo, date_from=start, date_to=end) if with_equity else []
 
     # Drawdown is measured on trading alone: the balance at the period's first
     # open plus each closed trade's net, in the order they closed. Measured on
@@ -94,10 +96,10 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
         pnl_curve.append({"ts": (t.get("exit_ts") or "").replace(" ", "T"), "equity": round(cum, 2),
                           "day_pl": round(float(t.get("net") or 0.0), 2), "realised_today": None, "peak_equity": None})
 
-    events = [
-        e for e in db.events(limit=2000, algo_id=algo_id)
-        if start <= (e.get("ts") or "")[:10] <= end
-    ]
+    # The period's newest 2,000 events, asked of the ts index. They used to be
+    # filtered out of the newest 2,000 of all time, so a period further back than
+    # that reported an empty log and "0 errors".
+    events = db.events(limit=2000, algo_id=algo_id, date_from=start, date_to=end)
 
     summary = {
         "scope": scope,

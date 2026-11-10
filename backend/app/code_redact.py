@@ -22,6 +22,7 @@ is: a credentials dict or a login call spread over several lines goes whole.
 from __future__ import annotations
 
 import difflib
+import functools
 import io
 import re
 import tokenize
@@ -102,6 +103,14 @@ def _statements(source: str) -> list[tuple[int, int]] | None:
 
 def redact(source: str) -> tuple[list[str], int]:
     """The source's lines with every credential line replaced by a marker, and how many were hidden."""
+    lines, hidden = _redact(source)
+    return list(lines), hidden
+
+
+@functools.lru_cache(maxsize=8)
+def _redact(source: str) -> tuple[tuple[str, ...], int]:
+    # Remembered per source: comparing v9 with v10, then v8 with v10, tokenises
+    # v10 once. Only redacted lines are kept, never the original text's lines.
     lines = source.splitlines()
     hidden = {i for i, line in enumerate(lines, start=1) if sensitive_line(line)}
     spans = _statements(source)
@@ -123,7 +132,7 @@ def redact(source: str) -> tuple[list[str], int]:
             out.append(f"{indent}# {MARKER}")
         else:
             out.append(line)
-    return out, len(hidden)
+    return tuple(out), len(hidden)
 
 
 def diff(source_a: str, source_b: str, context: int = 3) -> dict:

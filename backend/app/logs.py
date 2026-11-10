@@ -26,9 +26,10 @@ def day_events(db, day: str, algo_id: str | None = None) -> list[dict]:
     Read oldest-first because a log is read forwards — you want to see what
     happened, in order, not the newest thing at the top.
     """
-    rows = db.events(limit=MAX_EVENTS, algo_id=algo_id)
-    same_day = [e for e in rows if (e.get("ts") or "").startswith(day)]
-    return sorted(same_day, key=lambda e: e.get("id") or 0)
+    # The day is a range on the ts index. It used to be picked out of the newest
+    # MAX_EVENTS events of all time, so a day older than that had an empty log.
+    rows = db.events(limit=MAX_EVENTS, algo_id=algo_id, day=day)
+    return sorted(rows, key=lambda e: e.get("id") or 0)
 
 
 def summarise(events: list[dict]) -> dict:

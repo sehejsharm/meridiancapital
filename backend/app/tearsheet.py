@@ -54,7 +54,7 @@ def ratios(day_nets: list[float]) -> dict:
 def build(db, algo_id: str | None, period: str, anchor: str) -> dict:
     start, end, label = period_bounds(period, anchor)
     title = f"{'Weekly' if period == 'week' else 'Monthly'} tear sheet"
-    p = reports.build_payload(db, algo_id, start, end, title)
+    p = reports.build_payload(db, algo_id, start, end, title, with_equity=False)
     s = p["summary"]
     live = s.get("scope") == "real money"
     closed = [t for t in p["trades"] if t.get("exit_ts") and (t.get("mode") == "live") == live]

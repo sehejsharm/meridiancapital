@@ -65,6 +65,42 @@ def has_main_guard(source: str) -> bool:
     return False
 
 
+# Facts read out of a stored version's source, kept per (database, version id).
+# Parsing a 4,000-line program takes 60-130 ms, and the pages that list algorithms
+# ask every few seconds: on the VM that also runs the live trader that was the same
+# file parsed some 500 times an hour. A stored version's source never changes and
+# its id is never reused, so the id is a sound key.
+_FACTS: dict[tuple[str, int, str], object] = {}
+_FACTS_MAX = 256
+
+
+def cached_fact(db, version: dict | None, name: str, compute):
+    """``compute(source)`` for this stored version, computed once.
+
+    ``version`` is a row from ``db.version_meta`` (no source) or ``db.version``;
+    the source is read from the database only when the fact is not known yet.
+    """
+    if not version or version.get("id") is None:
+        return None
+    key = (str(getattr(db, "path", "")), int(version["id"]), name)
+    if key in _FACTS:
+        return _FACTS[key]
+    source = version.get("source")
+    if source is None:
+        full = db.version(int(version["id"]))
+        source = (full or {}).get("source") or ""
+    value = compute(source)
+    if len(_FACTS) >= _FACTS_MAX:
+        _FACTS.pop(next(iter(_FACTS)))
+    _FACTS[key] = value
+    return value
+
+
+def runtime_of_version(db, version: dict | None) -> str:
+    """``runtime_of`` for a stored version, without re-reading or re-parsing its source."""
+    return cached_fact(db, version, "runtime", runtime_of) or "invalid"
+
+
 def runtime_of(source: str) -> str:
     """"strategy", "program", or "invalid" — decided from the text, never by running it."""
     if not missing_members(source):
