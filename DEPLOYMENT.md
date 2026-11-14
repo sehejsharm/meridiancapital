@@ -5,18 +5,59 @@ end, most of it waiting for DNS.
 
 ## 1. The Oracle VM
 
-In the OCI console, create a **Compute instance**:
+In the OCI console, in your **home region**, create a **Compute instance**:
 
-- **Shape** — `VM.Standard.A1.Flex` (Ampere ARM), 2 OCPU / 12 GB is ample. The Always
-  Free allowance is 4 OCPU / 24 GB total.
-- **Image** — Ubuntu 22.04 or 24.04.
+- **Shape** — *Change shape → Ampere →* `VM.Standard.A1.Flex`, **2 OCPU / 12 GB**. That
+  is the whole Always Free Ampere allowance since Oracle halved it in June 2026 (it was
+  4 / 24), shared across every A1 instance in the tenancy. Twelve times the memory of an
+  `E2.1.Micro`, and ample for this.
+- **Image** — Canonical Ubuntu 24.04. With an A1 shape the console picks the `aarch64`
+  build; every package in `requirements.txt` has an ARM wheel.
+- **Boot volume** — *Specify a custom size*: 100 GB, performance **Balanced** (10 VPU).
+  See the storage note below before going higher.
 - **Networking** — assign a public IPv4 address.
 - **SSH** — upload your public key.
 
+The card should read **"Always Free-eligible"**. If it does not, the shape is wrong:
+stop and go back.
+
 > Ampere capacity is often unavailable in a given availability domain. If creation fails
 > with "Out of host capacity", try another AD in the same region, or retry later — it
-> frees up. Two AMD `VM.Standard.E2.1.Micro` instances are the fallback; one is enough to
-> run this, though with 1 GB RAM you should add swap before installing pandas.
+> frees up. **Do not** fall back to an `E3`/`E4`/`E5`/`Standard3` "Flex" shape: those are
+> paid, even for an hour. The only free fallback is `VM.Standard.E2.1.Micro` (1 GB RAM;
+> add swap before installing pandas).
+
+### Staying on Always Free
+
+Oracle bills anything outside the Always Free list the moment a trial ends — an `E5`
+instance left running for a day becomes an invoice. To stay at zero:
+
+| Resource | Free limit (whole tenancy) | Keep it at |
+|---|---|---|
+| Ampere A1 compute | 2 OCPU / 12 GB total | one VM, 2 OCPU / 12 GB |
+| AMD compute | two `VM.Standard.E2.1.Micro` | nothing else AMD — no `E3`/`E4`/`E5` |
+| Block storage | 200 GB **total**, boot volumes included | every boot + block volume added up, under 200 GB |
+| Volume performance | Balanced (10 VPU) | never Higher/Ultra High |
+| Volume backups | 5 | the nightly backup here is a file on disk, not an OCI backup |
+| Region | home region only | create nothing in another region |
+
+Two quieter traps: a terminated instance keeps its boot volume unless you tick
+*Permanently delete the attached boot volume*, and that orphan still counts toward the
+200 GB (check *Storage → Boot volumes*). And on a free-tier account (not upgraded to Pay
+As You Go) Oracle may stop an Always Free instance it judges idle — CPU, network and, on
+A1, memory all under 20% for seven days. A free external uptime check on
+`https://<your-host>/health` tells you if that happens.
+
+*Billing & Cost Management → Budgets* will email you at a threshold of your choosing; one
+at 0.01 in your currency catches any charge within a day.
+
+### Storage
+
+Always Free block storage is 200 GB **across all boot and block volumes in the tenancy**.
+A 100 GB boot volume leaves room for the old Micro's ~47 GB boot volume while both exist.
+Once the old VM and its boot volume are deleted you can grow this one
+(*Boot volume → Edit → size*, then reboot outside market hours; Ubuntu expands the root
+filesystem at boot) as long as the total stays under 200 GB.
 
 ### Open the ports — both gates
 
@@ -206,6 +247,57 @@ The frontend redeploys itself on push.
 Update outside market hours. `install.sh` restarts the API, and although the engine
 survives that (it runs detached), there is no reason to do it with money on the table.
 
+## Moving to a new VM
+
+For example from an `E2.1.Micro` to an Ampere A1. Nothing in the code changes. What moves
+is the database (trades, journal, audit log, every algorithm's source), the program
+folders and their own state, the engine state file, `/etc/meridian/meridian.env`, and any
+package you pip-installed into the venv for a program. Do it on an evening or a weekend,
+with every algorithm stopped.
+
+1. **Create the new VM** as in section 1, and add the same port 80/443 ingress rules if
+   it is on a different subnet.
+2. **Old VM** — bundle everything up:
+
+   ```bash
+   cd ~/meridiancapital && git pull
+   sudo bash backend/deploy/migrate.sh export
+   ```
+
+   It refuses while anything is running. Then it **stops and disables the API on the old
+   VM** before copying, so the two VMs can never both start the same algorithm at 09:05
+   and nothing written after the copy is lost. It prints the bundle's path and the exact
+   commands for the new VM.
+3. **Copy the bundle across**, through your laptop:
+
+   ```bash
+   scp ubuntu@<old-ip>:meridian-move-*.tar.gz .
+   scp meridian-move-*.tar.gz ubuntu@<new-ip>:
+   ```
+
+4. **New VM** — install, then restore:
+
+   ```bash
+   git clone https://github.com/sehejsharm/meridiancapital.git && cd meridiancapital
+   sudo bash backend/deploy/install.sh <same-hostname> <same-dashboard-origin>
+   sudo bash backend/deploy/migrate.sh import ~/meridian-move-<stamp>.tar.gz
+   ```
+
+5. **Repoint the hostname** (DuckDNS, or your DNS `A` record) at the new IP, then
+   `sudo systemctl restart caddy` on the new VM so it fetches its certificate. Keeping
+   the same hostname means **Vercel needs no change**.
+6. **Angel One** — add the new IP to your SmartAPI app's whitelist. If `ANGEL_PUBLIC_IP` is
+   set, `import` prints the one-line change; until then a live start is refused, and paper
+   is unaffected.
+7. **Check** `curl -s https://<hostname>/health` from your laptop, sign in, and confirm
+   the blotter and journal show your history. Run a paper session first.
+8. **Clean up** once you are satisfied: delete the bundle on all three machines (it holds
+   your credentials), then terminate the old VM **with *Permanently delete the attached
+   boot volume* ticked**, so it stops counting against the 200 GB.
+
+Until step 8, going back is one command on the old VM:
+`sudo systemctl enable --now meridian-api` (and point the hostname back).
+
 ## Operating
 
 ```bash
@@ -220,7 +312,8 @@ page, which is more useful than the journal — it carries the structured payloa
 
 ### Disk
 
-Always Free gives 200 GB. Events are pruned via `prune_events()`; the scrip cache is
+Always Free gives 200 GB of block storage for the whole tenancy, boot volumes included
+(see *Storage* in section 1). Events are pruned via `prune_events()`; the scrip cache is
 refreshed every 12 hours. Nothing here grows unbounded, but `du -sh /var/lib/meridian`
 occasionally costs nothing.
 
@@ -239,4 +332,5 @@ and it is discovered at each login, which handles a reboot that reassigns the ad
 | Header shows "Polling" rather than "Streaming" | WebSocket upgrade is not getting through. Check Caddy is proxying `/ws/live` — the shipped Caddyfile does. |
 | `candle feed empty` in the log | Historical Data API is not enabled on the Angel account. |
 | Engine exits immediately at startup | Read the Journal. Usually missing credentials, capital below ₹50,000, or clock drift over 30s. |
-| `Out of host capacity` creating the VM | Ampere is busy in that availability domain. Try another AD, or retry later. |
+| `Out of host capacity` creating the VM | Ampere is busy in that availability domain. Try another AD, or retry later. Never fall back to a paid `E3`/`E4`/`E5` shape. |
+| An Oracle invoice for "Standard E5 Compute" (or E4, E3) | A paid AMD instance was running after the trial ended. Terminate it, delete its boot volume, and follow *Staying on Always Free*. |

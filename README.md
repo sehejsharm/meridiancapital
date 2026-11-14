@@ -108,7 +108,7 @@ backend/
   app/         FastAPI control plane — auth, supervisor, scheduler, WebSocket hub
   shared/      SQLite bus and the NSE session calendar
   tests/       168 tests, including the original build's self-test suite
-  deploy/      systemd unit, Caddyfile, install.sh, env template
+  deploy/      systemd unit, Caddyfile, install.sh, migrate.sh, env template
   scripts/     secret bootstrap, demo seeding
 frontend/
   app/         App Router pages and the server-side API relay
