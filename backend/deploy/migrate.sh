@@ -236,12 +236,27 @@ PYEOF
     new_ip="$(public_ip)"
     declared="$(grep -m1 -E '^ANGEL_PUBLIC_IP=' "$ENV_FILE" | cut -d= -f2- | tr -d '"'"'" || true)"
     echo "    old VM ${old_ip:-unknown}  ->  this VM ${new_ip:-unknown}"
-    if [[ -n "$declared" && -n "$new_ip" && "$declared" != "$new_ip" ]]; then
-        warn "ANGEL_PUBLIC_IP is ${declared}, but this VM's address is ${new_ip}."
-        warn "Paper runs are unaffected. A live start is refused until you:"
-        warn "  1. add ${new_ip} at smartapi.angelone.in -> My Apps -> edit app"
-        warn "  2. sudo sed -i 's/^ANGEL_PUBLIC_IP=.*/ANGEL_PUBLIC_IP=${new_ip}/' ${ENV_FILE}"
-        warn "  3. sudo systemctl restart meridian-api"
+    # Programs uploaded through the dashboard may carry the whitelisted IP in
+    # their own source and refuse to start anywhere else. List them: they are
+    # the reason moving the old VM's reserved IP beats changing it.
+    local pinned=""
+    if [[ -n "$old_ip" ]]; then
+        pinned="$(grep -rlF --include='*.py' "$old_ip" "$DATA_DIR/programs" "$DATA_DIR/algos" 2>/dev/null \
+                  | sed "s#^$DATA_DIR/##" || true)"
+        if [[ -n "$pinned" ]]; then
+            echo "    these algorithms name ${old_ip} in their own code:"
+            echo "$pinned" | sed 's/^/      /'
+        fi
+    fi
+    if [[ -n "$old_ip" && -n "$new_ip" && "$old_ip" != "$new_ip" ]]; then
+        warn "This VM is not on ${old_ip} yet, so nothing will trade live from here until it is."
+        warn "Recommended: move the reserved public IP ${old_ip} from the old VM to this one"
+        warn "(DEPLOYMENT.md, 'Moving to a new VM'). Then Angel, DNS, Vercel, ANGEL_PUBLIC_IP"
+        warn "and the algorithms above all stay exactly as they are."
+        warn "Only if ${old_ip} is not a reserved IP: whitelist ${new_ip} at smartapi.angelone.in,"
+        [[ -n "$declared" ]] && warn "set ANGEL_PUBLIC_IP=${new_ip} in ${ENV_FILE},"
+        [[ -n "$pinned" ]] && warn "change the IP inside each algorithm listed above and upload it again,"
+        warn "and point ${domain:-your hostname} at ${new_ip}."
     fi
 
     log "Starting the API"
@@ -261,17 +276,17 @@ PYEOF
 
     # Defaults set here, not inside the heredoc: an apostrophe in a ${x:-...}
     # default there is read as a quote and swallows the lines after it.
-    local host="${domain:-your hostname}" ip="${new_ip:-the public IP of this VM}"
+    local ip="${old_ip:-the old public IP}"
     cat <<EOF
 
 ────────────────────────────────────────────────────────────────────────
 Restored. To finish:
 
-  1. Point ${host} at ${ip} (DuckDNS or your DNS),
-     wait for it to resolve, then:  sudo systemctl restart caddy
-  2. Whitelist ${ip} for your SmartAPI app (see above if ANGEL_PUBLIC_IP is set).
+  1. Move the reserved public IP ${ip} from the old VM to this one
+     (OCI console; DEPLOYMENT.md, 'Moving to a new VM'). SSH back in on ${ip}.
+  2. sudo systemctl restart caddy        (fetches the certificate on the new VM)
   3. Check from your laptop:  curl -s https://${domain:-your-host}/health
-     then open the dashboard. Vercel needs no change while the hostname is the same.
+     then open the dashboard. Vercel, DuckDNS and Angel need no change.
   4. Delete the bundle here, on the old VM and anywhere you copied it through.
 ────────────────────────────────────────────────────────────────────────
 EOF

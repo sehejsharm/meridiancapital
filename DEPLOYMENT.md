@@ -255,8 +255,15 @@ folders and their own state, the engine state file, `/etc/meridian/meridian.env`
 package you pip-installed into the venv for a program. Do it on an evening or a weekend,
 with every algorithm stopped.
 
-1. **Create the new VM** as in section 1, and add the same port 80/443 ingress rules if
-   it is on a different subnet.
+The old VM's public IP should move with it. It is the IP whitelisted at Angel, the one
+DuckDNS points at, and the one an uploaded program may name in its own code (the
+GANESH KAVACH program does: `PUBLIC_IP = "..."`, and it refuses to start from any other
+address). A **reserved** public IP can be detached from one instance and attached to
+another in the same region, so after the move none of those change.
+
+1. **Create the new VM** as in section 1, **in the same region as the old one** (a
+   reserved IP cannot leave its region), with a temporary public IP for setup, and add
+   the same port 80/443 ingress rules if it is on a different subnet.
 2. **Old VM** — bundle everything up:
 
    ```bash
@@ -283,20 +290,32 @@ with every algorithm stopped.
    sudo bash backend/deploy/migrate.sh import ~/meridian-move-<stamp>.tar.gz
    ```
 
-5. **Repoint the hostname** (DuckDNS, or your DNS `A` record) at the new IP, then
-   `sudo systemctl restart caddy` on the new VM so it fetches its certificate. Keeping
-   the same hostname means **Vercel needs no change**.
-6. **Angel One** — add the new IP to your SmartAPI app's whitelist. If `ANGEL_PUBLIC_IP` is
-   set, `import` prints the one-line change; until then a live start is refused, and paper
-   is unaffected.
-7. **Check** `curl -s https://<hostname>/health` from your laptop, sign in, and confirm
-   the blotter and journal show your history. Run a paper session first.
-8. **Clean up** once you are satisfied: delete the bundle on all three machines (it holds
-   your credentials), then terminate the old VM **with *Permanently delete the attached
-   boot volume* ticked**, so it stops counting against the 200 GB.
+   `import` warns that the new VM is not on the old IP yet and lists any algorithm that
+   names that IP in its code. Both are expected; the next step settles them.
+5. **Move the reserved IP.** Each edit is *Instance → Attached VNICs → (primary VNIC) →
+   IPv4 Addresses → ⋮ on the primary private IP → Edit*:
+   1. **New VM** → *Public IP type: No public IP* → Update. (Drops the temporary IP.)
+   2. **Old VM** → *No public IP* → Update. The reserved IP is now unattached, still
+      yours, listed under *Networking → IP Management → Reserved public IPs*.
+   3. **New VM** → *Reserved public IP → Select existing* → the old IP → Update.
 
-Until step 8, going back is one command on the old VM:
-`sudo systemctl enable --now meridian-api` (and point the hostname back).
+   SSH to the new VM on the old IP (your laptop may warn that the host key changed:
+   `ssh-keygen -R <ip>`), then `sudo systemctl restart caddy` so it fetches its
+   certificate. **DuckDNS, Vercel, Angel's whitelist, `ANGEL_PUBLIC_IP` and the program's
+   `PUBLIC_IP` all stay as they are.**
+
+   *Only if the old IP was ephemeral rather than reserved:* whitelist the new IP at
+   Angel, set `ANGEL_PUBLIC_IP` to it, change it inside each program `import` listed and
+   upload them again, and point the hostname at it.
+6. **Check** `curl -s https://<hostname>/health` from your laptop, sign in, and confirm
+   the blotter and journal show your history. Run a paper session first.
+7. **Clean up** once you are satisfied: delete the bundle on all three machines (it holds
+   your credentials), then terminate the old VM **with *Permanently delete the attached
+   boot volume* ticked**, so it stops counting against the 200 GB. Never release the
+   reserved IP: Angel's whitelist depends on it.
+
+Until step 7, going back is reversing step 5 (the IP back to the old VM) and
+`sudo systemctl enable --now meridian-api` there.
 
 ## Operating
 
