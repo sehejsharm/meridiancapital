@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 
 from app import special_sessions
+from app.config import settings
 from app.deps import ctx
 from app.security import Principal, client_ip, require_auth
 from shared.nse_holidays import YEARS_COVERED
@@ -148,6 +149,11 @@ async def set_mode(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="stop the engine before changing mode — a running engine holds its mode for the session",
+        )
+    if body.mode == "live" and settings.staging:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this is the staging copy of the desk: it runs on paper only and cannot trade real money",
         )
     c.sup.set_mode(body.mode)
     _audit(request, principal, "mode.set", body.mode)

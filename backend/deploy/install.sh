@@ -7,17 +7,36 @@
 # Idempotent: safe to re-run after a code update. It never touches
 # /etc/meridian/meridian.env once that file exists, so your credentials survive.
 #
+# Options:
+#   --force     update even while the market is open or an algorithm is running.
+#               Without it the script refuses then: an update restarts the API,
+#               and a failed one leaves you without the dashboard mid-session.
+#   --staging   set this machine up as a staging copy: the same desk, paper only.
+#               For a second VM, never the one that trades (see DEPLOYMENT.md).
+#
 # Before running, in the OCI console: VCN > Security List > add ingress rules for
 # TCP 80 and 443 from 0.0.0.0/0. The console rule and the local firewall rule
 # below are two separate gates and traffic needs both.
 
 set -euo pipefail
 
-DOMAIN="${1:-}"
+FORCE=0
+STAGING=0
+POSITIONAL=()
+for arg in "$@"; do
+    case "$arg" in
+        --force) FORCE=1 ;;
+        --staging) STAGING=1 ;;
+        --*) echo "unknown option: $arg (known: --force, --staging)" >&2; exit 2 ;;
+        *) POSITIONAL+=("$arg") ;;
+    esac
+done
+
+DOMAIN="${POSITIONAL[0]:-}"
 # The dashboard's own origin. Caddy 403s any browser request whose Origin is not
 # on the allow-list, and the WebSocket live feed does send one — so a wrong value
 # here shows up as a dashboard that logs in fine and then never updates.
-DASHBOARD_ORIGIN="${2:-}"
+DASHBOARD_ORIGIN="${POSITIONAL[1]:-}"
 APP_USER="meridian"
 APP_DIR="/opt/meridian"
 DATA_DIR="/var/lib/meridian"
@@ -29,6 +48,27 @@ log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[!] %s\033[0m\n' "$*"; }
 
 [[ $EUID -eq 0 ]] || { echo "Run with sudo." >&2; exit 1; }
+
+# Updates belong outside the session. Checked before anything is touched.
+# shellcheck source=market-hours.sh
+source "$(dirname "${BASH_SOURCE[0]}")/market-hours.sh"
+if reason="$(update_blocked_reason "$REPO_DIR")"; then
+    if [[ $FORCE -eq 1 ]]; then
+        warn "Updating although ${reason} (--force)."
+    else
+        echo >&2
+        echo "Not updating: ${reason}." >&2
+        echo "An update restarts the API. Run this after 15:30 IST, once nothing is running." >&2
+        echo "If it cannot wait:  sudo bash backend/deploy/install.sh --force" >&2
+        exit 3
+    fi
+fi
+
+if [[ $STAGING -eq 1 && -f "$ENV_FILE" ]] && ! grep -qE '^MERIDIAN_STAGING=(1|true|yes)$' "$ENV_FILE"; then
+    echo "Refusing --staging: $ENV_FILE exists and is not a staging copy's." >&2
+    echo "This looks like the machine that trades. Staging belongs on a second VM." >&2
+    exit 4
+fi
 
 if [[ -z "$DASHBOARD_ORIGIN" && -f /etc/caddy/Caddyfile ]]; then
     # An update run without the origin keeps the one already in force. It used to
@@ -90,6 +130,10 @@ if [[ ! -f "$ENV_FILE" ]]; then
 else
     echo "    $ENV_FILE already exists — left untouched."
 fi
+if [[ $STAGING -eq 1 ]] && ! grep -qE '^MERIDIAN_STAGING=' "$ENV_FILE"; then
+    printf '\n# This machine is a staging copy: the desk refuses real money here.\nMERIDIAN_STAGING=1\n' >> "$ENV_FILE"
+    warn "Staging copy: MERIDIAN_STAGING=1 written to $ENV_FILE — paper only."
+fi
 chown root:"$APP_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"
 
@@ -97,9 +141,13 @@ log "systemd unit"
 install -m 644 "$APP_DIR/backend/deploy/meridian-api.service" /etc/systemd/system/
 install -m 644 "$APP_DIR/backend/deploy/meridian-backup.service" /etc/systemd/system/
 install -m 644 "$APP_DIR/backend/deploy/meridian-backup.timer" /etc/systemd/system/
+install -m 644 "$APP_DIR/backend/deploy/meridian-restore-test.service" /etc/systemd/system/
+install -m 644 "$APP_DIR/backend/deploy/meridian-restore-test.timer" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable meridian-api
 systemctl enable --now meridian-backup.timer
+# Once a month the newest backup is restored to a scratch copy and checked.
+systemctl enable --now meridian-restore-test.timer
 
 log "Caddy (TLS termination)"
 if ! command -v caddy >/dev/null 2>&1; then

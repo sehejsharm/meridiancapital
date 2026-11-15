@@ -10,7 +10,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import PlainTextResponse
 
-from app import health, logs, market, reports, tax, tearsheet
+from app import health, logs, market, reports, research, tax, tearsheet
 from app.deps import ctx
 from app.feeds import NewsFeed
 from app.security import require_auth
@@ -294,3 +294,72 @@ async def log_text(day: str | None = None, algo_id: str | None = None) -> Respon
             "Content-Disposition": f'attachment; filename="{logs.filename(day, algo_id, "txt")}"'
         },
     )
+
+
+# ── research recorder ────────────────────────────────────────────────────────
+
+def _research_trades(db, algo: str | None, mode: str) -> list[dict]:
+    from app import ledger
+
+    algo_id = algo or ledger.live_algo(db)
+    rows = db.trades(limit=3000, algo_id=algo_id) if algo_id else []
+    rows = [t for t in rows if t.get("exit_ts") and (mode == "all" or t.get("mode") == mode)]
+    rows.sort(key=lambda t: str(t.get("entry_ts") or ""))
+    return ledger.reconcile(db, rows)
+
+
+@router.get("/research")
+async def research_summary() -> dict:
+    """How much has been recorded: price paths, ticks, days of one-minute contract prices."""
+    return research.summary(ctx().db)
+
+
+@router.get("/research/execution")
+async def research_execution(
+    algo: str | None = Query(None, max_length=80),
+    mode: str = Query("live", pattern="^(live|paper|all)$"),
+) -> dict:
+    """Each exit fill against the last price the program saw and against that minute's close."""
+    db = ctx().db
+    return await asyncio.to_thread(lambda: research.execution_report(db, _research_trades(db, algo, mode)))
+
+
+@router.get("/research/rules")
+async def research_rules(
+    algo: str | None = Query(None, max_length=80),
+    mode: str = Query("live", pattern="^(live|paper|all)$"),
+) -> dict:
+    """The v8, v9 and v10 exit rule sets replayed over each recorded trade's own price path."""
+    db = ctx().db
+    return await asyncio.to_thread(lambda: research.rules_report(db, _research_trades(db, algo, mode)))
+
+
+@router.get("/research/ticks.csv", response_class=PlainTextResponse)
+async def research_ticks_csv(
+    start: date = Query(..., alias="from"), end: date = Query(..., alias="to"),
+) -> PlainTextResponse:
+    if end < start:
+        raise HTTPException(status_code=400, detail="'to' is before 'from'")
+    body = await asyncio.to_thread(research.ticks_csv, ctx().db, start.isoformat(), end.isoformat())
+    return PlainTextResponse(body, media_type="text/csv", headers={
+        "Content-Disposition": f'attachment; filename="meridian-price-paths-{start}-to-{end}.csv"'})
+
+
+@router.get("/research/candles.csv", response_class=PlainTextResponse)
+async def research_candles_csv(day: date = Query(...)) -> PlainTextResponse:
+    body = await asyncio.to_thread(research.candles_csv, ctx().db, day.isoformat())
+    if body is None:
+        raise HTTPException(status_code=404, detail=f"no one-minute contract prices were kept for {day}")
+    return PlainTextResponse(body, media_type="text/csv", headers={
+        "Content-Disposition": f'attachment; filename="meridian-contract-prices-{day}.csv"'})
+
+
+@router.get("/trades/{trade_id}/detail")
+async def trade_detail(trade_id: int) -> dict:
+    """One trade on one page: its price path, the journal around it, Angel's order ids,
+    the fill against the price before it, and what each exit rule set would have done."""
+    db = ctx().db
+    found = await asyncio.to_thread(research.trade_detail, db, trade_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail="no such trade")
+    return found

@@ -97,6 +97,14 @@ def _is_engine(pid: int) -> bool:
     return "engine.runner" in cmdline or is_program_cmdline(cmdline)
 
 
+
+class StagingOnly(ValueError):
+    """Real money was asked of a staging copy (MERIDIAN_STAGING=1): it runs paper only."""
+
+    def __init__(self) -> None:
+        super().__init__("this is the staging copy of the desk: it runs on paper only and cannot trade real money")
+
+
 @dataclass
 class SupervisorState:
     running: bool = False
@@ -146,6 +154,9 @@ class Supervisor:
 
     # ── mode ─────────────────────────────────────────────────────────────────
     def desired_mode(self) -> str:
+        if settings.staging:
+            # A staging copy never trades real money, whatever its records say.
+            return "paper"
         if self._mode_provider is not None:
             return "live" if self._mode_provider() == "live" else "paper"
         return self._stored_mode()
@@ -165,6 +176,8 @@ class Supervisor:
     def set_mode(self, mode: str) -> None:
         if mode not in ("paper", "live"):
             raise ValueError("mode must be 'paper' or 'live'")
+        if mode == "live" and settings.staging:
+            raise StagingOnly()
         if self.db.algo(self.algo_id):
             self.db.set_algo_fields(self.algo_id, mode=mode)
         if self.algo_id == DEFAULT_ALGO:
@@ -307,7 +320,8 @@ class Supervisor:
         self.state.last_start_error = ""
         self.state.manual_override = False
         self.state.stop_requested = ""
-        self.state.run_id = self.db.start_run(proc.pid, mode, trigger, algo_id=self.algo_id)
+        self.state.run_id = self.db.start_run(proc.pid, mode, trigger, algo_id=self.algo_id,
+                                              version_id=getattr(self, "version_id", None))
         self.pidfile.write_text(str(proc.pid))
         self.db.add_event(
             "ok", f"engine started in {mode.upper()} mode (pid {proc.pid}, trigger {trigger})",

@@ -54,6 +54,9 @@ TITLES = {
     "kill_drawdown": "Drawdown halt", "profit_lock": "Profit lock", "exit_failed": "EXIT FAILED",
     "crash": "Engine crashed", "crash_loop": "CRASH LOOP", "automation": "Automation",
     "holiday": "NSE holiday ahead", "test": "Test alert",
+    # Sent by the desk's housekeeping (app/upkeep.py), not read from the journal.
+    "close_check": "After-close check", "weekly": "Week in review", "machine": "Server needs attention",
+    "backups": "Backups need attention",
 }
 
 

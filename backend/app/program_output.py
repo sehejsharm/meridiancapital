@@ -12,7 +12,7 @@ import asyncio
 import re
 import time
 
-from app import programs
+from app import exit_rules, program_config, programs, research
 from app.ledger import money_log
 from app import session_close
 from app.program_status import has_figures, program_snapshot, read_status
@@ -82,6 +82,9 @@ class ProgramOutput:
         self.trade_logs = TradeLogs(db)
         self._sampled: dict[str, float] = {}
         self._eod_pending: set[str] = set()
+        # The open position's premium, kept every few seconds for research.
+        self.ticks = research.TickRecorder(db)
+        self._rules: dict[str, dict] = {}   # algo -> the running program's exit rule set
         self._task: asyncio.Task | None = None
 
     def pump(self) -> int:
@@ -339,8 +342,13 @@ class ProgramOutput:
                 raw, name=algo.get("name") or algo_id, mode=sup.state.mode,
                 pid=sup.state.pid, uptime_sec=time.time() - started,
             )
+            self._attach_exit_plan(algo, sup.state.pid, snap)
             self.db.kv_set(snapshot_key(algo_id), snap)
             self._status_ts[algo_id] = raw.get("ts")
+            try:
+                self.ticks.record(algo_id, snap, sup.state.mode, time.time())
+            except Exception:  # a research row must never cost the desk its snapshot
+                pass
             acct = snap["account"]
             if raw.get("equity") is not None and time.time() - self._sampled.get(algo_id, 0.0) >= EQUITY_SAMPLE_SEC:
                 self.db.add_equity_sample(
@@ -354,6 +362,40 @@ class ProgramOutput:
             self.db.add_event("warn", f"could not read {algo_id}'s status file: {e}",
                               source="api", algo_id=algo_id)
             return False
+
+    RULES_RETRY_SEC = 30.0
+
+    def _rule_set(self, algo: dict, pid) -> exit_rules.RuleSet | None:
+        """The exit rules the running process printed at startup (else its code's), read once per run."""
+        algo_id = algo.get("id") or ""
+        hit = self._rules.get(algo_id)
+        if hit and hit["pid"] == pid and (hit["rs"] is not None or time.time() - hit["at"] < self.RULES_RETRY_SEC):
+            return hit["rs"]
+        rs = None
+        try:
+            running = program_config.running_config(self.db, algo_id)
+            code = program_config.code_config(self.db, algo) if algo.get("active_version") else None
+            values = {**((code or {}).get("values") or {}), **((running or {}).get("values") or {})}
+            rs = exit_rules.from_config(values, name="the running program's rules")
+        except Exception:
+            rs = None
+        self._rules[algo_id] = {"pid": pid, "rs": rs, "at": time.time()}
+        return rs
+
+    def _attach_exit_plan(self, algo: dict, pid, snap: dict) -> None:
+        """What the exit will do next, worked out from the program's own settings. Display only."""
+        pos = snap.get("position")
+        if not isinstance(pos, dict) or not pos.get("entry_premium"):
+            return
+        try:
+            rs = self._rule_set(algo, pid)
+            if rs is None:
+                return
+            pos["exit_plan"] = exit_rules.plan(rs, float(pos["entry_premium"]),
+                                               float(pos.get("peak_pct") or 0.0) / 100.0,
+                                               float(pos.get("hold_min") or 0.0))
+        except Exception:  # the card going without is better than a status not published
+            pos.pop("exit_plan", None)
 
     async def start(self) -> None:
         try:

@@ -26,6 +26,14 @@ DISK_CRITICAL_MB = 256
 SYS_MEM_WARN = 0.80
 SYS_MEM_CRITICAL = 0.92
 SWAP_WARN = 0.25
+# Free disk as a share of the volume. The megabyte thresholds above catch a
+# nearly full disk; this one warns while there is still time to do something.
+DISK_FREE_WARN_PCT = 20.0
+DISK_FREE_CRITICAL_PCT = 8.0
+# Five-minute load per processor core. Above 1 the machine has more to do than
+# it has processors; the trading loop is then waiting its turn.
+LOAD_WARN = 1.0
+LOAD_CRITICAL = 2.0
 
 _STARTED = time.time()
 
@@ -108,6 +116,102 @@ def _grade(value: float | None, warn: float, critical: float, higher_is_worse: b
     return "warning" if value <= warn else "ok"
 
 
+_ORDER = {"ok": 0, "unknown": 1, "warning": 2, "critical": 3}
+
+
+def _worst(*states: str) -> str:
+    return max(states, key=lambda s: _ORDER.get(s, 0))
+
+
+def _volume(db):
+    """A path on the volume the database lives on (the file itself may not exist yet)."""
+    path = getattr(db, "path", None)
+    if path is None:
+        return "/"
+    return path if os.path.exists(str(path)) else os.path.dirname(str(path)) or "/"
+
+
+def _dir_mb(path) -> float | None:
+    """Megabytes under a folder, or None if it is not there."""
+    try:
+        total = 0
+        for root, _dirs, files in os.walk(str(path)):
+            for name in files:
+                try:
+                    total += os.path.getsize(os.path.join(root, name))
+                except OSError:
+                    pass
+        return round(total / (1024 * 1024), 1) if os.path.isdir(str(path)) else None
+    except OSError:
+        return None
+
+
+def host(db) -> dict:
+    """The machine for the Reliability page: processor, memory, disk, and what is using the disk.
+
+    The same thresholds as the deck's health strip, so the two never disagree.
+    """
+    cores = os.cpu_count() or 1
+    load = _load()
+    mem = _meminfo()
+    disk = None
+    try:
+        u = shutil.disk_usage(str(_volume(db)))
+        disk = {"total_gb": round(u.total / 1024 ** 3, 1), "free_gb": round(u.free / 1024 ** 3, 1),
+                "free_pct": round(100.0 * u.free / u.total, 1) if u.total else None}
+    except OSError:
+        pass
+    data_dir = os.path.dirname(str(getattr(db, "path", "")))
+    db_mb = None
+    try:
+        db_mb = round(os.path.getsize(str(db.path)) / (1024 * 1024), 1)
+    except (OSError, AttributeError):
+        pass
+    warnings = []
+    if disk and disk["free_pct"] is not None and disk["free_pct"] < DISK_FREE_WARN_PCT:
+        level = "critical" if disk["free_pct"] < DISK_FREE_CRITICAL_PCT else "warning"
+        warnings.append({"kind": "disk", "level": level,
+                         "text": f"{disk['free_pct']:.0f}% of the disk is free ({disk['free_gb']} GB) — "
+                                 f"below {DISK_FREE_WARN_PCT:.0f}%"})
+    if mem and mem["used_fraction"] >= SYS_MEM_WARN:
+        level = "critical" if mem["used_fraction"] >= SYS_MEM_CRITICAL else "warning"
+        warnings.append({"kind": "memory", "level": level,
+                         "text": f"{mem['used_fraction'] * 100:.0f}% of memory in use "
+                                 f"({mem['used_mb']:,.0f} of {mem['total_mb']:,.0f} MB)"})
+    if load and load[1] / cores >= LOAD_WARN:
+        level = "critical" if load[1] / cores >= LOAD_CRITICAL else "warning"
+        warnings.append({"kind": "cpu", "level": level,
+                         "text": f"5-minute load {load[1]:.2f} on {cores} core{'s' if cores != 1 else ''}"})
+    return {
+        "cpu": {"cores": cores,
+                "load_1m": round(load[0], 2) if load else None,
+                "load_5m": round(load[1], 2) if load else None,
+                "load_15m": round(load[2], 2) if load else None,
+                "load_pct": round(100 * load[1] / cores, 0) if load else None},
+        "memory": {"total_mb": round(mem["total_mb"], 0), "used_mb": round(mem["used_mb"], 0),
+                   "used_pct": round(mem["used_fraction"] * 100, 1)} if mem else None,
+        "disk": disk,
+        "storage": {"database_mb": db_mb,
+                    "backups_mb": _dir_mb(os.path.join(data_dir, "backups")) if data_dir else None,
+                    "archive_mb": _dir_mb(os.path.join(data_dir, "archive")) if data_dir else None,
+                    "research_mb": _dir_mb(os.path.join(data_dir, "research")) if data_dir else None},
+        "api_memory_mb": round(_rss_mb() or 0.0, 1) or None,
+        "uptime_hours": _machine_uptime_hours(),
+        "api_uptime_hours": round((time.time() - _STARTED) / 3600, 1),
+        "warnings": warnings,
+        "thresholds": {"disk_free_warn_pct": DISK_FREE_WARN_PCT, "memory_warn_pct": SYS_MEM_WARN * 100,
+                       "load_warn_per_core": LOAD_WARN},
+    }
+
+
+def _machine_uptime_hours() -> float | None:
+    try:
+        with open("/proc/uptime", encoding="utf-8") as f:
+            return round(float(f.read().split()[0]) / 3600, 1)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def collect(db, fleet) -> dict:
     """One health payload for the deck. Never raises; degrades to unknown."""
     checks: list[dict] = []
@@ -122,9 +226,11 @@ def collect(db, fleet) -> dict:
         "detail": f"alert above {MEM_WARN_MB} MB, stop above {MEM_CRITICAL_MB} MB",
     })
 
-    free_mb = None
+    free_mb, free_pct = None, None
     try:
-        free_mb = shutil.disk_usage(str(getattr(db, "path", "/"))).free / (1024 * 1024)
+        usage = shutil.disk_usage(str(_volume(db)))
+        free_mb = usage.free / (1024 * 1024)
+        free_pct = 100.0 * usage.free / usage.total if usage.total else None
     except OSError:
         pass
     checks.append({
@@ -132,8 +238,24 @@ def collect(db, fleet) -> dict:
         "label": "Free disk",
         "value": round(free_mb, 0) if free_mb is not None else None,
         "unit": "MB",
-        "state": _grade(free_mb, DISK_WARN_MB, DISK_CRITICAL_MB, higher_is_worse=False),
-        "detail": f"warn below {DISK_WARN_MB} MB, critical below {DISK_CRITICAL_MB} MB",
+        "state": _worst(_grade(free_mb, DISK_WARN_MB, DISK_CRITICAL_MB, higher_is_worse=False),
+                        _grade(free_pct, DISK_FREE_WARN_PCT, DISK_FREE_CRITICAL_PCT, higher_is_worse=False)
+                        if free_pct is not None else "ok"),
+        "detail": (f"{free_pct:.0f}% of the volume free — " if free_pct is not None else "")
+        + f"warn below {DISK_FREE_WARN_PCT:.0f}% or {DISK_WARN_MB} MB, critical below {DISK_CRITICAL_MB} MB",
+    })
+
+    cores = os.cpu_count() or 1
+    load = _load()
+    per_core = (load[1] / cores) if load else None
+    checks.append({
+        "key": "cpu",
+        "label": "Processor load",
+        "value": round(per_core * 100, 0) if per_core is not None else None,
+        "unit": "% of cores",
+        "state": _grade(per_core, LOAD_WARN, LOAD_CRITICAL, higher_is_worse=True),
+        "detail": (f"5-minute load {load[1]:.2f} on {cores} core{'s' if cores != 1 else ''}"
+                   if load else "load average unavailable"),
     })
 
     db_ok, db_detail, trade_count = True, "reachable", None

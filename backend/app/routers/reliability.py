@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
-from app import notify, reliability
+from app import close_check, health, notify, reliability
 from app.deps import ctx
 from app.security import Principal, client_ip, require_auth
 
@@ -47,3 +47,43 @@ async def test_alert(request: Request, principal: Principal = Depends(require_au
     import asyncio
 
     return await asyncio.to_thread(notify.test_message, c.db)
+
+
+@router.get("/host")
+async def host() -> dict:
+    """The machine (processor, memory, disk) and the desk's housekeeping: the outside
+    heartbeat, the last after-close check, journal retention."""
+    import asyncio
+
+    c = ctx()
+    machine = await asyncio.to_thread(health.host, c.db)
+    upkeep = c.upkeep.status() if c.upkeep is not None else None
+    return {"machine": machine, "upkeep": upkeep}
+
+
+@router.get("/close-check")
+async def get_close_check(day: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
+    """The after-close check for one day (the latest when no day is named)."""
+    c = ctx()
+    found = c.db.kv_get(close_check.key(day) if day else close_check.K_LATEST, None)
+    return {"check": found}
+
+
+@router.post("/close-check/run")
+async def run_close_check(request: Request, principal: Principal = Depends(require_auth)) -> dict:
+    """Run the check now. Angel is asked only if nothing is running (a second login
+    would log a running program out) and the credentials are in the server's settings."""
+    import asyncio
+
+    from engine.clock import now_ist
+
+    c = ctx()
+    c.db.audit(principal.subject, "close_check.run", "", client_ip(request))
+    c.fleet.refresh()
+    running = any(s.state.running for s in c.fleet.all().values())
+    day = now_ist().date().isoformat()
+    angel = getattr(c.upkeep, "angel", close_check.ask_angel)
+    result = await asyncio.to_thread(lambda: close_check.run(c.db, day, running=running, angel=angel))
+    c.db.add_event({"ok": "ok", "check": "warn", "problem": "critical"}[result["status"]],
+                   close_check.headline(result) + f" (run by {principal.subject})", source="api")
+    return {"check": result}

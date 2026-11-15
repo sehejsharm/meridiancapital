@@ -22,6 +22,8 @@ from app.notify import Notifier
 from app.program_output import ProgramOutput
 from app.replay import Archiver
 from app.routers import algos, auth, control, data, desk, reliability, tuning, ws
+from app.supervisor import StagingOnly
+from app.upkeep import Upkeep
 from engine.clock import now_ist
 from engine.config import BANNER, BUILD_VERSION
 
@@ -47,11 +49,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await notifier.start()
     archiver = Archiver(c.db)
     await archiver.start()
+    # Heartbeat to the outside monitor, the after-close check, the weekly summary,
+    # journal retention and machine warnings. It controls no algorithm.
+    c.upkeep = Upkeep(c.db, fleet=c.fleet, dashboard=(settings.cors_origins or [""])[0])
+    await c.upkeep.start()
     # Reconcile immediately so a mid-session restart brings the engine back at once.
     c.sched.tick()
     try:
         yield
     finally:
+        await c.upkeep.stop()
         await archiver.stop()
         await notifier.stop()
         await programs_out.stop()
@@ -125,6 +132,11 @@ async def health() -> dict:
         "engine_running": running,
         "now_ist": now_ist().isoformat(timespec="seconds"),
     }
+
+
+@app.exception_handler(StagingOnly)
+async def staging_only(_request: Request, exc: StagingOnly) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 @app.exception_handler(Exception)

@@ -118,6 +118,8 @@ class Fleet:
                     }
 
         algo = self.db.algo(algo_id)
+        # Recorded on the run, so paper sessions can be counted per version.
+        sup.version_id = (algo or {}).get("active_version")
         # An uploaded algorithm runs its own source; the built-in runs the
         # engine's compiled-in strategy.
         if algo and algo.get("kind") != "builtin":

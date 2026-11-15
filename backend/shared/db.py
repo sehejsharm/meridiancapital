@@ -105,7 +105,8 @@ CREATE TABLE IF NOT EXISTS engine_runs (
     trigger     TEXT,
     exit_code   INTEGER,
     reason      TEXT,
-    algo_id TEXT NOT NULL DEFAULT 'gk50k'
+    algo_id TEXT NOT NULL DEFAULT 'gk50k',
+    version_id  INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS holidays (
@@ -151,6 +152,28 @@ CREATE TABLE IF NOT EXISTS passkeys (
     last_used_ts    TEXT
 );
 
+-- The open position's premium as the program itself read it, every few seconds:
+-- each live and paper trade's price path, for research and for the trade page.
+CREATE TABLE IF NOT EXISTS position_ticks (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           TEXT NOT NULL,
+    session_date TEXT NOT NULL,
+    algo_id      TEXT NOT NULL,
+    mode         TEXT,
+    tsym         TEXT,
+    side         TEXT,
+    strike       INTEGER,
+    expiry       TEXT,
+    opened_ts    TEXT NOT NULL,
+    entry        REAL,
+    premium      REAL NOT NULL,
+    peak_pct     REAL,
+    stop_price   REAL,
+    spot         REAL
+);
+CREATE INDEX IF NOT EXISTS idx_ticks_trade ON position_ticks(algo_id, opened_ts, id);
+CREATE INDEX IF NOT EXISTS idx_ticks_day ON position_ticks(session_date, id);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     ts      TEXT NOT NULL,
@@ -195,6 +218,8 @@ _ADDED_COLUMNS = (
     ("holidays", "source", "TEXT NOT NULL DEFAULT 'operator'"),
     # The index at each sample, so a past session can be replayed against it.
     ("equity_samples", "spot", "REAL"),
+    # Which uploaded version a run was: paper sessions are counted per version.
+    ("engine_runs", "version_id", "INTEGER"),
 )
 
 
@@ -365,6 +390,24 @@ class Database:
             )
         return cur.rowcount or 0
 
+    def events_before(self, cutoff: str, limit: int = 5000) -> list[dict]:
+        """Journal lines dated before ``cutoff`` (an ISO date or timestamp), oldest first."""
+        with self.conn() as c:
+            rows = c.execute(
+                "SELECT * FROM events WHERE ts < ? ORDER BY id ASC LIMIT ?", (cutoff, limit)
+            ).fetchall()
+        return [_event_row(r) for r in rows]
+
+    def delete_events(self, ids: list[int]) -> int:
+        """Remove journal lines by id (log retention: only after they are archived)."""
+        removed = 0
+        with self.conn() as c:
+            for i in range(0, len(ids), 500):
+                chunk = ids[i:i + 500]
+                cur = c.execute(f"DELETE FROM events WHERE id IN ({','.join('?' * len(chunk))})", chunk)
+                removed += cur.rowcount or 0
+        return removed
+
     # ── trades ───────────────────────────────────────────────────────────────
     def add_trade(self, trade: dict) -> int:
         cols = [
@@ -457,6 +500,44 @@ class Database:
                 (now_ist().isoformat(timespec="seconds"), session_date, equity,
                  realised_today, peak_equity, day_pl, algo_id, spot),
             )
+
+    # ── position ticks (research recorder) ───────────────────────────────────
+    def add_tick(self, tick: dict) -> None:
+        cols = ("ts", "session_date", "algo_id", "mode", "tsym", "side", "strike", "expiry", "opened_ts",
+                "entry", "premium", "peak_pct", "stop_price", "spot")
+        with self.conn() as c:
+            c.execute(f"INSERT INTO position_ticks({','.join(cols)}) VALUES({','.join('?' * len(cols))})",
+                      [tick.get(k) for k in cols])
+
+    def ticks(self, algo_id: str, opened_ts: str) -> list[dict]:
+        """One trade's recorded price path, oldest first."""
+        with self.conn() as c:
+            rows = c.execute(
+                "SELECT * FROM position_ticks WHERE algo_id = ? AND opened_ts = ? ORDER BY id",
+                (algo_id, opened_ts)).fetchall()
+        return [dict(r) for r in rows]
+
+    def ticks_between(self, date_from: str, date_to: str, limit: int = 400_000) -> list[dict]:
+        with self.conn() as c:
+            rows = c.execute(
+                "SELECT * FROM position_ticks WHERE session_date >= ? AND session_date <= ? ORDER BY id LIMIT ?",
+                (date_from[:10], date_to[:10], limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    def tick_trades(self, limit: int = 2000) -> list[dict]:
+        """Each recorded path: its algorithm, opening time, contract and how many ticks it has."""
+        with self.conn() as c:
+            rows = c.execute(
+                """SELECT algo_id, opened_ts, session_date, mode, tsym, COUNT(*) AS ticks,
+                          MIN(ts) AS first_ts, MAX(ts) AS last_ts
+                   FROM position_ticks GROUP BY algo_id, opened_ts ORDER BY MIN(id) DESC LIMIT ?""",
+                (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def trade_by_id(self, trade_id: int) -> dict | None:
+        with self.conn() as c:
+            row = c.execute("SELECT * FROM trades WHERE id = ?", (trade_id,)).fetchone()
+        return dict(row) if row else None
 
     def session_samples(self, session_date: str, algo_id: str) -> list[dict]:
         """One algorithm's samples for one session, oldest first, with the index."""
@@ -598,12 +679,13 @@ class Database:
         return cur.rowcount or 0
 
     # ── engine runs ──────────────────────────────────────────────────────────
-    def start_run(self, pid: int, mode: str, trigger: str, algo_id: str = DEFAULT_ALGO) -> int:
+    def start_run(self, pid: int, mode: str, trigger: str, algo_id: str = DEFAULT_ALGO,
+                  version_id: int | None = None) -> int:
         with self.conn() as c:
             cur = c.execute(
-                """INSERT INTO engine_runs(started_ts, pid, mode, trigger, algo_id)
-                   VALUES(?,?,?,?,?)""",
-                (now_ist().isoformat(timespec="seconds"), pid, mode, trigger, algo_id),
+                """INSERT INTO engine_runs(started_ts, pid, mode, trigger, algo_id, version_id)
+                   VALUES(?,?,?,?,?,?)""",
+                (now_ist().isoformat(timespec="seconds"), pid, mode, trigger, algo_id, version_id),
             )
         return int(cur.lastrowid)
 

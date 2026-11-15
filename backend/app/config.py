@@ -49,6 +49,11 @@ class Settings:
     autostart_enabled: bool = field(
         default_factory=lambda: os.environ.get("MERIDIAN_AUTOSTART", "1") not in ("0", "false", "no")
     )
+    # A staging copy of the desk (a second VM for trying an update or a new
+    # version): everything works, and nothing can be started on real money.
+    staging: bool = field(
+        default_factory=lambda: os.environ.get("MERIDIAN_STAGING", "0").strip().lower() in ("1", "true", "yes")
+    )
     restart_backoff_sec: int = int(os.environ.get("MERIDIAN_RESTART_BACKOFF_SEC", "30"))
     max_restarts_per_session: int = int(os.environ.get("MERIDIAN_MAX_RESTARTS", "5"))
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Monthly Meridian restore test, an hour after that night's backup
+
+[Timer]
+# 23:30 IST on the 1st of each month.
+OnCalendar=*-*-01 18:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

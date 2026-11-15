@@ -24,6 +24,8 @@ class Context:
     sched: Scheduler
     hub: Hub
     fleet: Fleet
+    # The housekeeping clock (app/upkeep.py); set once the API has started.
+    upkeep: object | None = None
 
 
 _ctx: Context | None = None
@@ -115,6 +117,8 @@ def system_status(db: Database, sup: Supervisor, sched: Scheduler, fleet: Fleet)
         "fleet": fleet.overview(),
         # The built-in engine is removed from the desk: its panels are not shown.
         "builtin_retired": db.builtin_retired(),
+        # A staging copy: the desk says so on every page, and real money is refused.
+        "staging": settings.staging,
         # Crash loops the operator has not acknowledged: the desk's banner.
         "alerts": _alerts(db),
     }

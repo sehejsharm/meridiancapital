@@ -18,7 +18,8 @@ from app.algo_store import MAX_SOURCE_BYTES, run_gate, sha256, slugify
 from app.program_status import compact_snapshot
 from app.programs import mode_arguments, runtime_of, runtime_of_version
 from app.deps import ctx
-from app import code_redact, shadow
+from app import code_redact, paper_first, shadow
+from app.config import settings
 from app.security import Principal, client_ip, require_auth
 from engine import versions
 from engine.clock import now_ist
@@ -73,6 +74,28 @@ def _audit(request: Request, principal: Principal, action: str, detail: str = ""
     ctx().db.audit(principal.subject, action, detail, client_ip(request))
 
 
+def _refuse_real_money_on_staging() -> None:
+    """Before anything is stopped or changed: a staging copy never trades real money."""
+    if settings.staging:
+        raise HTTPException(
+            status_code=409,
+            detail="this is the staging copy of the desk: it runs on paper only and cannot trade real money",
+        )
+
+
+def _note_paper_first(db, algo: dict, who: str) -> dict | None:
+    """Going to real money: write it in the journal when the version is short of paper sessions."""
+    st = paper_first.status(db, algo)
+    if st and not st["ok"]:
+        db.add_event(
+            "warn",
+            f"'{algo['name']}' is going on real money for {who} after {st['paper_sessions']} of "
+            f"{st['required']} full paper sessions for this version",
+            source="api", algo_id=algo["id"],
+        )
+    return st
+
+
 def _recent(db, algo_id: str, sup: dict) -> list[dict]:
     """Today's last few lines from this algorithm and its supervisor, oldest first.
 
@@ -97,6 +120,12 @@ def _recent(db, algo_id: str, sup: dict) -> list[dict]:
 
 def _algo_view(db, algo: dict) -> dict:
     history = db.versions(algo["id"], limit=20)
+    # Full paper sessions and real-money days per version, from the run history.
+    counts = paper_first.by_version(db, algo["id"]) if algo.get("kind") != "builtin" else {}
+    for v in history:
+        rec = counts.get(v["id"]) or {}
+        v["paper_sessions"] = rec.get("paper_sessions", 0)
+        v["live_days"] = rec.get("live_days", 0)
     # Metadata only: the source is never shown here, and what is derived from it
     # (which runtime it needs) is remembered by its hash.
     active = db.version_meta(algo["active_version"]) if algo.get("active_version") else None
@@ -117,6 +146,8 @@ def _algo_view(db, algo: dict) -> dict:
         "last": last,
         "recent": _recent(db, algo["id"], sup),
         "shadow_of": algo.get("shadow_of"),
+        # Three full paper sessions before real money: the count for the active version.
+        "paper_first": paper_first.status(db, algo, counts) if algo.get("kind") != "builtin" else None,
     }
 
 
@@ -302,6 +333,8 @@ async def set_mode(
         raise HTTPException(status_code=404, detail="no such algorithm")
     if ctx().fleet.is_running(algo_id):
         raise HTTPException(status_code=409, detail="stop this algorithm before changing its mode")
+    if body.mode == "live":
+        _refuse_real_money_on_staging()
 
     if body.mode == "live" and algo.get("shadow_of"):
         raise HTTPException(
@@ -349,6 +382,8 @@ async def start_algo(
         raise HTTPException(
             status_code=409, detail="a shadow is a paper twin and cannot place real orders"
         )
+    if mode == "live":
+        _refuse_real_money_on_staging()
     ctx().fleet.set_mode(algo_id, mode)
 
     _audit(request, principal, "algo.start", f"{algo_id} mode={mode}")
@@ -356,6 +391,8 @@ async def start_algo(
     if not res.get("ok"):
         raise HTTPException(status_code=409, detail=res.get("detail"))
     db.set_algo_fields(algo_id, enabled=1)
+    if mode == "live":
+        res = {**res, "paper_first": _note_paper_first(db, algo, principal.subject)}
     db.add_event(
         "critical" if mode == "live" else "info",
         f"'{algo['name']}' started in {mode.upper()} by {principal.subject} — "
@@ -400,6 +437,7 @@ async def switch_live(
     algo = db.algo(algo_id)
     if not algo:
         raise HTTPException(status_code=404, detail="no such algorithm")
+    _refuse_real_money_on_staging()
     if algo.get("shadow_of"):
         raise HTTPException(status_code=409, detail="a shadow is a paper twin and cannot place real orders")
     if algo.get("kind") != "builtin" and not algo.get("active_version"):
@@ -450,6 +488,7 @@ async def switch_live(
     db.set_algo_fields(algo_id, enabled=1)
     db.add_event("critical", f"SWITCH: '{algo['name']}' started on REAL MONEY by {who}"
                  + (f", replacing {stopped}" if stopped else ""), source="api", algo_id=algo_id)
+    res = {**res, "paper_first": _note_paper_first(db, algo, who)}
     return {**res, "mode": "live", "stopped": [i for i, _ in current],
             "detail": f"Real money moved to '{algo['name']}'" + (f" from {stopped}." if stopped else ".")}
 
