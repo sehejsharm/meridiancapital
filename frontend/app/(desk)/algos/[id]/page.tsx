@@ -163,6 +163,12 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
               mono={false}
             />
             <Field label="Active version" value={algo.active ? `v${algo.active.version}` : "none"} />
+            {algo.paper_first && (
+              <Field
+                label="Full paper sessions, this version"
+                value={`${algo.paper_first.paper_sessions} of ${algo.paper_first.required}${algo.paper_first.live_days ? ` · real money on ${algo.paper_first.live_days} day${algo.paper_first.live_days === 1 ? "" : "s"}` : ""}`}
+              />
+            )}
             <Field label="Gate" value={gateText(algo.gate.status, algo.runtime_kind)} />
           </dl>
 
@@ -173,6 +179,9 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
             return switching ? (
               <div role="alertdialog" aria-label="Confirm the switch" className="mt-4 rounded-md border border-critical/50 bg-critical/10 p-3">
                 <p className="text-xs text-ink">{plan.confirm}</p>
+                {algo.paper_first?.warning && (
+                  <p className="mt-2 text-xs font-semibold text-warning">{algo.paper_first.warning}</p>
+                )}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button
                     variant="danger"

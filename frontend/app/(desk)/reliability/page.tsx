@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AlertChannels } from "@/components/AlertChannels";
+import { ServerCard } from "@/components/ServerCard";
 import { Sparkline } from "@/components/Sparkline";
 import { Badge, Button, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
@@ -176,6 +177,8 @@ export default function ReliabilityPage() {
               )}
             </Card>
           </div>
+
+          <ServerCard />
 
           <AlertChannels />
 

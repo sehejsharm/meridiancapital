@@ -114,6 +114,8 @@ export interface Position {
   spot_entry: number;
   opened_ts: string;
   hold_min: number;
+  /** What the exit will do next, from the running program's own settings (display only). */
+  exit_plan?: ExitPlan | null;
 }
 
 export interface Guards {
@@ -180,6 +182,8 @@ export interface SystemStatus {
   fleet: FleetOverview;
   /** The built-in engine is removed from the desk: its panels are not shown. */
   builtin_retired?: boolean;
+  /** A staging copy of the desk: paper only. */
+  staging?: boolean;
   /** Crash loops the operator has not acknowledged (app/reliability.py). */
   alerts?: CrashAlert[];
 }
@@ -477,6 +481,8 @@ export interface GateSummary {
 }
 
 export interface Algo {
+  /** Full paper sessions the active version has run; the desk warns before real money when short. */
+  paper_first?: PaperFirst | null;
   id: string;
   name: string;
   kind: "builtin" | "uploaded";
@@ -900,3 +906,106 @@ export interface SpecialSession {
   close: string;
   label: string;
 }
+
+/** What the exit will do next on the open trade, worked out by the API from the running program's own settings. */
+export interface ExitPlanStep {
+  key: string;
+  label: string;
+  at_gain: number;
+  at_price: number;
+  reached: boolean;
+  effect: string;
+}
+export interface ExitPlan {
+  stage: string;
+  stop_gain: number;
+  stop_price: number;
+  locked_in: number;
+  peak_gain: number;
+  steps: ExitPlanStep[];
+  next: ExitPlanStep | null;
+  late_tp: { after_min: number; at_gain: number; at_price: number; minutes_left: number; on: boolean } | null;
+  index_target_pts?: number | null;
+  force_close: string;
+}
+
+export interface ServerProblem { kind: string; level: string; text: string }
+export interface HostReport {
+  machine: {
+    cpu: { cores: number; load_5m: number | null; load_pct: number | null };
+    memory: { total_mb: number; used_mb: number; used_pct: number } | null;
+    disk: { total_gb: number; free_gb: number; free_pct: number | null } | null;
+    storage: { database_mb: number | null; backups_mb: number | null; archive_mb: number | null; research_mb: number | null };
+    uptime_hours: number | null;
+    warnings: ServerProblem[];
+  };
+  upkeep: {
+    heartbeat: { configured: boolean; last_ok: string | null; last_try: string | null; last_error: string | null };
+    close_check: CloseCheck | null;
+    angel: { configured: boolean; enabled: boolean };
+    journal_keep_days: number;
+    backups: {
+      backup: { ts: string; file: string; bytes: number; off_machine: string; encrypted?: boolean; age_hours?: number | null } | null;
+      restore_test: { ts: string; ok: boolean; detail: string; source?: string | null; age_days?: number | null } | null;
+      problems: ServerProblem[];
+      recorded: boolean;
+    };
+  } | null;
+}
+export interface CloseCheck {
+  day: string;
+  ran_at: string;
+  status: "ok" | "check" | "problem";
+  trades: number;
+  angel: string | null;
+  independent: boolean;
+  findings: { level: string; kind: string; text: string }[];
+}
+
+export interface RuleReplay { rule: string; exit_time: string; exit: number; reason: string; net: number; decided: boolean; peak_pct: number; hold_min: number }
+export interface TradeRules {
+  trade_id: number;
+  session_date: string;
+  tsym: string | null;
+  actual: { exit: number | null; reason: string | null; exit_time: string; net: number | null };
+  path: { source: string | null; complete: boolean; minutes: number };
+  rules: Record<string, RuleReplay>;
+}
+export interface TradeExecution {
+  exit_fill: number; exit_time: string; last_seen: number | null; last_seen_time: string | null; stop_then: number | null;
+  minute_close: number | null; vs_last_seen_rs: number | null; vs_minute_close_rs: number | null;
+  entry_fill: number | null; entry_minute_close: number | null; entry_vs_minute_close_rs: number | null;
+}
+export interface TradeDetail {
+  trade: TradeRow & { net_angel?: number | null; charges_angel?: number | null };
+  algo_name: string;
+  ticks: { ts: string; premium: number; peak_pct: number | null; stop_price: number | null; spot: number | null }[];
+  tick_count: number;
+  bars: [string, number, number, number, number, number][] | null;
+  bars_source: string | null;
+  events: { id: number; ts: string; level: string; source: string; message: string }[];
+  fills: { side: string; qty: number; price: number; time: string; order_id: string }[];
+  fills_checked: boolean;
+  execution: TradeExecution | null;
+  rules: TradeRules | null;
+}
+export interface ResearchRules {
+  rules: string[];
+  rows: TradeRules[];
+  comparable_trades: number;
+  recorded_trades: number;
+  trades: number;
+  totals: Record<string, { net: number; wins: number }>;
+  actual_net: number | null;
+  enough: boolean;
+  note: string;
+}
+export interface ResearchExecution {
+  exit_vs_last_seen: { trades: number; total_rs: number; average_rs: number | null };
+  exit_vs_minute_close: { trades: number; total_rs: number; average_rs: number | null };
+  entry_vs_minute_close: { trades: number; total_rs: number; average_rs: number | null };
+  by_reason: { reason: string; trades: number; average_rs: number; total_rs: number }[];
+  trades_without_a_path: number;
+}
+export interface ResearchSummary { paths: number; real_money_paths: number; ticks: number; candle_days: number; first_path: string | null; last_path: string | null }
+export interface PaperFirst { required: number; paper_sessions: number; live_days: number; ok: boolean; warning: string | null }

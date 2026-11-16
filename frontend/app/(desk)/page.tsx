@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { AlgoCard } from "@/components/AlgoCard";
 import { AngelBalance } from "@/components/AngelBalance";
+import { ExitPlanCard } from "@/components/ExitPlan";
 import { HealthStrip } from "@/components/HealthStrip";
 import { HolidayNotice } from "@/components/HolidayNotice";
 import { LiveTape } from "@/components/LiveTape";
@@ -144,6 +146,9 @@ export default function DeckPage() {
       />
 
       <HolidayNotice />
+      <Link href="/today" className="block rounded-md border border-hairline bg-surface px-4 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-brand sm:hidden">
+        Today on one screen →
+      </Link>
       <ConfigDriftNotice />
       <StalenessMonitor />
       <NiftyTicker />
@@ -301,6 +306,7 @@ export default function DeckPage() {
         </div>
 
         <div className="space-y-5">
+          {live && <ExitPlanCard position={snapshot?.position ?? null} />}
           {account?.money && (
             <AngelBalance m={account.money} recorded={!live} position={snapshot?.position ?? null} />
           )}

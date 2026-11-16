@@ -200,6 +200,10 @@ export default function BlotterPage() {
                     <Link href={`/replay?day=${t.session_date}`} className="text-brand underline underline-offset-2">
                       Replay
                     </Link>
+                    {" · "}
+                    <Link href={`/trades/${t.id}`} className="text-brand underline underline-offset-2">
+                      Details
+                    </Link>
                   </p>
                 </li>
               );
@@ -248,7 +252,15 @@ export default function BlotterPage() {
                           {tradeTime(t.entry_ts)}
                         </Link>
                       </td>
-                      <td className="whitespace-nowrap py-2 pr-3 text-ink-secondary">{tradeTime(t.exit_ts)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-ink-secondary">
+                        <Link
+                          href={`/trades/${t.id}`}
+                          title="This trade's price path, fills and journal"
+                          className="underline decoration-hairline underline-offset-2 hover:text-brand hover:decoration-brand"
+                        >
+                          {tradeTime(t.exit_ts)}
+                        </Link>
+                      </td>
                       <td className="py-2 pr-3 text-ink">
                         {t.strike} {t.side}
                         {t.mode === "paper" && (

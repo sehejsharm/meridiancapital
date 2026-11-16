@@ -9,6 +9,7 @@ import {
   byDaysToExpiry, byEntryHour, byWeekday, calendarWeeks, closedTrades, dailyPnl, kelly, monteCarlo,
   rollingSortino, rollingWinRate, underwater, type Bucket,
 } from "@/lib/analytics";
+import { ResearchCard } from "@/components/ResearchCard";
 import { apiGet } from "@/lib/client-api";
 import { dayLabel, money, percent, signedMoney } from "@/lib/format";
 import { useDeskSnapshot } from "@/lib/recorded";
@@ -155,6 +156,8 @@ export default function AnalyticsPage() {
           )}
         </Card>
       </div>
+
+      <ResearchCard />
     </div>
   );
 }

@@ -73,6 +73,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
+      {status?.staging && (
+        <div className="relative z-20 bg-warning/20 px-4 py-1.5 text-center text-2xs font-semibold uppercase tracking-[0.14em] text-warning">
+          Staging copy: paper only, real money is refused here
+        </div>
+      )}
+
       <CrashLoopBanner />
       <CommandPalette />
 
