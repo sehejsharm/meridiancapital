@@ -138,6 +138,9 @@ class Fleet:
                     return {"ok": False, "detail": problem}
                 sup.strategy_path = None
                 sup.program_path = materialise_program(algo_id, source)
+                from app import program_control
+
+                program_control.start_of_run(algo_id)   # no sell-now carries over; only today's halt does
                 sup.program_args = mode_arguments(source) or {}
             elif kind == "strategy":
                 sup.program_path = None

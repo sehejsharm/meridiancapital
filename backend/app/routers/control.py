@@ -14,7 +14,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 
-from app import special_sessions
+from app import program_control, special_sessions
 from app.config import settings
 from app.deps import ctx
 from app.security import Principal, client_ip, require_auth
@@ -250,6 +250,13 @@ async def halt(
         _audit(request, principal, "risk.halt", algo["id"])
         if not sup.state.running:
             raise HTTPException(status_code=409, detail=f"{_name(algo)} is not running")
+        if program_control.supported(c.db, algo):
+            # v13 programs read a control file: entries stop, an open trade is still managed.
+            program_control.set_entries(algo["id"], True)
+            c.db.add_event("warn", f"HALT: {_name(algo)} told by {principal.subject} to take no new entries; "
+                                   f"it keeps running and manages any open trade", source="api", algo_id=algo["id"])
+            return {"ok": True, "detail": f"{_name(algo)} will take no new entries. It keeps running and still "
+                                          f"manages any open trade. Resume allows entries again."}
         state, tsym = _program_position(c, algo["id"], sup)
         if state == "holding":
             raise HTTPException(status_code=409, detail=(
@@ -286,6 +293,11 @@ async def resume(
             raise HTTPException(status_code=409, detail=(
                 f"not available for {_name(algo)}: a standalone program keeps its weekly kill in its own "
                 f"state file, which the desk does not edit under it."))
+        if sup.state.running and program_control.supported(c.db, algo):
+            program_control.set_entries(algo["id"], False)
+            c.db.add_event("warn", f"RESUME: {_name(algo)} allowed to take entries again by {principal.subject}",
+                           source="api", algo_id=algo["id"])
+            return {"ok": True, "detail": f"{_name(algo)} may take entries again (its own kill switches still apply)."}
         raise HTTPException(status_code=409, detail=(
             f"{_name(algo)} is resumed by starting it again — use Resume on Controls or Start on its card, "
             f"which asks paper or real money."))
@@ -336,6 +348,39 @@ async def flatten(
         "critical", f"FLATTEN requested by {principal.subject}", source="api", algo_id=c.sup.algo_id
     )
     return {"ok": True, "command_id": cmd_id, "detail": "market exit order queued"}
+
+
+@router.post("/sell-now")
+async def sell_now(
+    body: ConfirmRequest, request: Request, principal: Principal = Depends(require_auth)
+) -> dict:
+    """Sell the open trade now and leave the program running (v13 programs)."""
+    c = ctx()
+    if body.confirm != FLATTEN_PHRASE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"sell-now requires confirm == '{FLATTEN_PHRASE}'")
+    target = _program_target(c, body.algo_id)
+    if not target:
+        raise HTTPException(status_code=409, detail="choose the program this applies to")
+    algo, sup = target
+    _audit(request, principal, "risk.sell_now", algo["id"])
+    if not sup.state.running:
+        raise HTTPException(status_code=409, detail=(
+            f"{_name(algo)} is not running — if anything is still open, square it off in the Angel One app"))
+    if not program_control.supported(c.db, algo):
+        raise HTTPException(status_code=409, detail=(
+            f"{_name(algo)}'s version does not read the control file (it needs v13 or later). "
+            f"Use Flatten, which sells and stops it."))
+    state, tsym = _program_position(c, algo["id"], sup)
+    if state == "flat":
+        raise HTTPException(status_code=409, detail=f"{_name(algo)} is flat — there is nothing to sell")
+    program_control.exit_now(algo["id"])
+    c.db.add_event("critical", f"SELL NOW requested for {_name(algo)} by {principal.subject} — the program sells "
+                               f"{tsym or 'its open trade'} through its own exit and keeps running",
+                   source="api", algo_id=algo["id"])
+    return {"ok": True, "detail": f"{_name(algo)} has been told to sell {tsym or 'its open trade'} now. It acts "
+                                  f"within its next loop (a few seconds) and keeps running; watch the journal and "
+                                  f"the Angel One app. The instruction lapses after two minutes if it is not carried out."}
 
 
 @router.post("/reload-scrip")

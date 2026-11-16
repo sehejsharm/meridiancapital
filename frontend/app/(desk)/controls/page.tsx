@@ -419,7 +419,29 @@ function FlattenControl({
         >
           {busy === "flatten" ? "Sending…" : "Flatten now"}
         </Button>
+        {algoId && (
+          <Button
+            variant="danger"
+            disabled={confirm !== "FLATTEN" || !running || busy !== null}
+            onClick={() =>
+              void onRun(
+                "sell-now",
+                () => apiPost("/control/sell-now", { confirm, algo_id: algoId }),
+                "told to sell now; it keeps running",
+              ).then(() => setConfirm(""))
+            }
+          >
+            {busy === "sell-now" ? "Sending…" : "Sell now, keep running"}
+          </Button>
+        )}
       </div>
+      {algoId && (
+        <p className="mt-2 text-2xs text-ink-muted">
+          Sell now, keep running: the program sells the open trade through its own exit and stays up (programs from
+          v13, which read the desk&apos;s control file; older versions are refused and need Flatten). With v13, Halt
+          also works while a trade is open: no new entries, the open trade is still managed.
+        </p>
+      )}
       {!hasPosition &&
         (heldElsewhere ? (
           <p className="mt-2 text-2xs text-warning">

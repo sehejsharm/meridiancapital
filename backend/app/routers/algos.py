@@ -18,7 +18,7 @@ from app.algo_store import MAX_SOURCE_BYTES, run_gate, sha256, slugify
 from app.program_status import compact_snapshot
 from app.programs import mode_arguments, runtime_of, runtime_of_version
 from app.deps import ctx
-from app import code_redact, paper_first, shadow
+from app import code_redact, paper_first, program_control, shadow
 from app.config import settings
 from app.security import Principal, client_ip, require_auth
 from engine import versions
@@ -146,6 +146,8 @@ def _algo_view(db, algo: dict) -> dict:
         "last": last,
         "recent": _recent(db, algo["id"], sup),
         "shadow_of": algo.get("shadow_of"),
+        # Whether the active version reads the desk's control file (halt while holding, sell now).
+        "control_file": program_control.supported(db, algo) if algo.get("kind") != "builtin" else False,
         # Three full paper sessions before real money: the count for the active version.
         "paper_first": paper_first.status(db, algo, counts) if algo.get("kind") != "builtin" else None,
     }
