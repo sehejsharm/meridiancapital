@@ -73,6 +73,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="pointer-events-none fixed inset-0 plane-grid" aria-hidden="true" />
 
       {/* Real money is the one state worth interrupting the layout for. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:border focus:border-brand focus:bg-surface focus:px-3 focus:py-2 focus:text-xs focus:text-ink"
+      >
+        Skip to the page
+      </a>
       {liveCount > 0 && (
         <div className="relative z-20 bg-critical/15 px-4 py-1.5 text-center text-2xs font-semibold uppercase tracking-[0.14em] text-critical">
           {liveCount} algorithm{liveCount === 1 ? "" : "s"} trading real money
@@ -135,7 +141,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Wide enough to use a laptop or desktop screen edge to edge; the cap only
           stops a 4K monitor stretching a table across a metre of glass. */}
-      <main className="relative z-10 mx-auto max-w-[2200px] px-4 py-5 sm:px-6 xl:px-8">
+      <main id="main" tabIndex={-1} className="relative z-10 mx-auto max-w-[2200px] px-4 py-5 outline-none sm:px-6 xl:px-8">
         {children}
       </main>
 

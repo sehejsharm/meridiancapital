@@ -106,3 +106,44 @@ jobs:
           if not r["passed"]:
               sys.exit("the acceptance gate rejected its own reference strategy")
           PY
+
+  site:
+    name: Every page opens, phone and desktop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: |
+          pip install -q -r backend/requirements.txt
+          cd frontend && npm ci
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Build the dashboard
+        working-directory: frontend
+        run: npx next build
+        env:
+          MERIDIAN_API_URL: http://127.0.0.1:8090
+      # A throwaway API with made-up data and no broker, the built dashboard, and a
+      # browser that opens every page at 390 px and 1366 px. Fails on a page error,
+      # a page that will not load, or any sideways scroll.
+      - name: Open every page
+        run: |
+          python backend/scripts/site_check_server.py "$RUNNER_TEMP/site-check" > "$RUNNER_TEMP/api.log" 2>&1 &
+          (cd frontend && npx next start -p 3100 > "$RUNNER_TEMP/next.log" 2>&1 &)
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8090/health >/dev/null 2>&1 && curl -fsS -o /dev/null http://127.0.0.1:3100/login 2>/dev/null; then break; fi
+            sleep 1
+          done
+          cd frontend && node scripts/site-check.cjs "$(cat "$RUNNER_TEMP/site-check/trade_id")" || { tail -30 "$RUNNER_TEMP/api.log" "$RUNNER_TEMP/next.log"; exit 1; }
+        env:
+          MERIDIAN_API_URL: http://127.0.0.1:8090
