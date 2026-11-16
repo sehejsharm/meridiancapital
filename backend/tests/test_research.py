@@ -281,3 +281,23 @@ def test_the_expectation_is_stored_and_returns_the_real_money_trades_since_its_d
     assert r["trades"] == [{"day": DAY, "net": 450.0, "lots": 1}]
     assert any(a["action"] == "research.expectation" for a in db.audit_tail(5))
     assert client.post("/api/research/expectation", json={"mean": 1, "sd": 100, "since": DAY}).status_code == 401
+
+
+def test_the_quarterly_study_reads_and_changes_nothing(client, auth):  # noqa: F811
+    from datetime import date
+
+    from app import quarterly
+    from app.deps import ctx
+
+    db = ctx().db
+    assert quarterly.last_quarter(date(2026, 11, 16)) == ("2026-07-01", "2026-09-30")
+    assert quarterly.last_quarter(date(2026, 2, 3)) == ("2025-10-01", "2025-12-31")
+    add_trade(db)                                               # real money, +450.00
+    client.post("/api/research/expectation", headers=auth, json={"mean": 300, "sd": 3000, "since": DAY, "label": "v12"})
+    before = (len(db.trades(limit=100)), len(db.audit_tail(100)))
+    text = quarterly.study_text(db, DAY, DAY)
+    assert "Trades 1, won 1 (100%), net +Rs 450" in text
+    assert "4. Against the backtest" in text and "too few trades to judge" in text
+    assert "Live +Rs 450; the backtest expects +Rs 300; luck allows -Rs 5,700 to +Rs 6,300" in text
+    assert "No closed trade in this period." in quarterly.study_text(db, "2020-01-01", "2020-03-31")
+    assert (len(db.trades(limit=100)), len(db.audit_tail(100))) == before
