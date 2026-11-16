@@ -7,13 +7,14 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 
 from app import health, logs, market, reports, research, tax, tearsheet
 from app.deps import ctx
 from app.feeds import NewsFeed
-from app.security import require_auth
+from app.security import Principal, client_ip, require_auth
 from engine.clock import now_ist
 
 router = APIRouter(prefix="/api", tags=["desk"], dependencies=[Depends(require_auth)])
@@ -386,3 +387,50 @@ async def trade_detail(trade_id: int) -> dict:
     if found is None:
         raise HTTPException(status_code=404, detail="no such trade")
     return found
+
+
+# ── live results against what the backtest led us to expect ──────────────────
+K_EXPECTATION = "research:expectation"
+
+
+class ExpectationRequest(BaseModel):
+    """What one trade is expected to make and how much it typically swings, from the backtest."""
+    mean: float = Field(ge=-20_000, le=20_000)
+    sd: float = Field(ge=50, le=100_000)
+    since: date
+    label: str = Field(default="", max_length=80)
+
+
+def _expectation_view(db) -> dict:
+    from app import ledger
+
+    exp = db.kv_get(K_EXPECTATION, None)
+    trades = []
+    if exp:
+        with db.conn() as c:
+            rows = [dict(r) for r in c.execute(
+                "SELECT * FROM trades WHERE mode = 'live' AND exit_ts IS NOT NULL AND session_date >= ? ORDER BY entry_ts",
+                (exp["since"],))]
+        for t in ledger.reconcile(db, rows):
+            net = t.get("net_angel") if t.get("net_angel") is not None else t.get("net")
+            if net is not None:
+                trades.append({"day": t["session_date"], "net": round(float(net), 2), "lots": t.get("lots") or 1})
+    return {"expectation": exp, "trades": trades}
+
+
+@router.get("/research/expectation")
+async def research_expectation() -> dict:
+    """The expectation on record and the real-money trades since its start date."""
+    return _expectation_view(ctx().db)
+
+
+@router.post("/research/expectation")
+async def set_research_expectation(body: ExpectationRequest, request: Request,
+                                   principal: Principal = Depends(require_auth)) -> dict:
+    c = ctx()
+    c.db.kv_set(K_EXPECTATION, {"mean": body.mean, "sd": body.sd, "since": body.since.isoformat(),
+                                "label": body.label.strip(), "set_by": principal.subject,
+                                "set_at": now_ist().isoformat(timespec="seconds")})
+    c.db.audit(principal.subject, "research.expectation", f"mean={body.mean} sd={body.sd} since={body.since}",
+               client_ip(request))
+    return _expectation_view(c.db)

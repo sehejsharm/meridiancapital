@@ -9,6 +9,7 @@ import {
   byDaysToExpiry, byEntryHour, byWeekday, calendarWeeks, closedTrades, dailyPnl, kelly, monteCarlo,
   rollingSortino, rollingWinRate, underwater, type Bucket,
 } from "@/lib/analytics";
+import { ExpectationCard } from "@/components/ExpectationCard";
 import { ResearchCard } from "@/components/ResearchCard";
 import { apiGet } from "@/lib/client-api";
 import { dayLabel, money, percent, signedMoney } from "@/lib/format";
@@ -156,6 +157,8 @@ export default function AnalyticsPage() {
           )}
         </Card>
       </div>
+
+      <ExpectationCard />
 
       <ResearchCard />
     </div>

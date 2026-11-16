@@ -264,3 +264,20 @@ def test_the_open_position_carries_what_its_exit_will_do_next(tmp_db):
 def test_the_charge_model_is_the_research_harnesss():
     # 150 -> 166 on 65: 40 + 7.1952 + 0.0205 + 0.2925 + 10.7900 + 8.4988 = 66.80
     assert pytest.approx(exit_rules.charges(150.0, 166.0), abs=0.005) == 66.80
+
+
+def test_the_expectation_is_stored_and_returns_the_real_money_trades_since_its_date(client, auth):  # noqa: F811
+    from app.deps import ctx
+
+    db = ctx().db
+    add_trade(db)                                              # real money, today, +450.00
+    add_trade(db, mode="paper", exit_ts=f"{DAY}T10:40:00")     # paper: not counted
+    assert client.get("/api/research/expectation", headers=auth).json() == {"expectation": None, "trades": []}
+    bad = client.post("/api/research/expectation", headers=auth, json={"mean": 290, "sd": 10, "since": DAY})
+    assert bad.status_code == 422                              # a spread that small is a typing slip
+    r = client.post("/api/research/expectation", headers=auth,
+                    json={"mean": 290, "sd": 3450, "since": DAY, "label": "v12 backtest"}).json()
+    assert r["expectation"]["mean"] == 290 and r["expectation"]["label"] == "v12 backtest"
+    assert r["trades"] == [{"day": DAY, "net": 450.0, "lots": 1}]
+    assert any(a["action"] == "research.expectation" for a in db.audit_tail(5))
+    assert client.post("/api/research/expectation", json={"mean": 1, "sd": 100, "since": DAY}).status_code == 401
