@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { EmergencyStop } from "@/components/EmergencyStop";
 import { RunModeDialog } from "@/components/RunModeDialog";
+import { ExitSettingsCard } from "@/components/ExitSettingsCard";
 import { Badge, Button, Card, Empty, Field, Pending } from "@/components/ui";
 import { apiDelete, apiGet, apiPost } from "@/lib/client-api";
 import { appliesTo, controlTargets, defaultTarget } from "@/lib/controlTargets";
@@ -349,6 +350,8 @@ export default function ControlsPage() {
           />
         </Card>
       </div>
+
+      {isProgram && target?.algoId && <ExitSettingsCard algoId={target.algoId} name={target.name} />}
 
       <SpecialSessions onNotice={setNotice} today={schedule?.now_ist?.slice(0, 10)} onChange={refresh} />
       <HolidayCalendar onNotice={setNotice} today={schedule?.now_ist?.slice(0, 10)} />

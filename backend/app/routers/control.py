@@ -14,7 +14,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 
-from app import program_control, special_sessions
+from app import exit_settings, program_config, program_control, special_sessions
 from app.config import settings
 from app.deps import ctx
 from app.security import Principal, client_ip, require_auth
@@ -590,3 +590,71 @@ async def nuke(
             + ([] if held or unknown else ["No engine was holding a position."])
         ),
     }
+
+
+# ── exit settings as data (v14 programs) ─────────────────────────────────────
+class ExitSettingsRequest(BaseModel):
+    algo_id: str = Field(min_length=1, max_length=80)
+    confirm: str = ""
+    values: dict[str, float] = Field(default_factory=dict, max_length=7)
+
+
+def _exit_target(c, algo_id: str):
+    target = _program_target(c, algo_id)
+    if not target:
+        raise HTTPException(status_code=409, detail="choose the program this applies to")
+    algo, sup = target
+    code = program_config.code_config(c.db, algo)
+    return algo, sup, (code or {}).get("values") or {}
+
+
+@router.get("/exit-settings")
+async def get_exit_settings(algo_id: str) -> dict:
+    """The exit figures the program will start with: built in, or replaced by its settings file."""
+    c = ctx()
+    algo, sup, built_in = _exit_target(c, algo_id)
+    return exit_settings.view(c.db, algo, bool(sup.state.running), built_in)
+
+
+@router.post("/exit-settings")
+async def set_exit_settings(body: ExitSettingsRequest, request: Request,
+                            principal: Principal = Depends(require_auth)) -> dict:
+    """Write the settings file a v14 program reads at its next start. Refused while it runs."""
+    c = ctx()
+    algo, sup, built_in = _exit_target(c, body.algo_id)
+    if body.confirm != exit_settings.PHRASE:
+        raise HTTPException(status_code=400, detail=f"changing exit settings requires confirm == '{exit_settings.PHRASE}'")
+    _audit(request, principal, "risk.exit_settings", f"{algo['id']} {sorted(body.values.items())}")
+    if not exit_settings.supported(c.db, algo):
+        raise HTTPException(status_code=409, detail=(
+            f"{_name(algo)}'s version keeps its exit settings in its code (it needs v14 or later). "
+            f"Nothing was changed."))
+    if sup.state.running:
+        raise HTTPException(status_code=409, detail=(
+            f"{_name(algo)} is running. It reads its exit settings only when it starts, so a change now would "
+            f"show here without being in force. Stop it first (after the close), then change them."))
+    try:
+        changed = exit_settings.write(algo["id"], body.values, built_in)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"not changed: {e}") from e
+    what = ", ".join(f"{k}={v}" for k, v in sorted(changed.items())) or "all built-in"
+    c.db.add_event("critical", f"EXIT SETTINGS for {_name(algo)} set by {principal.subject}: {what}. "
+                               f"In force from its next start. Only the built-in values have a backtest behind them.",
+                   source="api", algo_id=algo["id"])
+    return exit_settings.view(c.db, algo, False, built_in)
+
+
+@router.post("/exit-settings/reset")
+async def reset_exit_settings(body: ExitSettingsRequest, request: Request,
+                              principal: Principal = Depends(require_auth)) -> dict:
+    """Remove the settings file: the program starts with its built-in, backtested values."""
+    c = ctx()
+    algo, sup, built_in = _exit_target(c, body.algo_id)
+    _audit(request, principal, "risk.exit_settings_reset", algo["id"])
+    if sup.state.running:
+        raise HTTPException(status_code=409, detail=(
+            f"{_name(algo)} is running and read its settings when it started. Stop it first, then reset them."))
+    if exit_settings.clear(algo["id"]):
+        c.db.add_event("warn", f"exit settings for {_name(algo)} reset to the built-in values by {principal.subject}",
+                       source="api", algo_id=algo["id"])
+    return exit_settings.view(c.db, algo, False, built_in)
