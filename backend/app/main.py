@@ -16,12 +16,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app import webpush
 from app.config import settings
 from app.deps import build_context, ctx
 from app.notify import Notifier
 from app.program_output import ProgramOutput
 from app.replay import Archiver
-from app.routers import algos, auth, control, data, desk, reliability, tuning, ws
+from app.routers import algos, auth, control, data, desk, push, reliability, tuning, ws
 from app.supervisor import StagingOnly
 from app.upkeep import Upkeep
 from engine.clock import now_ist
@@ -45,6 +46,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await c.sched.start()
     programs_out = ProgramOutput(c.db, c.fleet)
     await programs_out.start()
+    webpush.attach(c.db, (settings.cors_origins or [""])[0])   # phone notifications, beside Telegram
     notifier = Notifier(c.db, fleet=c.fleet)
     await notifier.start()
     archiver = Archiver(c.db)
@@ -61,6 +63,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await c.upkeep.stop()
         await archiver.stop()
         await notifier.stop()
+        webpush.attach(None)
         await programs_out.stop()
         await c.sched.stop()
         await c.hub.stop()
@@ -115,6 +118,7 @@ app.include_router(tuning.router)
 app.include_router(algos.router)
 app.include_router(desk.router)
 app.include_router(reliability.router)
+app.include_router(push.router)
 app.include_router(ws.router)
 
 

@@ -27,6 +27,7 @@ import time
 import urllib.request
 from datetime import timedelta
 
+from app import webpush
 from engine.clock import now_ist
 
 POLL_SECONDS = 5.0
@@ -116,6 +117,9 @@ def send(title: str, text: str, kind: str = "info", level: str = "info") -> dict
         except Exception as e:
             out["webhook"] = False
             out["webhook_error"] = type(e).__name__
+    pushed = webpush.send_all(title, text, kind, level)      # phones that asked for notifications; never raises
+    if pushed["sent"] or pushed["failed"]:
+        out["push"] = pushed["sent"] > 0
     return out
 
 
