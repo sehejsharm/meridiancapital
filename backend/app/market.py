@@ -229,6 +229,62 @@ def next_expiry(today, holidays: set[str]):
     return None
 
 
+def weekly_expiries(today, holidays: set[str], count: int = 3) -> list:
+    """The next weekly expiries on or after ``today``: Tuesdays, moved back to the
+    previous trading day when the Tuesday is a holiday."""
+    from datetime import timedelta
+
+    from shared.market_calendar import is_trading_day
+
+    out = []
+    for ahead in range(0, 7 * (count + 2)):
+        d = today + timedelta(days=ahead)
+        if d.weekday() != WEEKLY_EXPIRY_WEEKDAY:
+            continue
+        exp = d
+        while not is_trading_day(exp, holidays):
+            exp -= timedelta(days=1)
+        if exp >= today and exp not in out:
+            out.append(exp)
+        if len(out) >= count:
+            break
+    return out
+
+
+def expiry_outlook(today, holidays: set[str], min_dte: int, max_dte: int, days: int = 6) -> dict:
+    """For today and the next trading days: which contract the program would buy, or why none.
+
+    The program buys the first weekly contract ``min_dte`` to ``max_dte`` calendar days
+    from expiry. On a day when no contract falls in that window it takes no trade, and
+    the desk should say so before anyone wonders why nothing happened. An estimate from
+    the calendar; the program reads Angel's own contract list.
+    """
+    from datetime import timedelta
+
+    from shared.market_calendar import is_trading_day
+
+    rows, d = [], today
+    while len(rows) < days and (d - today).days < 21:
+        if is_trading_day(d, holidays):
+            exps = weekly_expiries(d, holidays, 3)
+            dtes = [(e - d).days for e in exps]
+            pick = next((e for e in exps if min_dte <= (e - d).days <= max_dte), None)
+            near = [x for x in dtes if x <= max_dte + 7][:2]
+            if pick is None:
+                listed = " and ".join(f"{x} day{'s' if x != 1 else ''}" for x in near) or "none"
+                reason = (f"the nearest contracts are {listed} from expiry, and the program buys only "
+                          f"{min_dte} to {max_dte} days out")
+            else:
+                reason = None
+            rows.append({"day": d.isoformat(), "weekday": d.strftime("%A"), "tradeable": pick is not None,
+                         "expiry": pick.isoformat() if pick else None,
+                         "dte": (pick - d).days if pick else None, "nearest_dte": near, "reason": reason})
+        d += timedelta(days=1)
+    today_row = rows[0] if rows and rows[0]["day"] == today.isoformat() else None
+    return {"min_dte": min_dte, "max_dte": max_dte, "today": today_row, "days": rows,
+            "note": "From the calendar (Tuesday expiries, moved back for holidays). The program reads Angel's contract list."}
+
+
 def _f(v):
     try:
         x = float(v)

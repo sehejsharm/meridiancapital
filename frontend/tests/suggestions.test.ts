@@ -82,3 +82,29 @@ test("the trade chart scales time and price into the box", () => {
   assert.deepEqual(range([100, 150]), [97, 153]);
   assert.deepEqual(range([]), [0, 1]);
 });
+
+import { expiryNotice, type ExpiryOutlook } from "../lib/expiry.ts";
+
+const outlook: ExpiryOutlook = { available: true, min_dte: 2, max_dte: 6, today:
+  { day: "2026-12-07", weekday: "Monday", tradeable: false, expiry: null, dte: null, nearest_dte: [1, 8],
+    reason: "the nearest contracts are 1 day and 8 days from expiry, and the program buys only 2 to 6 days out" },
+  days: [
+    { day: "2026-12-07", weekday: "Monday", tradeable: false, expiry: null, dte: null, nearest_dte: [1, 8], reason: "x" },
+    { day: "2026-12-08", weekday: "Tuesday", tradeable: false, expiry: null, dte: null, nearest_dte: [0, 7], reason: "x" },
+    { day: "2026-12-09", weekday: "Wednesday", tradeable: true, expiry: "2026-12-15", dte: 6, nearest_dte: [6, 13], reason: null },
+  ] };
+
+test("a day with no contract in the window says no trade, why, and when the next one is", () => {
+  const n = expiryNotice(outlook)!;
+  assert.equal(n.tone, "blocked");
+  assert.equal(n.title, "No trade today: no contract is 2 to 6 days from expiry");
+  assert.equal(n.detail, "Today the nearest contracts are 1 day and 8 days from expiry, and the program buys only 2 to 6 days out. The next day it can trade is Wednesday (6 days to expiry).");
+  assert.deepEqual(n.week.map((d) => d.text), ["no trade (1 and 8 days)", "no trade (0 and 7 days)", "6 days to expiry"]);
+});
+
+test("a tradeable day says how far the contract is from expiry; nothing known says nothing", () => {
+  const ok: ExpiryOutlook = { ...outlook, today: outlook.days![2], days: outlook.days!.slice(2) };
+  assert.equal(expiryNotice(ok)!.title, "Today's contract is 6 days from expiry");
+  assert.equal(expiryNotice({ available: false }), null);
+  assert.equal(expiryNotice(null), null);
+});

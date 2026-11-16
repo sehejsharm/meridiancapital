@@ -8,6 +8,7 @@ import { AngelBalance } from "@/components/AngelBalance";
 import { ExitPlanCard } from "@/components/ExitPlan";
 import { HealthStrip } from "@/components/HealthStrip";
 import { HolidayNotice } from "@/components/HolidayNotice";
+import { NoTradeNotice } from "@/components/NoTradeNotice";
 import { LiveTape } from "@/components/LiveTape";
 import { LazyMarkedChart } from "@/components/LazyMarkedChart";
 import { NewsPanel } from "@/components/NewsPanel";
@@ -146,6 +147,7 @@ export default function DeckPage() {
       />
 
       <HolidayNotice />
+      <NoTradeNotice />
       <Link href="/today" className="block rounded-md border border-hairline bg-surface px-4 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-brand sm:hidden">
         Today on one screen →
       </Link>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { ExitPlanCard } from "@/components/ExitPlan";
+import { NoTradeNotice } from "@/components/NoTradeNotice";
 import { Badge, Card, Empty } from "@/components/ui";
 import { minutes, money, pnlClass, signedMoney, signedPercent } from "@/lib/format";
 import { useLiveFeed } from "@/lib/LiveContext";
@@ -17,6 +18,7 @@ export default function TodayPage() {
   const liveCount = status?.fleet?.live_running ?? 0;
   return (
     <div className="mx-auto max-w-xl space-y-4">
+      <NoTradeNotice always />
       <Card
         title="Today"
         subtitle={live ? `${snapshot?.engine?.banner ?? "Running"} · updated ${recordedAt(snapshot?.ts)}` : snapshot ? `Nothing running · last figures ${recordedAt(snapshot.ts)}` : "Nothing running"}

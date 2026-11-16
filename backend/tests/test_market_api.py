@@ -142,3 +142,39 @@ def test_a_stale_chain_sets_no_baseline(tmp_db):
     tmp_db.kv_set(K_CHAIN, _chain(_now_iso(300)))
     market.option_chain(tmp_db)
     assert tmp_db.kv_get(market._open_key(_chain(_now_iso(300))), None) is None
+
+
+# ── days the program cannot trade (expiry window) ────────────────────────────
+
+def test_the_outlook_says_which_days_have_no_contract_in_the_window():
+    from datetime import date
+
+    from app import market
+
+    # Monday 16 Nov 2026. Expiries: Tue 17 Nov; Tue 24 Nov is a holiday, so that week's is Mon 23 Nov.
+    out = market.expiry_outlook(date(2026, 11, 16), {"2026-11-24"}, 2, 6)
+    by = {r["day"]: r for r in out["days"]}
+    assert market.weekly_expiries(date(2026, 11, 16), {"2026-11-24"}, 3) == [date(2026, 11, 17), date(2026, 11, 23), date(2026, 12, 1)]
+    # Monday: 1 and 7 days out -> no trade.
+    assert out["today"]["tradeable"] is False and out["today"]["nearest_dte"] == [1, 7]
+    assert out["today"]["reason"] == ("the nearest contracts are 1 day and 7 days from expiry, and the program "
+                                      "buys only 2 to 6 days out")
+    # Tuesday (expiry day): 0 and 6 days out -> next week's contract at 6 days.
+    assert (by["2026-11-17"]["tradeable"], by["2026-11-17"]["dte"], by["2026-11-17"]["expiry"]) == (True, 6, "2026-11-23")
+    assert (by["2026-11-18"]["dte"], by["2026-11-19"]["dte"], by["2026-11-20"]["dte"]) == (5, 4, 3)
+    assert "2026-11-24" not in by                                   # the holiday is not a trading day
+    # Under the old 2-8 window Monday trades next week's contract at 7 days.
+    old = market.expiry_outlook(date(2026, 11, 16), {"2026-11-24"}, 2, 8)
+    assert old["today"]["tradeable"] is True and old["today"]["dte"] == 7
+
+
+def test_a_normal_week_skips_monday_and_tuesday_under_the_two_to_six_window():
+    from datetime import date
+
+    from app import market
+
+    out = market.expiry_outlook(date(2026, 12, 7), set(), 2, 6)     # Monday 7 Dec; expiries 8 and 15 Dec
+    got = [(r["weekday"], r["tradeable"], r["dte"]) for r in out["days"][:5]]
+    assert got == [("Monday", False, None), ("Tuesday", False, None), ("Wednesday", True, 6),
+                   ("Thursday", True, 5), ("Friday", True, 4)]
+    assert out["days"][1]["nearest_dte"] == [0, 7]

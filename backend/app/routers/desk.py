@@ -67,6 +67,29 @@ async def market_chain() -> dict:
     return out
 
 
+@router.get("/market/expiry-outlook")
+async def market_expiry_outlook(algo: str | None = Query(None, max_length=80)) -> dict:
+    """Whether the program can trade today and on the coming days, given its own expiry window."""
+    from app import ledger, program_config
+
+    c = ctx()
+    algo_id = algo or next((aid for aid, sup in c.fleet.all().items() if sup.state.running), None) or ledger.live_algo(c.db)
+    row = c.db.algo(algo_id) if algo_id else None
+    if not row or row.get("kind") == "builtin":
+        return {"available": False, "reason": "no uploaded program to read the expiry window from"}
+    running = program_config.running_config(c.db, algo_id) if c.fleet.is_running(algo_id) else None
+    code = program_config.code_config(c.db, row)
+    values = {**((code or {}).get("values") or {}), **((running or {}).get("values") or {})}
+    lo, hi = values.get("MIN_DTE"), values.get("MAX_DTE")
+    if lo is None or hi is None:
+        return {"available": False, "reason": "this program's expiry window could not be read"}
+    holidays = {h["day"] for h in c.db.holidays()}
+    out = market.expiry_outlook(now_ist().date(), holidays, int(lo), int(hi))
+    return {"available": True, "algo_id": algo_id, "name": row.get("name") or algo_id,
+            "from": "the running program" if running and "MIN_DTE" in (running.get("values") or {}) else "the active version's code",
+            **out}
+
+
 @router.get("/ticker")
 async def ticker() -> dict:
     """Latest NIFTY spot for the deck's strip.
