@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-
 import { pollWhileVisible } from "@/lib/pollWhileVisible";
 
 import { CommandPalette } from "@/components/CommandPalette";
 import { CrashLoopBanner } from "@/components/CrashLoopBanner";
+import { PhoneKeeper } from "@/components/PhoneKeeper";
 import { Wordmark } from "@/components/Logo";
 import {
   IconAlgos,
@@ -71,6 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen">
       <div className="pointer-events-none fixed inset-0 plane-grid" aria-hidden="true" />
+      <PhoneKeeper />
 
       {/* Real money is the one state worth interrupting the layout for. */}
       <a

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { PhoneAlerts } from "@/components/PhoneAlerts";
 import { Badge, Button, Card } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/client-api";
 
@@ -48,9 +49,10 @@ export function AlertChannels() {
         </p>
       )}
       <div className="mt-3 flex items-center gap-3">
-        <Button onClick={() => void test()} disabled={busy || !any}>{busy ? "Sending…" : "Send a test alert"}</Button>
+        <Button onClick={() => void test()} disabled={busy || !any}>{busy ? "Sending…" : "Send a test to Telegram / webhook"}</Button>
         {note && <span className="text-2xs text-ink-secondary">{note}</span>}
       </div>
+      <PhoneAlerts />
     </Card>
   );
 }

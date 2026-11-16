@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 const SESSION_COOKIE = "meridian_session";
 // /api/session covers its /passkey child via the startsWith check below: both
 // have to answer before a session exists.
-const PUBLIC_PATHS = ["/login", "/api/session"];
+// /sw.js and /offline must answer without a session: the service worker is fetched by the
+// browser on its own schedule, and the offline page is stored before anyone is signed in.
+const PUBLIC_PATHS = ["/login", "/api/session", "/offline", "/sw.js"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
