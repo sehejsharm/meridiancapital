@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { clientIp, overLimit } from "@/lib/edge-throttle";
 import { HONEYPOT_FIELD } from "@/lib/honeypot";
-import { ApiError, ConfigError, SESSION_COOKIE, clientIpHeaders, login } from "@/lib/server-api";
+import { ApiError, ConfigError, SESSION_COOKIE, clientIpHeaders, login, renewSession } from "@/lib/server-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +54,29 @@ export async function POST(request: NextRequest) {
     if (error instanceof ApiError) {
       return NextResponse.json({ detail: error.message }, { status: error.status });
     }
+    return NextResponse.json({ detail: "control plane unreachable" }, { status: 502 });
+  }
+}
+
+/** Renew a session that is still valid: an open dashboard is not signed out mid-session. */
+export async function PUT(request: NextRequest) {
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  if (!token) return NextResponse.json({ detail: "not signed in" }, { status: 401 });
+  try {
+    const renewed = await renewSession(token);
+    const response = NextResponse.json({ ok: true, expires_in: renewed.expires_in });
+    response.cookies.set({
+      name: SESSION_COOKIE,
+      value: renewed.token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: renewed.expires_in,
+    });
+    return response;
+  } catch (error) {
+    if (error instanceof ApiError) return NextResponse.json({ detail: error.message }, { status: error.status });
     return NextResponse.json({ detail: "control plane unreachable" }, { status: 502 });
   }
 }

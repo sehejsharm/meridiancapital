@@ -50,6 +50,24 @@ async def login(body: LoginRequest, request: Request) -> TokenResponse:
     )
 
 
+@router.post("/renew", response_model=TokenResponse)
+async def renew(principal: Principal = Depends(require_auth)) -> TokenResponse:
+    """A fresh token for a session that is still valid, so an open dashboard is not
+    signed out mid-session. It keeps the original sign-in time, and stops renewing
+    a week after the password or passkey was last used."""
+    import time
+
+    from app.security import MAX_SESSION_SEC
+
+    at = principal.auth_time or int(time.time())
+    if time.time() - at > MAX_SESSION_SEC:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="this session is a week old — sign in again")
+    ttl = settings.token_ttl_min * 60
+    return TokenResponse(token=issue_token(principal.subject, ttl, auth_time=at), expires_in=ttl,
+                         operator=principal.subject)
+
+
 @router.get("/me")
 async def me(principal: Principal = Depends(require_auth)) -> dict:
     return {"operator": principal.subject, "scope": principal.scope}

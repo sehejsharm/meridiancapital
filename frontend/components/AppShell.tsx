@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { pollWhileVisible } from "@/lib/pollWhileVisible";
+
 import { CommandPalette } from "@/components/CommandPalette";
 import { CrashLoopBanner } from "@/components/CrashLoopBanner";
 import { Wordmark } from "@/components/Logo";
@@ -58,6 +60,10 @@ function isActive(pathname: string, href: string): boolean {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { snapshot, status } = useLiveFeed();
+
+  // Renew the sign-in every half hour while the dashboard is open and visible, so a
+  // session does not run out mid-session. The API stops renewing a week after sign-in.
+  useEffect(() => pollWhileVisible(() => { void fetch("/api/session", { method: "PUT" }).catch(() => undefined); }, 30 * 60_000), []);
 
   const fleet = status?.fleet;
   const liveCount = fleet?.live_running ?? 0;

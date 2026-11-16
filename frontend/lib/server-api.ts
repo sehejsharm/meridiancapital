@@ -155,3 +155,15 @@ export async function login(
   }
   return (await res.json()) as { token: string; expires_in: number };
 }
+
+
+/** A fresh token for a session that is still valid (the API refuses a week after sign-in). */
+export async function renewSession(token: string): Promise<{ token: string; expires_in: number }> {
+  const res = await fetch(`${apiBase()}/api/auth/renew`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new ApiError(res.status, res.status === 401 ? "session expired" : "could not renew the session");
+  return (await res.json()) as { token: string; expires_in: number };
+}

@@ -55,13 +55,18 @@ def _b64u_dec(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
-def issue_token(subject: str, ttl_seconds: int, scope: str = "dashboard") -> str:
+# A session renews itself while the dashboard is open, but never past this long
+# after the password or passkey was last used: then it is sign-in again.
+MAX_SESSION_SEC = 7 * 24 * 3600
+
+
+def issue_token(subject: str, ttl_seconds: int, scope: str = "dashboard", auth_time: int | None = None) -> str:
     now = int(time.time())
     header = _b64u(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
     payload = _b64u(
         json.dumps(
             {"sub": subject, "scope": scope, "iat": now, "exp": now + ttl_seconds,
-             "jti": secrets.token_hex(8)},
+             "at": int(auth_time if auth_time is not None else now), "jti": secrets.token_hex(8)},
             separators=(",", ":"),
         ).encode()
     )
@@ -90,6 +95,8 @@ def decode_token(token: str) -> dict:
 class Principal:
     subject: str
     scope: str
+    # When the operator last proved who they are (password or passkey), epoch seconds.
+    auth_time: int | None = None
 
 
 def _unauthorised(detail: str) -> HTTPException:
@@ -111,7 +118,9 @@ async def require_auth(
         raise _unauthorised(str(e))
     if payload.get("scope") != "dashboard":
         raise _unauthorised("token is not valid for this endpoint")
-    return Principal(subject=str(payload.get("sub", "?")), scope=str(payload.get("scope")))
+    at = payload.get("at", payload.get("iat"))
+    return Principal(subject=str(payload.get("sub", "?")), scope=str(payload.get("scope")),
+                     auth_time=int(at) if at is not None else None)
 
 
 def authenticate_ws_ticket(ticket: str) -> Principal:

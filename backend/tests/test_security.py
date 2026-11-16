@@ -97,3 +97,35 @@ def test_old_failures_fall_out_of_the_window():
     time.sleep(1.1)
     t.fail("1.2.3.4")
     t.check("1.2.3.4")  # must not raise
+
+
+from tests.test_desk import auth, client  # noqa: E402, F401  (fixtures)
+
+# ── a session that renews itself ─────────────────────────────────────────────
+
+def test_a_valid_session_is_renewed_and_keeps_its_sign_in_time(monkeypatch):
+    import time as _t
+
+    from app import security
+
+    tok = security.issue_token("sehej", 600)
+    first = security.decode_token(tok)
+    assert first["at"] == first["iat"]
+    monkeypatch.setattr(security.time, "time", lambda: first["iat"] + 3600 * 5)
+    again = security.decode_token(security.issue_token("sehej", 600, auth_time=first["at"]))
+    assert again["at"] == first["at"] and again["exp"] == first["iat"] + 3600 * 5 + 600
+    assert _t.time() > 0
+
+
+def test_renewal_stops_a_week_after_sign_in(client, auth, monkeypatch):  # noqa: F811
+    from app import security
+    from app.config import settings
+
+    r = client.post("/api/auth/renew", headers=auth)
+    assert r.status_code == 200 and r.json()["expires_in"] == settings.token_ttl_min * 60
+    fresh = {"Authorization": f"Bearer {r.json()['token']}"}
+    assert client.get("/api/auth/me", headers=fresh).status_code == 200
+    assert client.post("/api/auth/renew").status_code == 401                       # no session, nothing to renew
+    old = security.issue_token("sehej", 600, auth_time=int(__import__("time").time()) - security.MAX_SESSION_SEC - 60)
+    late = client.post("/api/auth/renew", headers={"Authorization": f"Bearer {old}"})
+    assert late.status_code == 401 and "sign in again" in late.json()["detail"]
