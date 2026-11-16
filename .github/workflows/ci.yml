@@ -109,7 +109,8 @@ jobs:
 
   site:
     name: Every page opens, phone and desktop
-    runs-on: ubuntu-latest
+    # Pinned: the pinned Playwright cannot install its browser on a newer image than this.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
