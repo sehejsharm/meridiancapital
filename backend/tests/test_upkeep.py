@@ -416,7 +416,9 @@ def test_host_and_close_check_endpoints(client, auth, monkeypatch):  # noqa: F81
     assert body["upkeep"]["heartbeat"]["configured"] is False
     assert body["upkeep"]["angel"] == {"configured": False, "enabled": True}
     assert body["upkeep"]["journal_keep_days"] == 365
-    assert client.get("/api/reliability/close-check", headers=auth).json() == {"check": None}
+    # Nothing on record before 15:35 IST; run after that on a trading day, the desk's own clock has already checked.
+    first = client.get("/api/reliability/close-check", headers=auth).json()
+    assert set(first) == {"check"} and (first["check"] is None or first["check"]["angel"].startswith("not asked"))
 
     asked = []
     ctx().upkeep.angel = lambda db, day: asked.append(day) or {"ok": True, "fills": [], "positions": []}
