@@ -75,7 +75,7 @@ If any step does not do what it says, do not trade real money until it does.
 Three full paper sessions before real money. The algorithm's page shows the count for
 the active version, and the switch to real money warns when it is short.
 
-## 7. The quarterly study (read-only, two minutes)
+## 8. The quarterly study (read-only, two minutes)
 
 After each calendar quarter, on the server:
 
@@ -88,7 +88,7 @@ fills cost, and whether the results are inside the range the backtest allows. It
 (`2026-07-01 2026-09-30`) choose another period; `--paper` reads the paper trades. A result below the band is a reason to
 stop adding size and look, not a reason to change the program by itself: a change still needs a backtest.
 
-## 8. Notifications on the phone
+## 9. Notifications on the phone
 
 Reliability → Alerts → "Notifications from the desk itself" → **Turn on on this device**, then **Send a test**.
 On an iPhone, first add the dashboard to the home screen (Share → Add to Home Screen) and open it from there; Apple does
@@ -98,7 +98,7 @@ not arrive: turn it off and on again on the phone, and check the phone's own not
 With no network the dashboard shows an offline page with the last figures the phone saw, marked old. It never shows a
 stored page as if it were live. The trading program does not depend on the phone.
 
-## 9. A program without credentials in its file (v14 and later)
+## 10. A program without credentials in its file (v14 and later)
 
 From v14 the program file holds no Angel credentials. Before uploading one, the server must have all four lines in
 `/etc/meridian/meridian.env`, then `sudo systemctl restart meridian-api`:
@@ -113,7 +113,7 @@ ANGEL_TOTP_SECRET=...
 Reliability → Server shows whether they are set. With any missing, a v14 program stops at start-up and names what is
 missing; it places no order. Keep the previous version until one paper session has logged in and run.
 
-## 10. Exit settings (v14 and later)
+## 11. Exit settings (v14 and later)
 
 Controls → Exit settings shows the seven exit figures the program starts with. They can be changed only while the
 program is stopped, only inside the ranges shown, with the phrase typed; the change is in force from the next start and
