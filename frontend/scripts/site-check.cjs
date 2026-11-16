@@ -82,11 +82,15 @@ const WIDTHS = [[390, 844], [1366, 900]];
       check(false, `a pushed alert asks the phone for a notification (${e.message})`);
     }
     await page.waitForTimeout(11000);                      // the desk saves its figures for the offline page
-    await ctx.setOffline(true);
+    // The network is cut where the worker sees it: its own fetch fails, as it does with no signal.
+    // (A browser's "offline" switch is not applied to service workers the same way in every version.)
+    await ctx.serviceWorkers()[0].evaluate(() => { self.fetch = () => Promise.reject(new TypeError("no network")); });
     await page.goto(`${BASE}/controls`, { waitUntil: "domcontentloaded" }).catch(() => undefined);
     await page.waitForTimeout(1500);
     const text = (await page.evaluate(() => document.body.innerText).catch(() => "")).toLowerCase();
-    check(text.includes("no connection") && text.includes("old"), "with the network cut, a page becomes the offline page, figures marked old");
+    const offline = text.includes("no connection") && text.includes("old");
+    check(offline, "with the network cut, a page becomes the offline page, figures marked old");
+    if (!offline) console.log("     the page showed:", JSON.stringify(text.slice(0, 200)));
     await ctx.close();
   }
   await browser.close();

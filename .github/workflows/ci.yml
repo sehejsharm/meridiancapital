@@ -145,6 +145,6 @@ jobs:
             if curl -fsS http://127.0.0.1:8090/health >/dev/null 2>&1 && curl -fsS -o /dev/null http://127.0.0.1:3100/login 2>/dev/null; then break; fi
             sleep 1
           done
-          cd frontend && node scripts/site-check.cjs "$(cat "$RUNNER_TEMP/site-check/trade_id")" || { tail -30 "$RUNNER_TEMP/api.log" "$RUNNER_TEMP/next.log"; exit 1; }
+          cd frontend && node scripts/site-check.cjs "$(cat "$RUNNER_TEMP/site-check/trade_id")" || { tail -n 30 "$RUNNER_TEMP/api.log" "$RUNNER_TEMP/next.log"; exit 1; }
         env:
           MERIDIAN_API_URL: http://127.0.0.1:8090
