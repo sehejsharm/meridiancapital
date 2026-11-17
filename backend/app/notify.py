@@ -25,12 +25,14 @@ import os
 import re
 import time
 import urllib.request
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from app import webpush
 from engine.clock import now_ist
 
 POLL_SECONDS = 5.0
+NO_DATA_SEC = 30.0          # a program writes its status every 5 s
+NO_DATA_GRACE_SEC = 90.0    # a program just started is still logging in
 SENT_KEY = "notify:sent"
 CURSOR_KEY = "notify:last_event_id"
 TIMEOUT_SEC = 8.0
@@ -38,6 +40,8 @@ TIMEOUT_SEC = 8.0
 # (kind, level, pattern) over journal lines. Lines from the desk itself are
 # matched separately (crashes, automation) so a program cannot fake them.
 RULES: list[tuple[str, str, re.Pattern]] = [
+    # An exit by a stop (the program's own or the resting order at the exchange) before any other exit.
+    ("stop_hit", "warn", re.compile(r"\bEXIT (STOP|SL|SL@EXCH)\s+(CE|PE)\b")),
     ("entry", "info", re.compile(r"\bENTER BUY\b|\bENTER\b.*\b(CE|PE)\b")),
     ("exit", "info", re.compile(r"\bEXIT (?!ORDER|ORDERS|COULD)\S+\s+(CE|PE)\b")),
     ("kill_daily", "critical", re.compile(r"\bDAILY KILL\b")),
@@ -52,7 +56,8 @@ AUTOMATION = re.compile(r"^auto start/stop (ARMED|DISARMED) by")
 TITLES = {
     "entry": "Trade entered", "exit": "Trade exited", "kill_daily": "Daily kill switch",
     "kill_weekly": "Weekly kill switch", "kill_streak": "Losing-streak halt",
-    "kill_drawdown": "Drawdown halt", "profit_lock": "Profit lock", "exit_failed": "EXIT FAILED",
+    "kill_drawdown": "Drawdown halt", "profit_lock": "Profit lock", "exit_failed": "EXIT FAILED", "stop_hit": "Stop hit",
+    "no_data": "NO DATA from the program", "data_back": "Data back",
     "crash": "Engine crashed", "crash_loop": "CRASH LOOP", "automation": "Automation",
     "holiday": "NSE holiday ahead", "test": "Test alert",
     # Sent by the desk's housekeeping (app/upkeep.py), not read from the journal.
@@ -131,6 +136,7 @@ class Notifier:
         self.sender = sender
         self.fleet = fleet
         self._task: asyncio.Task | None = None
+        self._silent: dict[str, bool] = {}
 
     def _sent(self) -> list[str]:
         return list(self.db.kv_get(SENT_KEY, None) or [])
@@ -148,7 +154,7 @@ class Notifier:
 
     def tick(self) -> int:
         """One pass. Returns alerts sent."""
-        if not any(channels().values()) and self.sender is send:
+        if not any(channels().values()) and not webpush.subscriptions(self.db) and self.sender is send:
             # Nothing configured: keep the cursor at the head so turning a channel on
             # later does not replay a backlog of old trades.
             head = max((e["id"] for e in self.db.events(limit=1)), default=0)
@@ -174,7 +180,51 @@ class Notifier:
             self.db.kv_set(CURSOR_KEY, max(e["id"] for e in events))
         sent += self._crash_loops(names)
         sent += self._holidays()
+        sent += self._no_data(names)
         return sent
+
+    def _no_data(self, names: dict, now=None) -> int:
+        """A running program that has written no status for NO_DATA_SEC in market hours, and when it is back.
+
+        A program writes its status every five seconds. Silence while it runs means it is
+        stuck (a hung Angel call, a frozen feed) and is not managing its trade.
+        """
+        from shared.db import snapshot_key
+        from shared.market_calendar import is_trading_day
+
+        if self.fleet is None:
+            return 0
+        now = now or now_ist()
+        open_now = (is_trading_day(now.date(), {h["day"] for h in self.db.holidays()})
+                    and (9, 15) <= (now.hour, now.minute) < (15, 30))
+        n = 0
+        try:
+            sups = self.fleet.all()
+        except Exception:
+            return 0
+        for algo_id, sup in sups.items():
+            st = sup.state
+            age = None
+            if open_now and st.running and st.started_ts and time.time() - st.started_ts > NO_DATA_GRACE_SEC:
+                snap = self.db.kv_get(snapshot_key(algo_id), None) or {}
+                try:
+                    seen = datetime.fromisoformat(str(snap.get("ts"))[:19])
+                    age = (now.replace(tzinfo=None) - seen).total_seconds()
+                except (TypeError, ValueError):
+                    age = float(time.time() - st.started_ts)
+            silent = age is not None and age > NO_DATA_SEC
+            was = self._silent.get(algo_id, False)
+            name = names.get(algo_id, algo_id)
+            if silent and not was:
+                self.sender(TITLES["no_data"], f"{name}{' (real money)' if st.mode == 'live' else ''}: no status for "
+                                               f"{int(age)} s. It may not be managing its trade. Check the Angel One app.",
+                            "no_data", "critical" if st.mode == "live" else "warn")
+                n += 1
+            elif was and not silent and st.running:
+                self.sender(TITLES["data_back"], f"{name} is writing its status again.", "data_back", "info")
+                n += 1
+            self._silent[algo_id] = silent
+        return n
 
     def _crash_loops(self, names: dict) -> int:
         from app import reliability

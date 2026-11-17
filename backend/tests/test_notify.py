@@ -15,7 +15,9 @@ from app import notify, reliability
 @pytest.mark.parametrize("message,source,kind", [
     ("[12:14:03] ENTER BUY CE 24500 (ITM) x1 lot (65 qty, lot 65) @ 150.00", "program", "entry"),
     ("[13:16:40] EXIT TRAIL  CE 24500 x65  150.00->210.96  P&L Rs 3962.250", "program", "exit"),
-    ("[14:43:05] EXIT SL@EXCH  CE 22700 x65  202.70->111.45  P&L Rs -5931.250", "program", "exit"),
+    ("[14:43:05] EXIT SL@EXCH  CE 22700 x65  202.70->111.45  P&L Rs -5931.250", "program", "stop_hit"),
+    ("[11:20:12] EXIT STOP  PE 24100 x65  180.00->99.00  P&L Rs -5352.000", "program", "stop_hit"),
+    ("[15:10:00] EXIT EOD  PE 24100 x65  180.00->199.00  P&L Rs 1180.000", "program", "exit"),
     ("[11:02:00] DAILY KILL — realised -Rs 12,400 today. Done for the day.", "program", "kill_daily"),
     ("[11:02:00] WEEKLY KILL — realised -Rs 25,100 this week. Done for the week.", "program", "kill_weekly"),
     ("[11:02:00] 4 losses in a row — pausing new entries for the day.", "program", "kill_streak"),
@@ -109,3 +111,44 @@ def test_secrets_never_leave_in_a_report(monkeypatch):
     monkeypatch.setenv("MERIDIAN_TELEGRAM_BOT_TOKEN", "123:secret")
     monkeypatch.setenv("MERIDIAN_TELEGRAM_CHAT_ID", "42")
     assert notify.channels() == {"telegram": True, "webhook": False}
+
+
+class _Sup:
+    def __init__(self, running=True, mode="live", started=0.0):
+        from types import SimpleNamespace
+        self.state = SimpleNamespace(running=running, mode=mode, started_ts=started)
+
+
+class _Fleet:
+    def __init__(self, sups):
+        self.sups = sups
+
+    def all(self):
+        return self.sups
+
+
+def test_a_program_that_goes_quiet_in_market_hours_is_reported_once_and_again_when_it_is_back(tmp_path):
+    import time
+
+    from shared.db import Database, snapshot_key
+
+    db = Database(tmp_path / "n.db")
+    got = []
+    sup = _Sup(started=time.time() - 600)
+    n = notify.Notifier(db, sender=lambda *a: got.append(a), fleet=_Fleet({"gk": sup}))
+    now = datetime(2026, 11, 17, 11, 0, 0)                      # a Tuesday, market open
+    db.kv_set(snapshot_key("gk"), {"ts": "2026-11-17T10:59:50"})
+    assert n._no_data({"gk": "Ganesh"}, now) == 0               # 10 s old: fine
+    db.kv_set(snapshot_key("gk"), {"ts": "2026-11-17T10:59:20"})
+    assert n._no_data({"gk": "Ganesh"}, now) == 1               # 40 s old: one alert
+    assert got[-1][0] == "NO DATA from the program" and got[-1][3] == "critical" and "40 s" in got[-1][1]
+    assert n._no_data({"gk": "Ganesh"}, now) == 0               # not repeated while it stays quiet
+    db.kv_set(snapshot_key("gk"), {"ts": "2026-11-17T10:59:58"})
+    assert n._no_data({"gk": "Ganesh"}, now) == 1 and got[-1][0] == "Data back"
+    db.kv_set(snapshot_key("gk"), {"ts": "2026-11-17T10:00:00"})
+    assert n._no_data({"gk": "Ganesh"}, datetime(2026, 11, 17, 16, 0)) == 0          # after the close: nothing
+    assert n._no_data({"gk": "Ganesh"}, datetime(2026, 11, 15, 11, 0)) == 0          # Sunday: nothing
+    fresh = notify.Notifier(db, sender=lambda *a: got.append(a), fleet=_Fleet({"gk": _Sup(started=time.time() - 30)}))
+    assert fresh._no_data({"gk": "Ganesh"}, now) == 0           # just started: still logging in
+    stopped = notify.Notifier(db, sender=lambda *a: got.append(a), fleet=_Fleet({"gk": _Sup(running=False)}))
+    assert stopped._no_data({"gk": "Ganesh"}, now) == 0

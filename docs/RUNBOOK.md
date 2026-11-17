@@ -73,7 +73,8 @@ If any step does not do what it says, do not trade real money until it does.
 ## 7. A new program version
 
 Three full paper sessions before real money. The algorithm's page shows the count for
-the active version, and the switch to real money warns when it is short.
+the active version, and the switch to real money warns when it is short. What each version
+changed and why is in `docs/PROGRAM_CHANGELOG.md`.
 
 ## 8. The quarterly study (read-only, two minutes)
 

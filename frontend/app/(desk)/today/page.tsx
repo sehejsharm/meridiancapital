@@ -1,15 +1,14 @@
 "use client";
 
-import Link from "next/link";
-
 import { ExitPlanCard } from "@/components/ExitPlan";
 import { NoTradeNotice } from "@/components/NoTradeNotice";
+import { TodayControls } from "@/components/TodayControls";
 import { Badge, Card, Empty } from "@/components/ui";
 import { minutes, money, pnlClass, signedMoney, signedPercent } from "@/lib/format";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { recordedAt, useDeskSnapshot } from "@/lib/recorded";
 
-/** The day on one phone screen: the P&L, the open trade with its stop, and the way to the controls. */
+/** The day on one phone screen: the P&L, the open trade with its stop, and the three controls. */
 export default function TodayPage() {
   const { status } = useLiveFeed();
   const { snapshot, live } = useDeskSnapshot();
@@ -52,11 +51,7 @@ export default function TodayPage() {
         <Card title="Open trade"><Empty>Flat. Nothing is held right now.</Empty></Card>
       )}
 
-      <div className="grid grid-cols-3 gap-2">
-        <Link href="/controls" className="rounded-md border border-critical/60 bg-critical/10 px-2 py-3 text-center text-xs font-semibold uppercase tracking-[0.1em] text-critical touch:min-h-[44px]">Stop / flatten</Link>
-        <Link href="/trades" className="rounded-md border border-hairline bg-surface-raised px-2 py-3 text-center text-xs font-semibold uppercase tracking-[0.1em] text-ink touch:min-h-[44px]">Trades</Link>
-        <Link href="/" className="rounded-md border border-hairline bg-surface-raised px-2 py-3 text-center text-xs font-semibold uppercase tracking-[0.1em] text-ink touch:min-h-[44px]">Full deck</Link>
-      </div>
+      <TodayControls holding={Boolean(pos)} />
     </div>
   );
 }
