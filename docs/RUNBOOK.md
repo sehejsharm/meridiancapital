@@ -101,15 +101,19 @@ stored page as if it were live. The trading program does not depend on the phone
 
 ## 10. A program without credentials in its file (v14 and later)
 
-From v14 the program file holds no Angel credentials. Before uploading one, the server must have all four lines in
-`/etc/meridian/meridian.env`, then `sudo systemctl restart meridian-api`:
+From v14 the program file holds no Angel credentials. Before uploading one, put them in the server's
+settings with one command (nothing to edit by hand; nothing is shown on screen):
 
+```bash
+cd ~/meridiancapital && git pull
+# copy them from the program already uploaded (v13 or older still has them written in):
+sudo /opt/meridian/backend/.venv/bin/python backend/scripts/set_angel_credentials.py --from-program
+# or, after rotating the keys at Angel, type the new ones:
+sudo /opt/meridian/backend/.venv/bin/python backend/scripts/set_angel_credentials.py
 ```
-ANGEL_API_KEY=...
-ANGEL_CLIENT_ID=...
-ANGEL_PASSWORD=...
-ANGEL_TOTP_SECRET=...
-```
+
+It writes `ANGEL_API_KEY`, `ANGEL_CLIENT_ID`, `ANGEL_PASSWORD` and `ANGEL_TOTP_SECRET` to
+`/etc/meridian/meridian.env`, checks the TOTP seed by making a code from it, and offers to restart the API.
 
 Reliability → Server shows whether they are set. With any missing, a v14 program stops at start-up and names what is
 missing; it places no order. Keep the previous version until one paper session has logged in and run.
