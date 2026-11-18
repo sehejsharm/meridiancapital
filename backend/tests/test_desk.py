@@ -447,7 +447,7 @@ def test_the_option_chain_explains_itself_while_a_program_trades(client, auth):
     from app.deps import ctx
 
     idle = client.get("/api/market/chain", headers=auth).json()
-    assert idle["available"] is False and "Start" in idle["reason"]
+    assert idle["available"] is False and "No program is publishing" in idle["reason"] and "one session per key" in idle["reason"]
 
     sup = ctx().fleet.get(next(iter(ctx().fleet.all())))
     sup.state.running = True

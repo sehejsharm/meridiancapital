@@ -191,6 +191,15 @@ class Upkeep:
                     "critical" if critical else "warn")
         return problems
 
+    def option_flow(self, now) -> bool:
+        """Keep a minute snapshot of a fresh chain for the option-flow view, with or without a viewer."""
+        from app import chain_flow, market
+
+        chain = self.db.kv_get(market.K_CHAIN, None)
+        if not chain or market._age(chain.get("ts")) is None or market._age(chain.get("ts")) > market.CHAIN_STALE_SEC:
+            return False
+        return chain_flow.record(self.db, chain)
+
     # ── the clock ────────────────────────────────────────────────────────────
     def tick(self, now=None) -> None:
         now = now or now_ist()
@@ -199,7 +208,7 @@ class Upkeep:
             self._guard("heartbeat", lambda: self.beat(now))
         for name, job in (("after-close check", self.after_close), ("weekly summary", self.weekly_summary),
                           ("journal retention", self.journal_retention), ("machine check", self.machine_warnings),
-                          ("backup watch", self.backup_watch)):
+                          ("backup watch", self.backup_watch), ("option flow", self.option_flow)):
             self._guard(name, lambda job=job: job(now))
 
     def _guard(self, name: str, job) -> None:

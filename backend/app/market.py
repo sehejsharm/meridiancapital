@@ -96,12 +96,17 @@ def option_chain(db) -> dict:
     chain = db.kv_get(K_CHAIN, None)
     if not chain:
         return {"available": False,
-                "reason": "The option chain streams through a running engine's Angel session. Start "
-                          "any strategy algorithm — paper is fine — during market hours."}
+                "reason": "No program is publishing the option chain. It comes from a running program's own "
+                          "Angel session: one that writes it (v16 and later) fills the chain, the option flow and "
+                          "the liquidity view. Do not start a second copy with the same Angel key to get it: "
+                          "Angel allows one session per key, so that would log the live program out."}
     age = _age(chain.get("ts"))
     stale = age is None or age > CHAIN_STALE_SEC
     if not stale:
         oi_baseline(db, chain)
+        from app import chain_flow
+
+        chain_flow.record(db, chain)   # one snapshot a minute, for the option-flow view
     return {"available": True, **chain, **chain_analytics(chain, db.kv_get(_open_key(chain), None)),
             "age_seconds": round(age, 1) if age is not None else None, "stale": stale}
 

@@ -73,7 +73,7 @@ def test_the_public_feed_is_asked_at_most_every_30_seconds(tmp_db):
 
 def test_no_chain_says_how_to_get_one(tmp_db):
     out = market.option_chain(tmp_db)
-    assert out["available"] is False and "engine" in out["reason"]
+    assert out["available"] is False and "one session per key" in out["reason"]  # never "start another copy"
 
 
 def test_an_old_chain_is_marked_stale(tmp_db):

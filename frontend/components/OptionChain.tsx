@@ -30,11 +30,14 @@ const compact = (v: number | null | undefined) => {
  * a standalone program opened — and its full detail sits above the table.
  * Greeks are derived from each live premium by Black–Scholes.
  */
-export function OptionChain() {
-  const [chain, setChain] = useState<ChainPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export function OptionChain({ feed }: { feed?: { chain: ChainPayload | null; error: string | null } } = {}) {
+  const [own, setChain] = useState<ChainPayload | null>(null);
+  const [ownError, setError] = useState<string | null>(null);
+  const chain = feed ? feed.chain : own;
+  const error = feed ? feed.error : ownError;
 
   useEffect(() => {
+    if (feed) return;   // the Deck's ChainSection fetches once for the chain, the flow and liquidity
     let alive = true;
     const load = async () => {
       try {
@@ -52,7 +55,7 @@ export function OptionChain() {
       alive = false;
       stop();
     };
-  }, []);
+  }, [feed]);
 
   const hl = chain?.highlight ?? null;
   const focus = useMemo(() => {

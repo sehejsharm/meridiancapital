@@ -30,6 +30,8 @@
   --watermark-opacity: 0.09;
 
   --series-1: #d4af37;
+  --series-call: #b38d1f;
+  --series-put: #3f7fd6;
   --status-good: #17a817;
   --status-warning: #fab219;
   --status-serious: #ec835a;
@@ -59,6 +61,8 @@
     --watermark-opacity: 0.05;
 
     --series-1: #82651f;
+    --series-call: #8a6510;
+    --series-put: #2f63b8;
     --status-good: #0c770c;
     --status-warning: #935905;
     --status-serious: #c02913;
@@ -87,6 +91,8 @@
   --watermark-opacity: 0.05;
 
   --series-1: #82651f;
+  --series-call: #8a6510;
+  --series-put: #2f63b8;
   --status-good: #0c770c;
   --status-warning: #935905;
   --status-serious: #c02913;

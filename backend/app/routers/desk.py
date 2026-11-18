@@ -68,6 +68,17 @@ async def market_chain() -> dict:
     return out
 
 
+@router.get("/market/flow")
+async def market_flow() -> dict:
+    """The day's option flow: premium traded per minute in calls and puts, and positioning by strike."""
+    from app import chain_flow, market
+
+    c = ctx()
+    chain = c.db.kv_get(market.K_CHAIN, None)
+    day = str((chain or {}).get("ts") or now_ist().isoformat())[:10]
+    return chain_flow.for_day(c.db, day)
+
+
 @router.get("/market/expiry-outlook")
 async def market_expiry_outlook(algo: str | None = Query(None, max_length=80)) -> dict:
     """Whether the program can trade today and on the coming days, given its own expiry window."""

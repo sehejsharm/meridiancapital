@@ -9,6 +9,7 @@ rejections, its own warnings — appears in the journal and the live tape.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import time
 
@@ -34,6 +35,10 @@ _SECRET_FIELD = re.compile(
     r"""(['"]?(?:X-PrivateKey|privateKey|api_key|jwtToken|refreshToken|feedToken|totp|password)['"]?\s*[:=]\s*['"]?)[^'",\s}]+""",
     re.I,
 )
+
+
+CHAIN_FILE = "gk50k_chain.json"   # written by a program that publishes its chain (v16 and later)
+CHAIN_FRESH_SEC = 60.0
 
 
 def redact(line: str) -> str:
@@ -97,6 +102,7 @@ class ProgramOutput:
                 continue
             if running:
                 self.publish_status(algo_id, sup)
+                self.publish_chain(algo_id, sup)
             try:
                 size = sup.outfile.stat().st_size
             except OSError:
@@ -364,6 +370,32 @@ class ProgramOutput:
             return False
 
     RULES_RETRY_SEC = 30.0
+
+    def publish_chain(self, algo_id: str, sup) -> bool:
+        """A program's own option chain (``gk50k_chain.json`` beside it), for the chain and flow views.
+
+        Only a program that writes the file (none before v16) publishes one; the desk reads it,
+        never asks Angel itself while the market is open. Never raises.
+        """
+        try:
+            from app import chain_flow
+            from engine.market_feed import K_CHAIN
+
+            path = sup.program_path.parent / CHAIN_FILE if sup.program_path else None
+            if path is None or not path.exists() or time.time() - path.stat().st_mtime > CHAIN_FRESH_SEC:
+                return False
+            chain = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(chain, dict) or not chain.get("rows") or not chain.get("ts"):
+                return False
+            current = self.db.kv_get(K_CHAIN, None) or {}
+            if str(current.get("ts") or "") >= str(chain["ts"]):
+                return False
+            chain["publisher"] = algo_id
+            self.db.kv_set(K_CHAIN, chain)
+            chain_flow.record(self.db, chain)
+            return True
+        except Exception:
+            return False
 
     def _rule_set(self, algo: dict, pid) -> exit_rules.RuleSet | None:
         """The exit rules the running process printed at startup (else its code's), read once per run."""

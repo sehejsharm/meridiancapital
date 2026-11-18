@@ -18,7 +18,7 @@ import { RunModeDialog } from "@/components/RunModeDialog";
 import { StalenessMonitor } from "@/components/StalenessMonitor";
 import { TradingViewChart } from "@/components/TradingViewChart";
 import { NiftyChart } from "@/components/NiftyChart";
-import { OptionChain } from "@/components/OptionChain";
+import { ChainSection } from "@/components/ChainSection";
 import { ConfigDriftNotice } from "@/components/ProgramConfig";
 import { CountUpMoney } from "@/components/CountUp";
 import { Sparkline } from "@/components/Sparkline";
@@ -287,7 +287,7 @@ export default function DeckPage() {
             {chartView === "native" ? <NiftyChart height={380} /> : <TradingViewChart height={380} />}
           </Card>
 
-          <OptionChain />
+          <ChainSection />
 
           <Card
             title="Day's trading P&L"

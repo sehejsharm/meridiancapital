@@ -32,6 +32,8 @@ const config: Config = {
         serious: role("--status-serious"),
         critical: role("--status-critical"),
         series: role("--series-1"),
+        call: role("--series-call"),
+        put: role("--series-put"),
         profit: role("--profit"),
         loss: role("--loss"),
         brand: role("--brand"),
