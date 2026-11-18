@@ -609,6 +609,8 @@ export interface TickerPayload {
 
 // ── reports ──────────────────────────────────────────────────────────────────
 export interface ReportSummary {
+  /** How the period fits with every real-money trade (null for a paper-only period). */
+  context?: import("./reportContext").ReportContext | null;
   /** Whose money the figures are: real money whenever the period has any. */
   scope?: "real money" | "paper";
   /** Trades listed in the report but outside those figures (paper beside real). */

@@ -39,12 +39,34 @@ def thin(points: list[dict], limit: int) -> list[dict]:
     return out
 
 
+def context(db, every: list[dict], start: str, end: str) -> dict:
+    """How the period's real-money figures fit with all of them (the Blotter's headline).
+
+    Every real-money trade is in exactly one of: before the period, in it, after it.
+    The three add up to the all-time figures, computed the same way the Blotter does.
+    """
+    rows = ledger.reconcile(db, [t for t in every if t.get("mode") == "live" and t.get("exit_ts")])
+
+    def part(ts: list[dict]) -> dict:
+        st = ledger.stats(ts)
+        return {"trades": st["n"], "net": st["net"], "wins": st["wins"],
+                "win_rate_pct": round(100.0 * st["win_rate"], 2) if st["n"] else None,
+                "first": min((t["session_date"] for t in ts), default=None),
+                "last": max((t["session_date"] for t in ts), default=None)}
+
+    day = lambda t: str(t.get("session_date") or "")  # noqa: E731
+    return {
+        "before": part([t for t in rows if day(t) < start]),
+        "period": part([t for t in rows if start <= day(t) <= end]),
+        "after": part([t for t in rows if day(t) > end]),
+        "all": part(rows),
+    }
+
+
 def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
                   max_points: int | None = None, with_equity: bool = True) -> dict:
-    trades = [
-        t for t in db.trades(limit=5000, algo_id=algo_id)
-        if start <= (t.get("session_date") or "") <= end
-    ]
+    every = db.trades(limit=5000, algo_id=algo_id)
+    trades = [t for t in every if start <= (t.get("session_date") or "") <= end]
     # Real-money trades carry Angel's own charges and net (its ledger); the
     # figures the program recorded stay beside them for the record.
     trades = ledger.reconcile(db, trades)
@@ -78,12 +100,16 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
     # the raw balance it counted money taken out of the account as a loss (a
     # "92.54%" drawdown on the day funds left), and an open trade's paper high
     # as a peak.
+    # The percentage is of the period's usual opening balance (the median of its
+    # sessions' openings). Of the first session's opening alone it read "240.62%"
+    # when that morning's balance was low because money was moving in or out.
     start_balance = None
     if curve_algo:
         opens = ledger.openings(db, curve_algo)
-        first_day = next((d for d in sorted(opens) if start <= d <= end), None)
-        if first_day is not None and opens[first_day] is not None:
-            start_balance = float(opens[first_day])
+        in_period = sorted(float(v) for d, v in opens.items() if start <= d <= end and v is not None and float(v) > 0)
+        if in_period:
+            mid = len(in_period) // 2
+            start_balance = in_period[mid] if len(in_period) % 2 else (in_period[mid - 1] + in_period[mid]) / 2
     in_order = sorted(closed, key=lambda t: (t.get("exit_ts") or "").replace(" ", "T"))
     cum, high, max_dd_rs, max_dd_pct = 0.0, 0.0, 0.0, 0.0
     pnl_curve = []
@@ -92,7 +118,7 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
         high = max(high, cum)
         max_dd_rs = max(max_dd_rs, high - cum)
         if start_balance:
-            max_dd_pct = max(max_dd_pct, (high - cum) / (start_balance + high))
+            max_dd_pct = max(max_dd_pct, (high - cum) / start_balance)
         pnl_curve.append({"ts": (t.get("exit_ts") or "").replace(" ", "T"), "equity": round(cum, 2),
                           "day_pl": round(float(t.get("net") or 0.0), 2), "realised_today": None, "peak_equity": None})
 
@@ -102,6 +128,7 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
     events = db.events(limit=2000, algo_id=algo_id, date_from=start, date_to=end)
 
     summary = {
+        "context": context(db, every, start, end) if live else None,
         "scope": scope,
         "not_counted": len(trades) - len(counted),
         "trades": len(closed),
@@ -119,6 +146,7 @@ def build_payload(db, algo_id: str | None, start: str, end: str, title: str,
         "total_charges": round(sum(float(t.get("charges") or 0.0) for t in closed), 2),
         "max_drawdown_rs": round(max_dd_rs, 2),
         "max_drawdown_pct": round(100.0 * max_dd_pct, 2) if start_balance else None,
+        # The balance the percentage is of: the period's median opening balance.
         "start_balance": round(start_balance, 2) if start_balance else None,
         "errors": sum(1 for e in events if e.get("level") in ("error", "critical")),
         # Reconciliation, one category per real-money trade (never a trade in two).

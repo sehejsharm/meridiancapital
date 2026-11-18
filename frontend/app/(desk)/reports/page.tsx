@@ -7,6 +7,7 @@ import { TaxPnl } from "@/components/TaxPnl";
 import { TearSheetCard } from "@/components/TearSheetCard";
 import { Badge, Button, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
+import { contextNote, contextRows } from "@/lib/reportContext";
 import { fetchAlgos } from "@/lib/algos";
 import { dayLabel, istDateTime, istTime, money, pnlClass, signedMoney } from "@/lib/format";
 import type { AlgoList, ReportPayload } from "@/lib/types";
@@ -155,9 +156,23 @@ export default function ReportsPage() {
             <StatTile
               label="Max drawdown, trading"
               value={s.max_drawdown_rs != null ? signedMoney(-s.max_drawdown_rs) : "—"}
-              hint={s.max_drawdown_pct != null ? `${s.max_drawdown_pct.toFixed(2)}% from its high` : undefined}
+              hint={s.max_drawdown_pct != null && s.start_balance
+                ? `fall from the period's best point · ${s.max_drawdown_pct.toFixed(2)}% of the usual ${money(s.start_balance)} balance`
+                : "fall from the period's best point"}
             />
           </div>
+
+          {s.context && (
+            <Card title="How this matches the Blotter" subtitle={contextNote(s.context) ?? "These dates cover every real-money trade, so the figures are the Blotter's."}>
+              <ul className="space-y-1.5 text-xs">
+                {contextRows(s.context, report?.start ?? start, report?.end ?? end).map((r) => (
+                  <li key={r.label} className={r.strong ? "border-t border-hairline pt-1.5 font-semibold text-ink" : "text-ink-secondary"}>
+                    {r.label === "all" ? "= " : r.label === "before" ? "" : "+ "}{r.text}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile label="Average trade" value={signedMoney(s.average_trade)} />

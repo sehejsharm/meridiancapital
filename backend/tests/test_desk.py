@@ -460,3 +460,39 @@ def test_the_option_chain_explains_itself_while_a_program_trades(client, auth):
     assert out["available"] is False
     assert "Your program" in out["reason"] and "request budget" in out["reason"]
     assert "program" in out, "the panel shows the program's own contract instead of an empty box"
+
+
+def test_a_period_report_says_how_it_adds_up_to_every_real_money_trade(client, auth):
+    """Reports covers chosen dates; the Blotter every trade. The split makes the two meet."""
+    from app.deps import ctx
+
+    db = ctx().db
+
+    def live(day, net):
+        db.add_trade({"entry_ts": f"{day}T10:30:00", "exit_ts": f"{day}T11:30:00", "session_date": day, "mode": "live",
+                      "side": "CE", "strike": 25500, "expiry": day, "tsym": "NIFTY", "lots": 1, "qty": 65,
+                      "entry_prem": 150.0, "exit_prem": 150.0 + (net + 70) / 65, "gross": net + 70, "charges": 70.0,
+                      "net": net, "reason": "TRAIL", "algo_id": "og"})
+
+    for day, net in (("2026-09-10", 3000.0), ("2026-09-11", -1000.0),                  # before the period
+                     ("2026-10-20", -2000.0), ("2026-10-21", 500.0), ("2026-10-22", -4000.0),  # in it
+                     ("2026-11-20", 1000.0)):                                            # after it
+        live(day, net)
+    # Openings in the period: 40,000 most days, 8,000 on a morning money was moving (a fund transfer).
+    for day, bal in (("2026-10-20", 40000), ("2026-10-21", 8000), ("2026-10-22", 40000)):
+        db.add_equity_sample(day, bal, 0, bal, 0, algo_id="og")
+
+    s = client.get("/api/reports", params={"start": "2026-10-19", "end": "2026-11-18"}, headers=auth).json()["summary"]
+    c = s["context"]
+    assert (c["period"]["trades"], c["period"]["net"]) == (3, -5500.0)
+    assert (c["before"]["trades"], c["before"]["net"], c["before"]["last"]) == (2, 2000.0, "2026-09-11")
+    assert (c["after"]["trades"], c["after"]["net"]) == (1, 1000.0)
+    assert (c["all"]["trades"], c["all"]["net"]) == (6, -2500.0)
+    assert c["before"]["net"] + c["period"]["net"] + c["after"]["net"] == c["all"]["net"]
+    blotter = client.get("/api/trades", headers=auth).json()["stats"]
+    assert (blotter["n"], blotter["net"]) == (c["all"]["trades"], c["all"]["net"])   # the Blotter's headline
+    assert c["period"]["win_rate_pct"] == pytest.approx(33.33) and c["all"]["win_rate_pct"] == pytest.approx(50.0)
+    # In order: -2,000, +500, -4,000 falls 5,500 below the starting high of 0. As a share of the usual
+    # 40,000 opening that is 13.75%; of the 8,000 transfer-morning balance it would read 68.75%.
+    assert s["start_balance"] == pytest.approx(40000.0)
+    assert s["max_drawdown_rs"] == pytest.approx(5500.0) and s["max_drawdown_pct"] == pytest.approx(13.75)

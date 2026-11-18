@@ -7,6 +7,7 @@ import { EquityChart, type ChartPoint } from "@/components/EquityChart";
 import { Badge, Card, Empty, StatTile } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
 import { matchLine, matchOf } from "@/lib/blotter";
+import { blotterScope } from "@/lib/reportContext";
 import { dayLabel, minutes, money, percent, signedMoney, signedPercent, tradeTime } from "@/lib/format";
 import type { DailyEquityPoint, TradeRow, TradeStats } from "@/lib/types";
 import { pollWhileVisible } from "@/lib/pollWhileVisible";
@@ -70,6 +71,7 @@ export default function BlotterPage() {
   }));
   const provisionalDay = daily.find((d) => d.source === "recorded");
   const split = balanceSplit(daily, trades);
+  const firstLive = trades.filter((t) => t.mode === "live" && t.exit_ts).map((t) => t.session_date).sort()[0] ?? null;
 
   return (
     <div className="space-y-5">
@@ -94,6 +96,12 @@ export default function BlotterPage() {
           />
           <StatTile label="Average hold" value={minutes(stats.avg_hold)} />
         </section>
+      )}
+      {stats && (
+        <p className="-mt-2 text-2xs leading-relaxed text-ink-muted">
+          {blotterScope(stats.n, firstLive)}{" "}
+          <Link href="/reports" className="text-brand">Reports</Link>
+        </p>
       )}
 
       <Card
@@ -120,8 +128,14 @@ export default function BlotterPage() {
             <span className="text-ink">{signedMoney(split.traded)}</span> + money in/out (deposits, withdrawals,
             fees){" "}
             <span className="text-ink">{signedMoney(split.moved)}</span>.
-            {Math.abs(split.before) >= 0.005 &&
-              ` The trading P&L above also counts ${signedMoney(split.before)} from trades on or before ${split.from}.`}
+            {Math.abs(split.before) >= 0.005 && stats && (
+              <>
+                {" "}The chart starts at the {split.from} close, so it leaves out{" "}
+                <span className="text-ink">{signedMoney(split.before)}</span> from trades on or before that day:{" "}
+                {signedMoney(split.traded)} + {signedMoney(split.before)} ={" "}
+                <span className="text-ink">{signedMoney(split.traded + split.before)}</span>, the trading P&amp;L at the top.
+              </>
+            )}
           </p>
         )}
       </Card>
