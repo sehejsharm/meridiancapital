@@ -22,6 +22,8 @@ record) and *minute-close* (optimistic). A change goes in only if it helps under
 | v12 | Config #5 v8 | Buys two strikes in the money (was one); one lot per ₹50,000 of balance; at most 50% of the balance per trade | Two strikes in the money was the only entry change of 65 tested that passed every test, under both fill models and in the later years | Self-test 192/192 |
 | v13 | Config #5 v9 | Reads a control file from the desk: halt new entries while running; "sell now, keep running" (exit reason MANUAL) | Halting or selling used to mean stopping the program | Self-test 201/201 |
 | v14 | Config #5 v10 | No Angel credentials in the file (read from the server's settings); exit settings can be set from Controls in a file read once at start | Credentials in an uploaded, stored file; exit changes needed a new upload | Self-test 214/214; with no settings file every exit and sizing decision is identical to v13 (644 comparisons) |
+| v15 | Config #5 v11 | v14 with the Angel credentials written back into the file (the server's settings still win when set), at the owner's request | The server had no credentials yet, so v14 could not start | Self-test 214/214; identical to v14 apart from the credentials and labels |
+| v16 | Config #5 v12 | Writes the option chain beside itself every 15 s for the dashboard (chain, option flow, liquidity), on its own thread with its own rate limit on Angel's quote endpoint. Display only: places nothing, reads no trading state | The chain came only from the retired built-in engine | Self-test 228/228; all 96 functions and classes and every setting identical to v15; the trading loop gains only the hand-off lines |
 
 ## Studies that changed nothing
 
