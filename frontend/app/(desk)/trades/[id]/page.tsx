@@ -48,7 +48,7 @@ export default function TradePage({ params }: { params: Promise<{ id: string }> 
         subtitle={`${d.algo_name} · ${t.mode === "live" ? "real money" : "paper"} · ${tradeTime(t.entry_ts)} → ${t.exit_ts ? tradeTime(t.exit_ts) : "open"}`}
         action={net != null ? <Badge tone={net > 0 ? "good" : "critical"}>{net > 0 ? "Win" : "Loss"}</Badge> : <Badge>Open</Badge>}
       >
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <div className="text-2xs uppercase tracking-[0.14em] text-ink-muted">Result after charges</div>
             <div className={`mt-1 text-3xl font-semibold tabular-nums ${pnlClass(net)}`}>{signedMoney(net)}</div>
@@ -78,7 +78,7 @@ export default function TradePage({ params }: { params: Promise<{ id: string }> 
         <PathChart d={d} />
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title="What each exit rule set would have done" subtitle="The same entry, replayed minute by minute over this trade's own prices">
           {!d.rules || !Object.keys(d.rules.rules).length ? (
             <Empty>No price path is on record for this trade, so the rule sets cannot be replayed.</Empty>

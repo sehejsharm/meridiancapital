@@ -46,6 +46,7 @@ test("mirrored flow bars share one rupee scale", () => {
 
 test("words and units", () => {
   assert.equal(rupeesCompact(12345678), "₹1.23Cr");
+  assert.equal(rupeesCompact(90287900000), "₹9,029Cr");                // a phone-width figure, not ₹9028.79Cr
   assert.equal(rupeesCompact(450000), "₹4.50L");
   assert.equal(rupeesCompact(-12300), "−₹12.3K");
   assert.equal(READING.short_buildup.short, "New writers");

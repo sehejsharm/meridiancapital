@@ -148,7 +148,7 @@ export default function AlgoDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card title="Control">
           <dl className="divide-y divide-hairline">
             <Field

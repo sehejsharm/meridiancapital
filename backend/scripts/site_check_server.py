@@ -50,6 +50,34 @@ db.add_event("ok", "[10:30:01] ENTER BUY CE 25500 (ITM) x1 lot @ 150.00", source
 with open(os.path.join(data, "trade_id"), "w", encoding="utf-8") as fh:
     fh.write(str(trade_id))
 
+# A made-up option chain and an hour of its minute snapshots, so the option-flow and liquidity
+# panels draw (and are checked at phone width) instead of showing "no chain".
+from datetime import timedelta  # noqa: E402
+
+from app import chain_flow  # noqa: E402
+from engine.market_feed import K_CHAIN  # noqa: E402
+
+
+def _chain(ts, frac):
+    spot, rows = 25327.4, []
+    for k in range(24950, 25701, 50):
+        w = 2.718 ** (-((k - spot) / 220) ** 2)
+        side = lambda tok, p, v, o: {"tsym": tok, "token": tok, "ltp": round(p, 2), "volume": int(v), "oi": int(o),  # noqa: E731
+                                     "bid": round(p * 0.995, 2), "ask": round(p * 1.005, 2), "iv": 12.0, "delta": 0.5}
+        ce = max(2.0, spot - k + 90 * w) if k < spot else max(2.0, 90 * w)
+        pe = max(2.0, k - spot + 90 * w) if k > spot else max(2.0, 90 * w)
+        rows.append({"strike": k, "ce": side(f"C{k}", ce * (1 + 0.04 * frac), (2e7 * w + 1e6) * frac, 3e7 * (0.4 + w)),
+                     "pe": side(f"P{k}", pe * (1 - 0.03 * frac), (1.7e7 * w + 1e6) * frac, 3e7 * (0.4 + w))})
+    return {"ts": ts.isoformat(timespec="seconds"), "spot": spot, "expiry": "2026-11-24", "dte": 3, "atm": 25350,
+            "lot": 65, "highlight": None, "rows": rows, "model": "made up for the site check"}
+
+
+_now = now_ist().replace(tzinfo=None, microsecond=0)
+for _m in range(60, 0, -1):
+    chain_flow.record(db, _chain(_now - timedelta(minutes=_m), (61 - _m) / 60))
+db.kv_set(K_CHAIN, _chain(_now, 1.0))
+chain_flow.record(db, _chain(_now, 1.0))
+
 import uvicorn  # noqa: E402
 
 uvicorn.run("app.main:app", host="127.0.0.1", port=8090, log_level="warning")

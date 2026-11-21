@@ -374,7 +374,7 @@ function ProgramPanel({ program }: { program: ProgramContract }) {
   return (
     <div className="space-y-4">
       {n ? (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {([["call", "Upward breakout", "above", n.call] as const, ["put", "Downward breakout", "below", n.put] as const]).map(
             ([key, title, dir, leg]) => (
               <div key={key} className="rounded-md border border-hairline p-3">

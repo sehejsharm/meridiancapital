@@ -260,8 +260,10 @@ export default function DeckPage() {
         )}
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[3fr_2fr]">
-        <div className="space-y-5">
+      {/* grid-cols-1 and min-w-0 are load-bearing on a phone: without them a wide chart or table sizes
+          the column past the screen, and the page (which clips sideways overflow) cuts the cards off. */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[3fr_2fr]">
+        <div className="min-w-0 space-y-5">
           <Card
             title="NIFTY 50"
             subtitle={chartView === "native" ? "Today, one-minute candles" : "TradingView"}
@@ -307,7 +309,7 @@ export default function DeckPage() {
           </Card>
         </div>
 
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           {live && <ExitPlanCard position={snapshot?.position ?? null} />}
           {account?.money && (
             <AngelBalance m={account.money} recorded={!live} position={snapshot?.position ?? null} />

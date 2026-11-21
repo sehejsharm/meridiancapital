@@ -69,7 +69,7 @@ export default function ReportsPage() {
   return (
     <div className="space-y-5">
       <Card title="Report" subtitle="Everything recorded for the period, on screen and in the download">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="flex flex-col gap-1">
             <span className="text-2xs uppercase tracking-[0.12em] text-ink-muted">Algorithm</span>
             <select
@@ -135,7 +135,7 @@ export default function ReportsPage() {
 
       {s && (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
               label={s.scope ? `Trading P&L, ${s.scope}` : "Trading P&L"}
               value={signedMoney(s.net_pnl)}
@@ -174,14 +174,14 @@ export default function ReportsPage() {
             </Card>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile label="Average trade" value={signedMoney(s.average_trade)} />
             <StatTile label="Largest win" value={signedMoney(s.largest_win)} />
             <StatTile label="Largest loss" value={signedMoney(s.largest_loss)} />
             <StatTile label="Charges paid" value={money(s.total_charges)} hint={`${s.open_trades} still open`} />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {s.scope === "real money" && (
               <StatTile
                 label="Reconciled to Angel"
@@ -311,7 +311,7 @@ export default function ReportsPage() {
         </>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <TearSheetCard algoId={algoId} />
         <TaxPnl />
       </div>

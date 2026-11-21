@@ -33,7 +33,7 @@ export const READING: Record<Reading, { short: string; long: string }> = {
 export function rupeesCompact(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return "—";
   const a = Math.abs(v);
-  const body = a >= 1e7 ? `${(a / 1e7).toFixed(2)}Cr` : a >= 1e5 ? `${(a / 1e5).toFixed(2)}L` : a >= 1e3 ? `${(a / 1e3).toFixed(1)}K` : a.toFixed(0);
+  const body = a >= 1e10 ? `${Math.round(a / 1e7).toLocaleString("en-IN")}Cr` : a >= 1e7 ? `${(a / 1e7).toFixed(2)}Cr` : a >= 1e5 ? `${(a / 1e5).toFixed(2)}L` : a >= 1e3 ? `${(a / 1e3).toFixed(1)}K` : a.toFixed(0);
   return `${v < 0 ? "−" : ""}₹${body}`;
 }
 

@@ -36,7 +36,7 @@ export function PositionPanel({ position }: { position: Position | null }) {
         </Badge>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div>
           <div className="text-2xs uppercase tracking-[0.14em] text-ink-muted">Unrealised</div>
           <div className={`mt-1 text-3xl font-semibold tabular-nums ${pnlClass(position.unrealised)}`}>

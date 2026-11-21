@@ -93,17 +93,15 @@ export function MarketLiquidity({ chain, error }: { chain: ChainPayload | null; 
             <p className="mb-1 min-h-8 text-2xs tabular-nums text-ink-secondary" aria-live="polite">
               {shown
                 ? `${shown.strike} · calls ${count(shown.ceVol / lot)} lots traded, ${count(shown.ceOi / lot)} open, spread ${pct(shown.ceSpread)} · puts ${count(shown.peVol / lot)} lots traded, ${count(shown.peOi / lot)} open, spread ${pct(shown.peSpread)}`
-                : "Point at a strike for its figures."}
+                : "Tap or point at a strike for its figures."}
             </p>
-            <div ref={box}>
+            <div ref={box} className="min-w-0">
             <svg
               viewBox={`0 0 ${W} ${H}`}
-              width={W}
-              height={H}
-              className="block h-auto w-full"
+              className="block h-auto w-full max-w-full"
               role="img"
               aria-label={`Volume and open interest across ${rows.length} strikes; busiest ${sum.busiest ? `${sum.busiest.strike} ${sum.busiest.side}` : "none"}`}
-              onMouseLeave={() => setHover(null)}
+              onPointerLeave={(e) => { if (e.pointerType === "mouse") setHover(null); }}
             >
               <defs>
                 <linearGradient id="liq-ce" x1="0" y1="1" x2="0" y2="0">
@@ -131,7 +129,7 @@ export function MarketLiquidity({ chain, error }: { chain: ChainPayload | null; 
                 const peH = (r.peVol / geo.maxVol) * half;
                 const dim = hover != null && hover !== i;
                 return (
-                  <g key={r.strike} opacity={dim ? 0.35 : 1} onMouseEnter={() => setHover(i)}>
+                  <g key={r.strike} opacity={dim ? 0.35 : 1} onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)}>
                     <rect x={cx - geo.slot / 2} y={0} width={geo.slot} height={H} fill="transparent" />
                     <rect x={cx - oiW / 2} y={geo.mid - 1 - ceOiH} width={oiW} height={ceOiH} rx={3} fill="var(--series-call)" opacity={0.13} />
                     <rect x={cx - oiW / 2} y={geo.mid + 1} width={oiW} height={peOiH} rx={3} fill="var(--series-put)" opacity={0.13} />

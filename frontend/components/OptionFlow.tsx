@@ -45,7 +45,7 @@ export function OptionFlow({ flow, spot, atm, error }: { flow: FlowPayload | nul
         <Empty>{flow.reason ?? "Option flow builds up once the chain has been read for two minutes."}</Empty>
       ) : (
         <div className="space-y-5">
-          <dl className="grid grid-cols-3 gap-3 text-xs">
+          <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
             <div className="min-w-0">
               <dt className="flex items-center gap-1.5 text-ink-muted"><Swatch side="ce" /> Calls traded</dt>
               <dd className="text-base font-semibold tabular-nums text-ink">{rupeesCompact(t?.ce)}</dd>
@@ -62,16 +62,21 @@ export function OptionFlow({ flow, spot, atm, error }: { flow: FlowPayload | nul
 
           <div>
             <p className="mb-1 min-h-4 text-2xs tabular-nums text-ink-secondary" aria-live="polite">
-              {shown ? `${shown.t} · calls ${rupeesCompact(shown.ce)} · puts ${rupeesCompact(shown.pe)}` : `Busiest minute: ${rupeesCompact(geo.max)} of premium. Point at a bar for its minute.`}
+              {shown ? `${shown.t} · calls ${rupeesCompact(shown.ce)} · puts ${rupeesCompact(shown.pe)}` : `Busiest minute: ${rupeesCompact(geo.max)} of premium. Tap or point at a bar for its minute.`}
             </p>
             <svg
               viewBox={`0 0 ${W} ${H}`}
               preserveAspectRatio="none"
-              className="block h-40 w-full"
+              className="block h-40 w-full max-w-full touch-pan-y"
               role="img"
               aria-label={`Premium traded per minute: calls ${rupeesCompact(t?.ce)}, puts ${rupeesCompact(t?.pe)} in total`}
-              onMouseLeave={() => setHover(null)}
-              onMouseMove={(e) => {
+              onPointerLeave={(e) => { if (e.pointerType === "mouse") setHover(null); }}
+              onPointerDown={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                const i = Math.floor(((e.clientX - r.left) / r.width) * geo.bars.length);
+                setHover(Math.max(0, Math.min(geo.bars.length - 1, i)));
+              }}
+              onPointerMove={(e) => {
                 const r = e.currentTarget.getBoundingClientRect();
                 const i = Math.floor(((e.clientX - r.left) / r.width) * geo.bars.length);
                 setHover(Math.max(0, Math.min(geo.bars.length - 1, i)));

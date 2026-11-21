@@ -33,11 +33,15 @@ const WIDTHS = [[390, 844], [1366, 900]];
       const res = await page.goto(BASE + path, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(2500);
       const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      // The page clips sideways overflow, so a too-wide card never scrolls: it is cut off. Look for that directly.
+      const cut = await page.evaluate(() => [...document.querySelectorAll("#main section, #main svg, #main table")]
+        .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.right > window.innerWidth + 1; })
+        .map((e) => (e.querySelector("header") || e).textContent.trim().slice(0, 40)));
       const onLogin = new URL(page.url()).pathname.startsWith("/login");
       const words = (await page.evaluate(() => document.body.innerText)).trim().length;
-      const bad = errors.length > 0 || sideways > 1 || onLogin || !res || res.status() >= 400 || words < 40;
+      const bad = errors.length > 0 || sideways > 1 || cut.length > 0 || onLogin || !res || res.status() >= 400 || words < 40;
       if (bad) failures += 1;
-      console.log(`${bad ? "FAIL" : "ok  "} ${width}px ${path}  status ${res ? res.status() : "none"}  page errors ${errors.length}  sideways ${sideways}px${onLogin ? "  (sent to sign-in)" : ""}${errors[0] ? "  " + errors[0] : ""}`);
+      console.log(`${bad ? "FAIL" : "ok  "} ${width}px ${path}  status ${res ? res.status() : "none"}  page errors ${errors.length}  sideways ${sideways}px${cut.length ? `  CUT OFF: ${cut.slice(0, 3).join(" | ")}` : ""}${onLogin ? "  (sent to sign-in)" : ""}${errors[0] ? "  " + errors[0] : ""}`);
       await page.close();
     }
     await ctx.close();

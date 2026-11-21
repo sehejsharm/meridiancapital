@@ -169,7 +169,7 @@ export default function JournalPage() {
 
       <LogDownload algoId={scope === ALL ? undefined : scope} day={day} onDay={setDay} />
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <EventFeed
           events={events}
           limit={1000}

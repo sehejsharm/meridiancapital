@@ -87,7 +87,7 @@ export default function AnalyticsPage() {
         <EquityUnderwater curve={curve} />
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title="Rolling win rate" subtitle="Share of the last 10 trades that won">
           <Sparkline values={winRate.map((v) => (v == null ? null : v * 100))} height={90} className="text-brand" label="Rolling win rate" />
         </Card>
@@ -100,7 +100,7 @@ export default function AnalyticsPage() {
         <Heatmap daily={daily} />
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title="By entry hour" subtitle="When the trade was entered, IST">
           <Buckets buckets={byEntryHour(trades)} />
         </Card>
@@ -116,7 +116,7 @@ export default function AnalyticsPage() {
         <Buckets buckets={byDaysToExpiry(trades)} />
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card
           title="Risk of ruin — Monte Carlo"
           subtitle={sim ? `${sim.paths.toLocaleString("en-IN")} paths of the next ${sim.horizon} sessions, resampling the ${trades.length} trades so far` : undefined}

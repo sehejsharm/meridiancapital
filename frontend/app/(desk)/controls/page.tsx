@@ -112,7 +112,7 @@ export default function ControlsPage() {
 
       <EmergencyStop onDone={refresh} />
 
-      <div className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 2xl:grid-cols-3">
         {!status?.builtin_retired && (
         <Card
             title="Built-in engine"
