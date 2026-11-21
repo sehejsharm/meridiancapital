@@ -107,3 +107,43 @@ def test_stable_status_drops_only_the_clocks():
          "fleet": {"algos": [{"uptime_sec": 9, "mode": "live", "restart_backoff_remaining": 3}]}}
     assert hub_mod.stable_status(s) == {"engine": {"running": True, "pid": 1}, "schedule": {"last_tick": "y"},
                                         "fleet": {"algos": [{"mode": "live"}]}}
+
+
+def test_the_hello_always_comes_before_any_broadcast(tmp_db):
+    """A broadcast fired while a new socket's hello is being built waits for it, and still reaches it."""
+    h = hub_mod.Hub(tmp_db, status_provider=lambda: {"engine": {"running": False}})
+    ws = FakeSocket()
+    real_full_state = h._full_state
+
+    async def slow_full_state():
+        # A status change lands while the hello is still being put together (a busy server).
+        asyncio.get_running_loop().create_task(h.broadcast({"type": "status", "data": {"n": 1}}))
+        await asyncio.sleep(0.05)
+        return await real_full_state()
+
+    h._full_state = slow_full_state
+
+    async def scenario():
+        await h.connect(ws)
+        await asyncio.sleep(0.1)
+
+    asyncio.run(scenario())
+    assert [m["type"] for m in ws.sent] == ["hello", "status"], "the hello first, then the change, nothing missed"
+
+
+def test_a_socket_that_cannot_take_its_hello_is_not_kept(tmp_db):
+    class DeadSocket(FakeSocket):
+        async def send_text(self, text):
+            raise RuntimeError("gone")
+
+    h = hub_mod.Hub(tmp_db, status_provider=lambda: {"engine": {"running": False}})
+    ws = DeadSocket()
+
+    async def scenario():
+        try:
+            await h.connect(ws)
+        except RuntimeError:
+            pass
+
+    asyncio.run(scenario())
+    assert ws not in h.clients

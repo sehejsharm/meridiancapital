@@ -18,7 +18,15 @@ async def live(ws: WebSocket, ticket: str = Query(...)) -> None:
 
     await ws.accept()
     hub = ctx().hub
-    await hub.connect(ws)
+    try:
+        await hub.connect(ws)
+    except Exception:            # the hello could not be sent: a dead or stalled socket
+        await hub.disconnect(ws)
+        try:
+            await ws.close()
+        except Exception:
+            pass
+        return
     try:
         while True:
             # The client sends nothing meaningful; this read is how we notice a close.

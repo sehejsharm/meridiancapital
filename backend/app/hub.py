@@ -39,6 +39,7 @@ def stable_status(value: Any) -> Any:
 # events) a 20-second heartbeat made a healthy connection read as stale after
 # 1.5s and dead after 12s. A ping is a few dozen bytes.
 HEARTBEAT_SECONDS = 1.0
+HELLO_TIMEOUT_SEC = 10.0   # a new socket that cannot take its hello in this long is dropped
 
 
 class Hub:
@@ -67,12 +68,16 @@ class Hub:
                 await self._task
 
     async def connect(self, ws: WebSocket) -> None:
-        async with self._lock:
-            self.clients.add(ws)
+        # The hello (the full state) goes first, and only then does the socket join the broadcast
+        # list, under the lock broadcasts take: a broadcast waits for it and arrives after, newer.
+        # Joined before the hello was built, a busy server sent a status first and the hello then
+        # replaced it with older figures (seen 21 Nov 2026 under load).
         # The heartbeat is announced so the dashboard can tell a silent, dead
         # socket (a phone back from the background) from a quiet one.
-        await self._send(ws, {"type": "hello", "heartbeat": HEARTBEAT_SECONDS,
-                              "data": await self._full_state()})
+        async with self._lock:
+            hello = {"type": "hello", "heartbeat": HEARTBEAT_SECONDS, "data": await self._full_state()}
+            await asyncio.wait_for(self._send(ws, hello), timeout=HELLO_TIMEOUT_SEC)
+            self.clients.add(ws)
 
     async def disconnect(self, ws: WebSocket) -> None:
         async with self._lock:

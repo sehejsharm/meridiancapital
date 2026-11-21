@@ -113,14 +113,19 @@ def _signal_nan(s: LoadedStrategy) -> tuple[bool, str]:
     return True, "an all-NaN series produces no signal"
 
 
+DETERMINISM_CALLS = 40
+
+
 @check("signal_deterministic", "Signal is deterministic",
        "LIVE_TRADING_TEST_STRATEGY 1.1 — the same market state must produce the same decision")
 def _signal_deterministic(s: LoadedStrategy) -> tuple[bool, str]:
+    # 40 calls, not 5: a signal that flips a coin half the time gave five equal answers one time in
+    # sixteen and passed (CI, 21 Nov 2026). Forty equal answers by chance is about 2 in a trillion.
     closes = _series([100 + (i % 17) * 1.5 for i in range(300)])
-    outs = {s.signal(closes) for _ in range(5)}
+    outs = {s.signal(closes) for _ in range(DETERMINISM_CALLS)}
     if len(outs) != 1:
         return False, f"signal() returned differing results across identical calls: {outs}"
-    return True, f"five identical calls all returned {outs.pop()!r}"
+    return True, f"{DETERMINISM_CALLS} identical calls all returned {outs.pop()!r}"
 
 
 @check("signal_no_lookahead", "Signal does not read future bars",
