@@ -135,7 +135,7 @@ export function NiftyChart({ height = 380 }: { height?: number }) {
         </span>
       </div>
       <div
-        className="relative h-[280px] sm:h-[var(--chart-h)]"
+        className="relative h-[280px] min-w-0 overflow-hidden sm:h-[var(--chart-h)]"
         style={{ ["--chart-h" as string]: `${height}px` }}
       >
         <div ref={holder} className="absolute inset-0" />

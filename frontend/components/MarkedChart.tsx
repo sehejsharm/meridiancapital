@@ -397,9 +397,9 @@ export function MarkedChart({
   // mounts — so on the deck, where the data comes a moment later, the chart
   // was never built and the box stayed empty.
   return (
-    <div className="w-full">
-      <div className="relative w-full overflow-hidden" style={{ height }}>
-        <div ref={holder} className="h-full w-full" />
+    <div className="w-full min-w-0">
+      <div className="relative w-full min-w-0 overflow-hidden" style={{ height }}>
+        <div ref={holder} className="h-full w-full overflow-hidden" />
         <div className="pointer-events-none absolute inset-0 z-[3]" aria-hidden={!chips.length}>
           {chips.map((c) => (
             <span
