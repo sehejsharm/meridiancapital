@@ -239,7 +239,7 @@ function BuiltinStrategy({ refresh, configs }: { refresh: () => void; configs: R
                 return (
                   <div
                     key={p.key}
-                    className="grid grid-cols-1 gap-x-4 gap-y-1.5 border-b border-hairline pb-4 last:border-0 last:pb-0 sm:grid-cols-[1fr_auto]"
+                    className="grid grid-cols-1 gap-x-4 gap-y-1.5 border-b border-hairline pb-4 last:border-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_auto]"
                   >
                     <div className="min-w-0">
                       <label

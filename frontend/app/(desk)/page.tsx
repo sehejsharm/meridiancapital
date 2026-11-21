@@ -262,7 +262,7 @@ export default function DeckPage() {
 
       {/* grid-cols-1 and min-w-0 are load-bearing on a phone: without them a wide chart or table sizes
           the column past the screen, and the page (which clips sideways overflow) cuts the cards off. */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[3fr_2fr]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="min-w-0 space-y-5">
           <Card
             title="NIFTY 50"

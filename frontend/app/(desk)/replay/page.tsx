@@ -153,7 +153,7 @@ export default function ReplayPage() {
           hint={`${data.trades.length} trade${data.trades.length === 1 ? "" : "s"}`} />
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[3fr_2fr]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card title="The session" subtitle="Index above, day's P&L below; gold triangles are buys and sells, the line is the replay time">
           <ReplayChart view={view} cursor={cursor} />
         </Card>

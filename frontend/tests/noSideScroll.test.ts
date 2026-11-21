@@ -72,3 +72,17 @@ test("a chart's svg takes its width from the page, never a fixed width attribute
   }
   assert.deepEqual(hits, [], "use viewBox with className=\"w-full\" instead");
 });
+
+test("proportional grid columns may shrink below their content", () => {
+  // `grid-cols-[3fr_2fr]` gives each column a minimum of its content's width: one long unbreakable line
+  // or a wide chart in the left column pushes the right one off a laptop screen. minmax(0,3fr) does not.
+  const hits: string[] = [];
+  for (const f of ROOTS.flatMap(files)) {
+    readFileSync(f, "utf8").split("\n").forEach((line, i) => {
+      for (const m of line.matchAll(/grid-cols-\[([^\]]*)\]/g)) {
+        if (/(^|_)[0-9.]+fr/.test(m[1])) hits.push(`${f}:${i + 1}: ${m[0]}`);
+      }
+    });
+  }
+  assert.deepEqual(hits, [], "write minmax(0,3fr) instead of 3fr");
+});

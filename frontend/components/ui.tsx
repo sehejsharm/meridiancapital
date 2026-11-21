@@ -17,7 +17,7 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-lg border border-hairline bg-surface ${className}`}
+      className={`min-w-0 rounded-lg border border-hairline bg-surface [overflow-wrap:anywhere] ${className}`}
     >
       {(title || action) && (
         <header className="flex items-start justify-between gap-4 border-b border-hairline px-4 py-3">

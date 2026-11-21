@@ -286,7 +286,7 @@ export default function AlgosPage() {
         )}
       </Card>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[3fr_2fr]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div ref={uploadCard} className="scroll-mt-20">
         <Card
           title={updating ? `Update ${updating.name}` : "Upload an algorithm"}
