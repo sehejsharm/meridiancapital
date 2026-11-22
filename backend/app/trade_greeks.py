@@ -66,9 +66,12 @@ def spot_near(db, algo_id: str | None, when: datetime | None) -> float | None:
     lo = (when - timedelta(minutes=SPOT_WINDOW_MIN)).isoformat(timespec="seconds")
     hi = (when + timedelta(minutes=SPOT_WINDOW_MIN)).isoformat(timespec="seconds")
     try:
+        # session_date first: it puts the (algo_id, session_date) index on one day's samples. Without
+        # it each lookup walked every sample the program ever wrote (a second per few dozen trades).
         with db.conn() as c:
-            rows = c.execute("SELECT ts, spot FROM equity_samples WHERE algo_id = ? AND ts BETWEEN ? AND ? "
-                             "AND spot IS NOT NULL", (algo_id, lo, hi)).fetchall()
+            rows = c.execute("SELECT ts, spot FROM equity_samples WHERE algo_id = ? AND session_date = ? "
+                             "AND ts BETWEEN ? AND ? AND spot IS NOT NULL",
+                             (algo_id, when.date().isoformat(), lo, hi)).fetchall()
     except Exception:
         return None
     best = min(rows, key=lambda r: abs((_ts(r["ts"]) or when) - when), default=None)

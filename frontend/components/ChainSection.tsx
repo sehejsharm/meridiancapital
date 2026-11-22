@@ -22,15 +22,25 @@ export function ChainSection() {
 
   useEffect(() => {
     let alive = true;
+    // One request of each kind at a time: a slow answer can then never land after a newer one
+    // and put an older chain back on the screen.
+    let chainOut = false;
+    let flowOut = false;
     const stopChain = pollWhileVisible(() => {
+      if (chainOut) return;
+      chainOut = true;
       apiGet<ChainPayload>("/market/chain")
         .then((c) => { if (alive) { setChain(c); setChainError(null); } })
-        .catch((e) => { if (alive) setChainError(e instanceof Error ? e.message : "chain unavailable"); });
+        .catch((e) => { if (alive) setChainError(e instanceof Error ? e.message : "chain unavailable"); })
+        .finally(() => { chainOut = false; });
     }, CHAIN_EVERY_MS);
     const stopFlow = pollWhileVisible(() => {
+      if (flowOut) return;
+      flowOut = true;
       apiGet<FlowPayload>("/market/flow")
         .then((f) => { if (alive) { setFlow(f); setFlowError(null); } })
-        .catch((e) => { if (alive) setFlowError(e instanceof Error ? e.message : "not on this server yet"); });
+        .catch((e) => { if (alive) setFlowError(e instanceof Error ? e.message : "not on this server yet"); })
+        .finally(() => { flowOut = false; });
     }, FLOW_EVERY_MS);
     return () => {
       alive = false;

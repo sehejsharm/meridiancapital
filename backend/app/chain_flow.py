@@ -22,45 +22,68 @@ Display only. It reads the chain the desk already has and decides nothing.
 
 from __future__ import annotations
 
-K_FLOW = "market:chain:flow:{day}"
+import threading
+from datetime import date, timedelta
+
+K_FLOW = "market:chain:flow:{day}"   # one blob a day, before the chain_minutes table (still read)
 MAX_MINUTES = 400          # a whole session of one-minute snapshots
 WINDOW_MIN = 15            # positioning is read over this many minutes
+KEEP_DAYS = 10             # minutes older than this are dropped when a new day starts
+
+_lock = threading.Lock()
+# Per database: the last minute stored (day, hhmm, snapshot), so a chain that has not moved
+# costs no write; and the last answer per day with the table version it was worked out from.
+_last: dict[str, tuple[str, str, dict | None]] = {}
+_answers: dict[tuple[str, str], tuple[tuple, dict]] = {}
 
 
 def _key(day: str) -> str:
     return K_FLOW.format(day=day)
 
 
+def _db_key(db) -> str:
+    return str(getattr(db, "path", id(db)))
+
+
 def record(db, chain: dict | None) -> bool:
-    """Keep the chain's minute snapshot (the latest one in each minute). True when stored."""
+    """Keep the chain's minute snapshot (the latest one in each minute). True when stored.
+
+    One small row per minute: the day's snapshots used to live in one blob that was read,
+    extended and rewritten whole up to four times a minute (over half a megabyte by the close)
+    and never deleted.
+    """
     if not chain or not chain.get("ts") or not chain.get("rows"):
         return False
     ts = str(chain["ts"])
     day, hhmm = ts[:10], ts[11:16]
-    snap, meta = {}, {}
+    snap = {}
     for row in chain["rows"]:
         for side in ("ce", "pe"):
             q = row.get(side) or {}
             tok = q.get("token")
             if not tok or q.get("ltp") is None:
                 continue
-            snap[tok] = [q.get("ltp"), q.get("volume"), q.get("oi")]
-            meta[tok] = [row.get("strike"), side.upper()]
+            snap[str(tok)] = [q.get("ltp"), q.get("volume"), q.get("oi"), row.get("strike"), side.upper()]
     if not snap:
         return False
-    data = db.kv_get(_key(day), None) or {"minutes": [], "meta": {}}
-    minutes = data["minutes"]
-    if minutes and minutes[-1][0] == hhmm:
-        if minutes[-1][1] == snap:
+    k = _db_key(db)
+    with _lock:
+        last = _last.get(k)
+        if last is None or last[0] != day:
+            found = db.chain_minute_last(day)
+            if found is None:                  # the day's first minute: drop the old days
+                try:
+                    cutoff = (date.fromisoformat(day) - timedelta(days=KEEP_DAYS)).isoformat()
+                    db.chain_minutes_prune(cutoff)
+                except ValueError:
+                    pass
+            last = (day, found[0], found[1]) if found else (day, "", None)
+        if last[1] > hhmm:
+            return False                       # an older chain than the last one kept
+        if last[1] == hhmm and last[2] == snap:
             return False
-        minutes[-1] = [hhmm, snap]
-    elif minutes and minutes[-1][0] > hhmm:
-        return False                       # an older chain than the last one kept
-    else:
-        minutes.append([hhmm, snap])
-    data["minutes"] = minutes[-MAX_MINUTES:]
-    data["meta"].update(meta)
-    db.kv_set(_key(day), data)
+        db.chain_minute_put(day, hhmm, snap)
+        _last[k] = (day, hhmm, snap)
     return True
 
 
@@ -139,5 +162,31 @@ def flow(data: dict | None, window: int = WINDOW_MIN) -> dict:
     }
 
 
+def _day_data(db, day: str) -> dict | None:
+    rows = db.chain_minutes(day)
+    if not rows:
+        return db.kv_get(_key(day), None)      # a day kept before the table
+    minutes, meta = [], {}
+    for hhmm, snap in rows[-MAX_MINUTES:]:
+        m = {}
+        for tok, v in snap.items():
+            m[tok] = v[:3]
+            meta[tok] = v[3:5]
+        minutes.append([hhmm, m])
+    return {"minutes": minutes, "meta": meta}
+
+
 def for_day(db, day: str) -> dict:
-    return flow(db.kv_get(_key(day), None))
+    """The day's flow. Worked out again only when a minute has been added or replaced: every
+    viewer's poll in between gets the same answer from memory."""
+    k = (_db_key(db), day)
+    version = db.chain_minutes_version(day)
+    hit = _answers.get(k)
+    if hit is not None and version[0] and hit[0] == version:
+        return hit[1]
+    out = flow(_day_data(db, day))
+    with _lock:
+        if len(_answers) > 16:
+            _answers.clear()
+        _answers[k] = (version, out)
+    return out

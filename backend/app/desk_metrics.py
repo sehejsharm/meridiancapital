@@ -26,6 +26,7 @@ from app import ledger
 DAILY_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=2y"
 DAILY_TTL = 6 * 3600.0
 QUOTE_TTL = 60.0
+RETRY_SEC = 300.0          # after a failed fetch, try again this soon (keeping the last good figures)
 MIN_DAYS = 20
 _cache: dict[str, dict] = {}
 _lock = threading.Lock()
@@ -51,7 +52,11 @@ def daily_closes(sym: str = "%5ENSEI", fetch=None, ttl: float = DAILY_TTL) -> di
                 if c is not None:
                     out[time.strftime("%Y-%m-%d", time.gmtime(int(ts) + 19_800))] = float(c)
         except Exception:
+            # Unreachable: keep showing the last good figures, and try again in a few minutes rather
+            # than after the full six hours (a single failed fetch used to blank the market for that long).
             out = hit["v"] if hit else {}
+            _cache[sym] = {"at": time.time() - ttl + min(RETRY_SEC, ttl), "v": out}
+            return out
         _cache[sym] = {"at": time.time(), "v": out}
         return out
 

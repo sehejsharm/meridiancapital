@@ -96,6 +96,11 @@ def test_daily_closes_are_cached_and_survive_an_unreachable_feed():
         raise OSError("no network")
     dm._cache["%5ENSEI"]["at"] = 0
     assert dm.daily_closes("%5ENSEI", down) == a                    # the last good closes stand
+    # ...and the feed is tried again after a few minutes, not after the full six hours.
+    assert dm.daily_closes("%5ENSEI", fetch) == a and len(calls) == 1    # within the retry wait: no call
+    dm._cache["%5ENSEI"]["at"] -= dm.RETRY_SEC + 1
+    dm.daily_closes("%5ENSEI", fetch)
+    assert len(calls) == 2
     m = dm.market(None, {"analytics": {"pcr_oi": 0.86, "atm_iv": 12.4, "max_pain": 25350}}, fetch)
     assert m["nifty_change_pct"] == 1.0 and m["pcr_oi"] == 0.86 and m["max_pain"] == 25350
     dm._cache.clear()

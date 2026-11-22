@@ -12,6 +12,7 @@ import json
 import os
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from datetime import date, timedelta
 from pathlib import Path
@@ -173,6 +174,16 @@ CREATE TABLE IF NOT EXISTS position_ticks (
 );
 CREATE INDEX IF NOT EXISTS idx_ticks_trade ON position_ticks(algo_id, opened_ts, id);
 CREATE INDEX IF NOT EXISTS idx_ticks_day ON position_ticks(session_date, id);
+
+-- The option chain once a minute (the last reading of each minute), for the option-flow view.
+-- snap: {token: [ltp, day volume, open interest, strike, "CE"|"PE"]}. Kept for a few days only.
+CREATE TABLE IF NOT EXISTS chain_minutes (
+    day     TEXT NOT NULL,
+    hhmm    TEXT NOT NULL,
+    snap    TEXT NOT NULL,
+    updated REAL NOT NULL,
+    PRIMARY KEY (day, hhmm)
+);
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -524,6 +535,38 @@ class Database:
             return [tuple(r) for r in c.execute(
                 "SELECT ts, premium, stop_price FROM position_ticks WHERE algo_id = ? AND opened_ts = ? ORDER BY id",
                 (algo_id, opened_ts)).fetchall()]
+
+    # ── the option chain, one row a minute (option-flow view) ────────────────
+    def chain_minute_put(self, day: str, hhmm: str, snap: dict) -> None:
+        with self.conn() as c:
+            c.execute("INSERT INTO chain_minutes(day, hhmm, snap, updated) VALUES(?,?,?,?) "
+                      "ON CONFLICT(day, hhmm) DO UPDATE SET snap=excluded.snap, updated=excluded.updated",
+                      (day, hhmm, json.dumps(snap, separators=(",", ":")), time.time()))
+
+    def chain_minute_last(self, day: str) -> tuple[str, dict] | None:
+        with self.conn() as c:
+            r = c.execute("SELECT hhmm, snap FROM chain_minutes WHERE day = ? ORDER BY hhmm DESC LIMIT 1",
+                          (day,)).fetchone()
+        return (r["hhmm"], json.loads(r["snap"])) if r else None
+
+    def chain_minutes(self, day: str) -> list[tuple[str, dict]]:
+        with self.conn() as c:
+            rows = c.execute("SELECT hhmm, snap FROM chain_minutes WHERE day = ? ORDER BY hhmm", (day,)).fetchall()
+        return [(r["hhmm"], json.loads(r["snap"])) for r in rows]
+
+    def chain_minutes_version(self, day: str) -> tuple[int, float]:
+        """Changes whenever a minute of ``day`` is added or replaced: (rows, latest write)."""
+        with self.conn() as c:
+            r = c.execute("SELECT COUNT(*) AS n, MAX(updated) AS u FROM chain_minutes WHERE day = ?", (day,)).fetchone()
+        return int(r["n"] or 0), float(r["u"] or 0.0)
+
+    def chain_minutes_prune(self, before_day: str) -> int:
+        """Drops the minutes of days before ``before_day``, and the one-blob-a-day copies kept before the table."""
+        with self.conn() as c:
+            n = c.execute("DELETE FROM chain_minutes WHERE day < ?", (before_day,)).rowcount
+            n += c.execute("DELETE FROM kv WHERE key LIKE 'market:chain:flow:%' AND key < ?",
+                           (f"market:chain:flow:{before_day}",)).rowcount
+        return n
 
     def ticks_between(self, date_from: str, date_to: str, limit: int = 400_000) -> list[dict]:
         with self.conn() as c:
