@@ -12,7 +12,7 @@ const { chromium } = require("playwright");
 const BASE = "http://127.0.0.1:3100";
 const API = "http://127.0.0.1:8090";
 const tradeId = process.argv[2] || "1";
-const PAGES = ["/", "/today", "/algos", "/algos/check", "/trades", `/trades/${tradeId}`, "/reports", "/analytics", "/journal",
+const PAGES = ["/", "/metrics", "/today", "/algos", "/algos/check", "/trades", `/trades/${tradeId}`, "/reports", "/analytics", "/journal",
   "/replay", "/reliability", "/strategy", "/controls", "/offline"];
 const WIDTHS = [[390, 844], [1366, 900]];
 

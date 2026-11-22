@@ -87,6 +87,16 @@ export function IconJournal({ className }: P) {
   );
 }
 
+export function IconGauge({ className }: P) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M4 17a8 8 0 1 1 16 0" />
+      <path d="M12 17l4-5" />
+      <circle cx="12" cy="17" r="1.2" />
+    </svg>
+  );
+}
+
 export function IconChart({ className }: P) {
   return (
     <svg {...base} className={className}>

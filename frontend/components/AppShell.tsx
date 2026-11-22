@@ -12,6 +12,7 @@ import { Wordmark } from "@/components/Logo";
 import {
   IconAlgos,
   IconChart,
+  IconGauge,
   IconControls,
   IconDeck,
   IconJournal,
@@ -33,6 +34,7 @@ import { playSplash } from "@/lib/splash";
 
 const NAV = [
   { href: "/", label: "Deck", short: "Deck", Icon: IconDeck },
+  { href: "/metrics", label: "Metrics", short: "Metrics", Icon: IconGauge },
   { href: "/algos", label: "Algorithms", short: "Algos", Icon: IconAlgos },
   { href: "/trades", label: "Blotter", short: "Trades", Icon: IconTrades },
   { href: "/reports", label: "Reports", short: "Reports", Icon: IconReports },
