@@ -25,6 +25,7 @@ import csv
 import gzip
 import io
 import json
+import threading
 from pathlib import Path
 
 from app import exit_rules
@@ -150,6 +151,7 @@ class LazyOpened:
 
 
 _DIGESTS: dict[tuple, list[tuple]] = {}
+_DIGESTS_LOCK = threading.Lock()   # reports run on worker threads; two may fill the cache at once
 DIGEST_CACHE_TRADES = 800          # about three years of trades; ~130 readings each
 
 
@@ -187,9 +189,10 @@ def lean_ticks(db, trade: dict, index: dict | LazyOpened | None = None) -> list[
             rows = db.tick_path(algo, opened) if opened else []
         rows = _digest(rows, exit_ts)
         if settled and rows:
-            if len(_DIGESTS) >= DIGEST_CACHE_TRADES:
-                _DIGESTS.pop(next(iter(_DIGESTS)))
-            _DIGESTS[key] = rows
+            with _DIGESTS_LOCK:
+                while len(_DIGESTS) >= DIGEST_CACHE_TRADES:
+                    _DIGESTS.pop(next(iter(_DIGESTS)))
+                _DIGESTS[key] = rows
     return [{"ts": ts, "premium": prem, "stop_price": stop} for ts, prem, stop in rows]
 
 

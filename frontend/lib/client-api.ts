@@ -24,8 +24,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     ...(etag ? { headers: { ...(init?.headers as Record<string, string> | undefined), "If-None-Match": etag } } : {}),
   });
-  if (res.status === 304 && isGet && answers.has(path)) {
-    return answers.data(path) as T;
+  if (res.status === 304 && isGet) {
+    // Read the (empty) body so the request completes instead of showing as cancelled.
+    await res.arrayBuffer().catch(() => undefined);
+    if (answers.has(path)) return answers.data(path) as T;
+    // The kept copy went (signed out, or dropped as oldest) while the poll was out: ask again
+    // without a tag. It cannot loop: with nothing kept no tag is sent, and the server only
+    // answers 304 to a tag.
+    return request<T>(path, init);
   }
   if (!res.ok) {
     let detail = res.statusText;

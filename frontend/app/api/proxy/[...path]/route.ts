@@ -14,15 +14,23 @@ export const dynamic = "force-dynamic";
 
 const ALLOWED_METHODS = new Set(["GET", "POST", "DELETE"]);
 
+// Reads that are asked for once, not polled, and can take a while on the small VM the first
+// time (a year of research paths, a year's report, the tax year): two minutes, like downloads.
+const SLOW_READS = new Set(["research", "reports", "tax", "tearsheet", "replay", "reliability", "logs"]);
+
 /**
- * How long the relay waits for the control plane. Reads are polled, so a stuck one should fail
- * fast and let the next poll try again. Downloads (log CSVs, PDF reports) and actions are given
- * longer: cutting an action short would not undo it on the server, only lose its answer.
+ * How long the relay waits for the control plane. Polled reads should fail fast and let the
+ * next poll try again. Downloads (log CSVs, PDF reports) and the slow reads get two minutes.
+ * Actions are never cut short here: a stop can take 75 s of grace before the program is
+ * signalled, a switch two of those, and cutting one off would not undo it on the server, only
+ * lose its answer. They get as long as the hosting platform allows.
  */
 function timeLimitMs(method: string, segments: string[]): number {
-  if (method !== "GET") return 120_000;
+  if (method !== "GET") return 290_000;
   const last = segments[segments.length - 1] ?? "";
-  if (/\.(csv|pdf|zip)$/i.test(last) || segments.includes("export") || segments.includes("download")) return 120_000;
+  if (/\.(csv|pdf|zip)$/i.test(last) || SLOW_READS.has(segments[0] ?? "") || last === "diff" || last === "shadow") {
+    return 120_000;
+  }
   return 30_000;
 }
 
