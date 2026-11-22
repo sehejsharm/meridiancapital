@@ -136,6 +136,19 @@ def opened_index(db) -> dict[tuple[str, str], str]:
     return {(r["algo_id"], str(r["opened_ts"])[:16].replace(" ", "T")): r["opened_ts"] for r in db.tick_trades(limit=4000)}
 
 
+class LazyOpened:
+    """opened_index(), built on the first lookup only. Most trades' paths are found by their own entry
+    time or are already kept in memory, so a report on a year of trades usually never needs it."""
+
+    def __init__(self, db):
+        self._db, self._index = db, None
+
+    def get(self, key, default=None):
+        if self._index is None:
+            self._index = opened_index(self._db)
+        return self._index.get(key, default)
+
+
 _DIGESTS: dict[tuple, list[tuple]] = {}
 DIGEST_CACHE_TRADES = 800          # about three years of trades; ~130 readings each
 
@@ -155,7 +168,7 @@ def _digest(rows: list[tuple], exit_ts: str) -> list[tuple]:
     return sorted(keep, key=lambda r: str(r[0]))
 
 
-def lean_ticks(db, trade: dict, index: dict | None = None) -> list[dict]:
+def lean_ticks(db, trade: dict, index: dict | LazyOpened | None = None) -> list[dict]:
     """A trade's path with the three fields the reports read (ts, premium, stop_price), oldest first,
     reduced to what they can tell apart. A closed trade from an earlier day never changes, so its
     reduced path is kept in memory: the Analytics page no longer re-reads a year of readings each visit."""
@@ -181,7 +194,7 @@ def lean_ticks(db, trade: dict, index: dict | None = None) -> list[dict]:
 
 
 def path(db, trade: dict, ticks: list[dict] | None = None, day_candles: dict | None = None,
-         index: dict | None = None) -> dict:
+         index: dict | LazyOpened | None = None) -> dict:
     """A trade's minute-by-minute path after its entry minute.
 
     From Angel's candles when they were kept (the whole day, so it runs past the
@@ -250,7 +263,7 @@ def execution(db, trade: dict, ticks: list[dict] | None = None, day_candles: dic
 def execution_report(db, trades: list[dict]) -> dict:
     rows = []
     cache: dict[str, dict | None] = {}
-    index = opened_index(db)
+    index = LazyOpened(db)
     for t in trades:
         day = str(t.get("session_date") or "")
         if day not in cache:
@@ -282,7 +295,7 @@ def execution_report(db, trades: list[dict]) -> dict:
 # ── the exit rule sets on live trades ────────────────────────────────────────
 
 def rules_on_trade(db, trade: dict, rulesets=exit_rules.STANDARD, day_candles: dict | None = None,
-                   index: dict | None = None) -> dict:
+                   index: dict | LazyOpened | None = None) -> dict:
     p = path(db, trade, day_candles=day_candles, index=index)
     entry = float(trade.get("entry_prem") or 0.0)
     qty = int(trade.get("qty") or exit_rules.LOT) or exit_rules.LOT
@@ -314,7 +327,7 @@ def rules_report(db, trades: list[dict], rulesets=exit_rules.STANDARD) -> dict:
     could be decided on, so the rule sets are compared on the same trades."""
     cache: dict[str, dict | None] = {}
     rows = []
-    index = opened_index(db)
+    index = LazyOpened(db)
     for t in trades:
         if not t.get("exit_ts"):
             continue

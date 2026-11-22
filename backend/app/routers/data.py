@@ -11,6 +11,10 @@ from shared.db import DEFAULT_ALGO, snapshot_key
 
 router = APIRouter(prefix="/api", tags=["data"], dependencies=[Depends(require_auth)])
 
+# The reads below that walk many rows (trades, the day's curve, a replay, the journal) are plain
+# `def`: FastAPI runs them on its worker threads, so a slow one never holds up the live feed or
+# another request. The database opens a connection per call and is safe across threads.
+
 
 @router.get("/status")
 async def status() -> dict:
@@ -28,7 +32,7 @@ async def snapshot() -> dict:
 
 
 @router.get("/trades")
-async def trades(
+def trades(
     limit: int = Query(200, ge=1, le=1000),
     session_date: str | None = None,
 ) -> dict:
@@ -48,7 +52,7 @@ async def trades(
 
 
 @router.get("/events")
-async def events(
+def events(
     limit: int = Query(200, ge=1, le=1000),
     after_id: int | None = None,
     level: list[str] | None = Query(None),
@@ -61,7 +65,7 @@ async def events(
 
 
 @router.get("/equity")
-async def equity(
+def equity(
     session_date: str | None = None,
     limit: int = Query(1000, ge=1, le=5000),
     daily: bool = True,
@@ -133,7 +137,7 @@ async def audit(
 
 
 @router.get("/replay")
-async def replay(
+def replay(
     day: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     algo: str | None = Query(None, max_length=80),
 ) -> dict:

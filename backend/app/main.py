@@ -8,13 +8,14 @@ starts and stops it automatically around the NSE session.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import logging
 import time
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from app import webpush
 from app.config import settings
@@ -85,7 +86,8 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "If-None-Match"],
+    expose_headers=["ETag"],
     max_age=600,
 )
 
@@ -96,10 +98,31 @@ app.add_middleware(
 SLOW_REQUEST_MS = 800.0
 
 
+async def _not_modified(request: Request, response):
+    """ETag on a GET's JSON answer, and 304 with no body when the dashboard already has that answer.
+
+    The dashboard polls: most polls ask for figures that have not changed since the last one (the day's
+    chart, the trade list, the chain outside market hours). They are still worked out here, but only a
+    few bytes travel back through the relay instead of the whole answer, and the browser skips parsing
+    and redrawing it.
+    """
+    if request.method != "GET" or response.status_code != 200 or \
+            not (response.headers.get("content-type") or "").startswith("application/json"):
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    tag = 'W/"' + hashlib.blake2b(body, digest_size=12).hexdigest() + '"'
+    headers = {k: v for k, v in response.headers.items() if k.lower() not in ("content-length", "etag")}
+    headers["ETag"] = tag
+    if tag in [t.strip() for t in (request.headers.get("if-none-match") or "").split(",")]:
+        headers.pop("content-type", None)
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, status_code=200, headers=headers, media_type=response.media_type)
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     started = time.perf_counter()
-    response = await call_next(request)
+    response = await _not_modified(request, await call_next(request))
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     response.headers["Server-Timing"] = f"app;dur={elapsed_ms:.1f}"
     if elapsed_ms >= SLOW_REQUEST_MS:

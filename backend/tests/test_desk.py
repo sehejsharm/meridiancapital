@@ -496,3 +496,18 @@ def test_a_period_report_says_how_it_adds_up_to_every_real_money_trade(client, a
     # 40,000 opening that is 13.75%; of the 8,000 transfer-morning balance it would read 68.75%.
     assert s["start_balance"] == pytest.approx(40000.0)
     assert s["max_drawdown_rs"] == pytest.approx(5500.0) and s["max_drawdown_pct"] == pytest.approx(13.75)
+
+
+def test_an_unchanged_answer_comes_back_as_304_with_no_body(client, auth):
+    """The dashboard polls; an answer it already has costs a few bytes instead of the whole body."""
+    first = client.get("/api/market/expiry-outlook", headers=auth)
+    tag = first.headers.get("etag")
+    assert first.status_code == 200 and tag and tag.startswith('W/"')
+    again = client.get("/api/market/expiry-outlook", headers={**auth, "If-None-Match": tag})
+    assert again.status_code == 304 and again.content == b"" and again.headers.get("etag") == tag
+    assert again.headers.get("cache-control") == "no-store" and "server-timing" in again.headers
+    other = client.get("/api/market/expiry-outlook", headers={**auth, "If-None-Match": 'W/"not-this"'})
+    assert other.status_code == 200 and other.json() == first.json()
+    # Downloads and errors are never turned into a 304.
+    assert client.get("/api/logs.csv?day=2026-11-17", headers={**auth, "If-None-Match": tag}).status_code == 200
+    assert client.get("/api/trades/999999/detail", headers={**auth, "If-None-Match": tag}).status_code == 404

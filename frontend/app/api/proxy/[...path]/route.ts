@@ -14,6 +14,18 @@ export const dynamic = "force-dynamic";
 
 const ALLOWED_METHODS = new Set(["GET", "POST", "DELETE"]);
 
+/**
+ * How long the relay waits for the control plane. Reads are polled, so a stuck one should fail
+ * fast and let the next poll try again. Downloads (log CSVs, PDF reports) and actions are given
+ * longer: cutting an action short would not undo it on the server, only lose its answer.
+ */
+function timeLimitMs(method: string, segments: string[]): number {
+  if (method !== "GET") return 120_000;
+  const last = segments[segments.length - 1] ?? "";
+  if (/\.(csv|pdf|zip)$/i.test(last) || segments.includes("export") || segments.includes("download")) return 120_000;
+  return 30_000;
+}
+
 async function relay(request: NextRequest, segments: string[]) {
   if (!ALLOWED_METHODS.has(request.method)) {
     return NextResponse.json({ detail: "method not allowed" }, { status: 405 });
@@ -38,16 +50,32 @@ async function relay(request: NextRequest, segments: string[]) {
   }
 
   const started = performance.now();
+  const ifNoneMatch = request.method === "GET" ? request.headers.get("if-none-match") : null;
+  const limitMs = timeLimitMs(request.method, segments);
   try {
     const upstream = await fetch(target, {
       method: request.method,
       headers: {
         Authorization: `Bearer ${token}`,
         ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(ifNoneMatch ? { "If-None-Match": ifNoneMatch } : {}),
       },
       body: body || undefined,
       cache: "no-store",
+      signal: AbortSignal.timeout(limitMs),
     });
+
+    const timing = [upstream.headers.get("server-timing"), `relay;dur=${(performance.now() - started).toFixed(1)}`]
+      .filter(Boolean)
+      .join(", ");
+    const etag = upstream.headers.get("etag");
+    // Unchanged since the dashboard's last poll: a few bytes back instead of the whole answer.
+    if (upstream.status === 304) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: { "Cache-Control": "no-store", "Server-Timing": timing, ...(etag ? { ETag: etag } : {}) },
+      });
+    }
 
     // Read as bytes, not text: a PDF re-encoded through a JS string is a
     // corrupt PDF. This is a pass-through for every content type.
@@ -60,19 +88,24 @@ async function relay(request: NextRequest, segments: string[]) {
     // route segment instead of the report filename.
     const disposition = upstream.headers.get("content-disposition");
     if (disposition) headers.set("Content-Disposition", disposition);
+    if (etag) headers.set("ETag", etag);
     // Where a slow call spent its time: "app" is the control plane's own work,
     // "relay" the whole trip from Vercel to the VM and back. A large relay with
     // a small app is the network or DNS, not the server.
-    const app = upstream.headers.get("server-timing");
-    headers.set(
-      "Server-Timing",
-      [app, `relay;dur=${(performance.now() - started).toFixed(1)}`].filter(Boolean).join(", "),
-    );
+    headers.set("Server-Timing", timing);
 
     return new NextResponse(payload, { status: upstream.status, headers });
   } catch (error) {
     if (error instanceof ConfigError) {
       return NextResponse.json({ detail: error.message }, { status: 503 });
+    }
+    // The VM did not answer in time: say so at once instead of leaving the page waiting
+    // (and the next poll queued behind it) until the hosting platform gives up.
+    if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      return NextResponse.json(
+        { detail: `control plane did not answer within ${Math.round(limitMs / 1000)} s` },
+        { status: 504 },
+      );
     }
     if (error instanceof ApiError) {
       return NextResponse.json({ detail: error.message }, { status: error.status });

@@ -2,6 +2,8 @@
 
 /** Browser-side calls. Everything goes through the Next relay, never direct. */
 
+import { EtagCache } from "./etagCache";
+
 export class ClientApiError extends Error {
   constructor(
     readonly status: number,
@@ -11,8 +13,20 @@ export class ClientApiError extends Error {
   }
 }
 
+// Last answer per GET URL with its ETag: an unchanged poll costs a 304 and returns the same object.
+const answers = new EtagCache();
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { cache: "no-store", ...init });
+  const isGet = !init?.method || init.method === "GET";
+  const etag = isGet ? answers.etag(path) : undefined;
+  const res = await fetch(path, {
+    cache: "no-store",
+    ...init,
+    ...(etag ? { headers: { ...(init?.headers as Record<string, string> | undefined), "If-None-Match": etag } } : {}),
+  });
+  if (res.status === 304 && isGet && answers.has(path)) {
+    return answers.data(path) as T;
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -24,7 +38,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (res.status === 401) window.location.href = "/login";
     throw new ClientApiError(res.status, detail);
   }
-  return (await res.json()) as T;
+  const data = (await res.json()) as T;
+  if (isGet) answers.keep(path, res.headers.get("etag"), data);
+  return data;
 }
 
 /**
@@ -56,6 +72,7 @@ export function apiDelete<T>(path: string): Promise<T> {
 }
 
 export async function signOut(): Promise<void> {
+  answers.clear();
   await fetch("/api/session", { method: "DELETE" });
   window.location.href = "/login";
 }

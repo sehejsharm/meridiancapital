@@ -77,7 +77,7 @@ async def desk_metrics() -> dict:
 
 
 @router.get("/market/flow")
-async def market_flow() -> dict:
+def market_flow() -> dict:
     """The day's option flow: premium traded per minute in calls and puts, and positioning by strike."""
     from app import chain_flow, market
 
@@ -352,7 +352,7 @@ def _research_trades(db, algo: str | None, mode: str) -> list[dict]:
 
 
 @router.get("/research")
-async def research_summary() -> dict:
+def research_summary() -> dict:
     """How much has been recorded: price paths, ticks, days of one-minute contract prices."""
     return research.summary(ctx().db)
 

@@ -51,7 +51,13 @@ function usePoll<T>(path: string, intervalMs: number, enabled = true) {
  * each call a round trip through the relay.
  */
 export function useTicker(enabled = true) {
-  return usePoll<TickerPayload>("/ticker", 5000, enabled);
+  // Every 5 s while a running program supplies the price; every 15 s when it is the public
+  // feed's, which is a minute behind and cached on the server for 30 s anyway.
+  const [live, setLive] = useState(true);
+  const feed = usePoll<TickerPayload>("/ticker", live ? 5000 : 15_000, enabled);
+  const nowLive = feed.data ? feed.data.live : true;
+  useEffect(() => setLive(nowLive), [nowLive]);
+  return feed;
 }
 
 export function useHealth() {

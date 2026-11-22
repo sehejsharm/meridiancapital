@@ -181,10 +181,9 @@ def test_the_equity_chart_falls_back_to_the_last_session(tmp_db, monkeypatch):
         db = tmp_db
 
     monkeypatch.setattr(data, "ctx", lambda: Ctx)
-    import asyncio
-
-    out = asyncio.run(data.equity(session_date=None, limit=100))
+    # A plain function now (run on a worker thread by FastAPI), so it is called directly.
+    out = data.equity(session_date=None, limit=100)
     assert out["recorded"] is True and out["session_date"] == yesterday
     assert out["intraday"][0]["equity"] == 42315.32
-    today = asyncio.run(data.equity(session_date=now_ist().strftime("%Y-%m-%d"), limit=100))
+    today = data.equity(session_date=now_ist().strftime("%Y-%m-%d"), limit=100)
     assert today["intraday"] == [] and today["recorded"] is False
