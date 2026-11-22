@@ -231,6 +231,8 @@ export interface ReliabilityReport {
 }
 
 export interface TradeRow {
+  /** Delta and IV at entry, delta at exit (Black-Scholes from the trade's own prices); null when unknown. */
+  greeks?: { delta_in: number | null; iv_in: number | null; delta_out: number | null };
   id: number;
   entry_ts: string;
   exit_ts: string | null;
@@ -978,7 +980,20 @@ export interface TradeExecution {
   minute_close: number | null; vs_last_seen_rs: number | null; vs_minute_close_rs: number | null;
   entry_fill: number | null; entry_minute_close: number | null; entry_vs_minute_close_rs: number | null;
 }
+export interface TradeGreeksAt {
+  iv: number; delta: number; gamma: number; theta: number; vega: number; spot: number;
+  delta_position: number | null; theta_position: number | null; dte: number;
+}
+
+export interface TradeGreeks {
+  entry: TradeGreeksAt | null;
+  exit: TradeGreeksAt | null;
+  split: { nifty_move: number; time_decay: number; volatility: number; rest: number | null; gross: number | null;
+    nifty_points: number; iv_change: number } | null;
+}
+
 export interface TradeDetail {
+  greeks?: TradeGreeks;
   trade: TradeRow & { net_angel?: number | null; charges_angel?: number | null };
   algo_name: string;
   ticks: { ts: string; premium: number; peak_pct: number | null; stop_price: number | null; spot: number | null }[];

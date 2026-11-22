@@ -40,6 +40,10 @@ async def trades(
     # Newest first by when the trade was placed: a trade imported late (a
     # program's log read after a restart) is not a newer trade.
     rows.sort(key=lambda t: (t.get("entry_ts") or t.get("exit_ts") or "").replace(" ", "T"), reverse=True)
+    from app import trade_greeks
+
+    for t in rows:                       # delta and IV at entry, delta at exit, for the blotter's columns
+        t["greeks"] = trade_greeks.brief(c.db, t)
     return {"trades": rows, "stats": ledger.stats(every)}
 
 

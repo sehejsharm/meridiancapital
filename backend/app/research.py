@@ -380,8 +380,11 @@ def trade_detail(db, trade_id: int) -> dict | None:
     fills = [f for f in (db.kv_get(f"angel:fills:{day}", None) or [])
              if str(f.get("tsym") or "").upper() == str(trade.get("tsym") or "").upper()]
     algo = db.algo(trade.get("algo_id") or "") or {}
+    from app import trade_greeks
+
     return {
         "trade": trade,
+        "greeks": trade_greeks.for_trade(db, trade),
         "algo_name": algo.get("name") or trade.get("algo_id"),
         "ticks": [{"ts": t["ts"], "premium": t["premium"], "peak_pct": t.get("peak_pct"),
                    "stop_price": t.get("stop_price"), "spot": t.get("spot")} for t in _thin(ticks)],

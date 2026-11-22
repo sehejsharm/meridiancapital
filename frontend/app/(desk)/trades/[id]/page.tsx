@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 
+import { TradeGreeksCard } from "@/components/TradeGreeksCard";
 import { Badge, Card, Empty, Field, Skeleton } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
 import { dayLabel, minutes, money, pnlClass, signedMoney, signedPercent, tradeTime } from "@/lib/format";
@@ -64,6 +65,8 @@ export default function TradePage({ params }: { params: Promise<{ id: string }> 
           </dl>
         </div>
       </Card>
+
+      <TradeGreeksCard greeks={d.greeks} />
 
       <Card
         title="Price path"

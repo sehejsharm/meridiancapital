@@ -68,6 +68,14 @@ async def market_chain() -> dict:
     return out
 
 
+@router.get("/desk/metrics")
+async def desk_metrics() -> dict:
+    """The Deck's metrics panel: performance, the strategy against NIFTY, the market."""
+    from app import desk_metrics as dm
+
+    return await asyncio.to_thread(dm.build, ctx().db)
+
+
 @router.get("/market/flow")
 async def market_flow() -> dict:
     """The day's option flow: premium traded per minute in calls and puts, and positioning by strike."""

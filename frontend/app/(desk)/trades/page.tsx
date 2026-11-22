@@ -235,6 +235,8 @@ export default function BlotterPage() {
                   <th className="py-2 pr-3 text-right font-medium">Lots</th>
                   <th className="py-2 pr-3 text-right font-medium">In</th>
                   <th className="py-2 pr-3 text-right font-medium">Out</th>
+                  <th className="hidden py-2 pr-3 text-right font-medium lg:table-cell" title="Delta at entry, then at exit">Δ in → out</th>
+                  <th className="hidden py-2 pr-3 text-right font-medium lg:table-cell" title="Implied volatility at entry">IV</th>
                   <th className="hidden py-2 pr-3 text-right font-medium xl:table-cell">Peak</th>
                   <th className="hidden py-2 pr-3 text-right font-medium xl:table-cell">Charges</th>
                   <th className="py-2 pr-3 text-right font-medium">Net</th>
@@ -287,6 +289,12 @@ export default function BlotterPage() {
                       </td>
                       <td className="py-2 pr-3 text-right text-ink-secondary">
                         {t.exit_prem?.toFixed(2) ?? "—"}
+                      </td>
+                      <td className="hidden whitespace-nowrap py-2 pr-3 text-right tabular-nums text-ink-secondary lg:table-cell">
+                        {t.greeks?.delta_in == null ? "—" : `${t.greeks.delta_in.toFixed(2)} → ${t.greeks.delta_out == null ? "—" : t.greeks.delta_out.toFixed(2)}`}
+                      </td>
+                      <td className="hidden py-2 pr-3 text-right tabular-nums text-ink-secondary lg:table-cell">
+                        {t.greeks?.iv_in == null ? "—" : `${t.greeks.iv_in.toFixed(1)}%`}
                       </td>
                       <td className="hidden py-2 pr-3 text-right text-ink-secondary xl:table-cell">
                         {t.peak_pct != null ? signedPercent(t.peak_pct / 100, 0) : "—"}

@@ -19,6 +19,7 @@ import { StalenessMonitor } from "@/components/StalenessMonitor";
 import { TradingViewChart } from "@/components/TradingViewChart";
 import { NiftyChart } from "@/components/NiftyChart";
 import { ChainSection } from "@/components/ChainSection";
+import { DeskMetrics } from "@/components/DeskMetrics";
 import { ConfigDriftNotice } from "@/components/ProgramConfig";
 import { CountUpMoney } from "@/components/CountUp";
 import { Sparkline } from "@/components/Sparkline";
@@ -216,6 +217,8 @@ export default function DeckPage() {
           }
         />
       </div>
+
+      <DeskMetrics />
 
       <section aria-labelledby="fleet-heading" className="space-y-3">
         <div className="flex items-center justify-between gap-3">
