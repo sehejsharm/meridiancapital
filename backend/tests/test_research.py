@@ -301,3 +301,36 @@ def test_the_quarterly_study_reads_and_changes_nothing(client, auth):  # noqa: F
     assert "Live +Rs 450; the backtest expects +Rs 300; luck allows -Rs 5,700 to +Rs 6,300" in text
     assert "No closed trade in this period." in quarterly.study_text(db, "2020-01-01", "2020-03-31")
     assert (len(db.trades(limit=100)), len(db.audit_tail(100))) == before
+
+
+def test_the_reports_read_a_reduced_path_that_gives_the_same_answers_and_is_kept_for_settled_trades(client, auth):  # noqa: F811
+    from app.deps import ctx
+
+    db = ctx().db
+    tid = add_trade(db)
+    record_path(db)
+    t = ledger_row(db, tid)
+    full = research.trade_ticks(db, t)
+    lean = research.lean_ticks(db, t)
+    assert len(lean) <= len(full) and lean
+    assert research.path(db, t, ticks=full) == research.path(db, t)
+    assert research.execution(db, t, ticks=full) == research.execution(db, t)
+    # A trade from an earlier day is settled: its reduced path is served from memory, not the database.
+    calls = []
+    real = db.tick_path
+    db.tick_path = lambda *a: calls.append(a) or real(*a)
+    try:
+        research.lean_ticks(db, t)
+        research.lean_ticks(db, t)
+    finally:
+        db.tick_path = real
+    assert len(calls) <= 1
+    # The program's opening time a few seconds off the trade log's entry is still matched, once per report.
+    shifted = {**t, "entry_ts": t["entry_ts"][:16] + ":07"}
+    assert research.lean_ticks(db, shifted, research.opened_index(db))
+
+
+def ledger_row(db, tid):
+    from app import ledger
+
+    return ledger.reconcile(db, [db.trade_by_id(tid)])[0]

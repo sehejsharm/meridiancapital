@@ -517,6 +517,14 @@ class Database:
                 (algo_id, opened_ts)).fetchall()
         return [dict(r) for r in rows]
 
+    def tick_path(self, algo_id: str, opened_ts: str) -> list[tuple[str, float, float | None]]:
+        """One trade's price path as (ts, premium, stop_price), oldest first: the three fields the research
+        reports read. A fraction of the cost of ticks() (all columns, as dicts) over a year of trades."""
+        with self.conn() as c:
+            return [tuple(r) for r in c.execute(
+                "SELECT ts, premium, stop_price FROM position_ticks WHERE algo_id = ? AND opened_ts = ? ORDER BY id",
+                (algo_id, opened_ts)).fetchall()]
+
     def ticks_between(self, date_from: str, date_to: str, limit: int = 400_000) -> list[dict]:
         with self.conn() as c:
             rows = c.execute(

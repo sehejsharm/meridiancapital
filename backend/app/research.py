@@ -130,7 +130,58 @@ def trade_ticks(db, trade: dict) -> list[dict]:
     return []
 
 
-def path(db, trade: dict, ticks: list[dict] | None = None, day_candles: dict | None = None) -> dict:
+def opened_index(db) -> dict[tuple[str, str], str]:
+    """(algo, entry minute) -> the program's own opening timestamp, for every recorded path. Built once per
+    report: looked up per trade, it was a scan of every tick for each trade whose times differ by seconds."""
+    return {(r["algo_id"], str(r["opened_ts"])[:16].replace(" ", "T")): r["opened_ts"] for r in db.tick_trades(limit=4000)}
+
+
+_DIGESTS: dict[tuple, list[tuple]] = {}
+DIGEST_CACHE_TRADES = 800          # about three years of trades; ~130 readings each
+
+
+def _digest(rows: list[tuple], exit_ts: str) -> list[tuple]:
+    """The readings the reports can tell apart: the last of each minute, and the last at or before the exit.
+    minute_closes() and execution() give exactly the same answers on this as on every reading."""
+    last_of_min: dict[str, tuple] = {}
+    at_exit = None
+    for r in rows:
+        last_of_min[str(r[0])[:16]] = r
+        if exit_ts and str(r[0]) <= exit_ts:
+            at_exit = r
+    keep = set(last_of_min.values())
+    if at_exit is not None:
+        keep.add(at_exit)
+    return sorted(keep, key=lambda r: str(r[0]))
+
+
+def lean_ticks(db, trade: dict, index: dict | None = None) -> list[dict]:
+    """A trade's path with the three fields the reports read (ts, premium, stop_price), oldest first,
+    reduced to what they can tell apart. A closed trade from an earlier day never changes, so its
+    reduced path is kept in memory: the Analytics page no longer re-reads a year of readings each visit."""
+    from engine.clock import now_ist
+
+    algo, entry = trade.get("algo_id") or "", str(trade.get("entry_ts") or "")
+    exit_ts = str(trade.get("exit_ts") or "").replace(" ", "T")[:19]
+    settled = bool(exit_ts) and str(trade.get("session_date") or "") < now_ist().date().isoformat()
+    key = (str(getattr(db, "path", id(db))), algo, entry, exit_ts)
+    if settled and key in _DIGESTS:
+        rows = _DIGESTS[key]
+    else:
+        rows = db.tick_path(algo, entry)
+        if not rows:
+            opened = (index if index is not None else opened_index(db)).get((algo, entry[:16].replace(" ", "T")))
+            rows = db.tick_path(algo, opened) if opened else []
+        rows = _digest(rows, exit_ts)
+        if settled and rows:
+            if len(_DIGESTS) >= DIGEST_CACHE_TRADES:
+                _DIGESTS.pop(next(iter(_DIGESTS)))
+            _DIGESTS[key] = rows
+    return [{"ts": ts, "premium": prem, "stop_price": stop} for ts, prem, stop in rows]
+
+
+def path(db, trade: dict, ticks: list[dict] | None = None, day_candles: dict | None = None,
+         index: dict | None = None) -> dict:
     """A trade's minute-by-minute path after its entry minute.
 
     From Angel's candles when they were kept (the whole day, so it runs past the
@@ -143,7 +194,7 @@ def path(db, trade: dict, ticks: list[dict] | None = None, day_candles: dict | N
         after = [(b[0], float(b[4])) for b in bars if entry_min < b[0] <= LAST_BAR]
         if after:
             return {"source": "Angel one-minute candles", "complete": True, "bars": after}
-    ticks = ticks if ticks is not None else trade_ticks(db, trade)
+    ticks = ticks if ticks is not None else lean_ticks(db, trade, index)
     after = [(m, p) for m, p in minute_closes(ticks) if entry_min < m <= LAST_BAR]
     return {"source": "the program's own readings" if after else None, "complete": False, "bars": after}
 
@@ -199,11 +250,12 @@ def execution(db, trade: dict, ticks: list[dict] | None = None, day_candles: dic
 def execution_report(db, trades: list[dict]) -> dict:
     rows = []
     cache: dict[str, dict | None] = {}
+    index = opened_index(db)
     for t in trades:
         day = str(t.get("session_date") or "")
         if day not in cache:
             cache[day] = candles(db, day)
-        e = execution(db, t, day_candles=cache[day])
+        e = execution(db, t, ticks=lean_ticks(db, t, index), day_candles=cache[day])
         if e:
             rows.append(e)
 
@@ -229,8 +281,9 @@ def execution_report(db, trades: list[dict]) -> dict:
 
 # ── the exit rule sets on live trades ────────────────────────────────────────
 
-def rules_on_trade(db, trade: dict, rulesets=exit_rules.STANDARD, day_candles: dict | None = None) -> dict:
-    p = path(db, trade, day_candles=day_candles)
+def rules_on_trade(db, trade: dict, rulesets=exit_rules.STANDARD, day_candles: dict | None = None,
+                   index: dict | None = None) -> dict:
+    p = path(db, trade, day_candles=day_candles, index=index)
     entry = float(trade.get("entry_prem") or 0.0)
     qty = int(trade.get("qty") or exit_rules.LOT) or exit_rules.LOT
     out = {"trade_id": trade.get("id"), "session_date": trade.get("session_date"), "tsym": trade.get("tsym"),
@@ -261,13 +314,14 @@ def rules_report(db, trades: list[dict], rulesets=exit_rules.STANDARD) -> dict:
     could be decided on, so the rule sets are compared on the same trades."""
     cache: dict[str, dict | None] = {}
     rows = []
+    index = opened_index(db)
     for t in trades:
         if not t.get("exit_ts"):
             continue
         day = str(t.get("session_date") or "")
         if day not in cache:
             cache[day] = candles(db, day)
-        rows.append(rules_on_trade(db, t, rulesets, cache[day]))
+        rows.append(rules_on_trade(db, t, rulesets, cache[day], index))
     names = [rs.name for rs in rulesets]
     comparable = [r for r in rows if all(n in r["rules"] and r["rules"][n]["decided"] for n in names)]
     totals = {n: {"net": round(sum(r["rules"][n]["net"] for r in comparable), 2),
