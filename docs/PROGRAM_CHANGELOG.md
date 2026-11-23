@@ -24,6 +24,7 @@ record) and *minute-close* (optimistic). A change goes in only if it helps under
 | v14 | Config #5 v10 | No Angel credentials in the file (read from the server's settings); exit settings can be set from Controls in a file read once at start | Credentials in an uploaded, stored file; exit changes needed a new upload | Self-test 214/214; with no settings file every exit and sizing decision is identical to v13 (644 comparisons) |
 | v15 | Config #5 v11 | v14 with the Angel credentials written back into the file (the server's settings still win when set), at the owner's request | The server had no credentials yet, so v14 could not start | Self-test 214/214; identical to v14 apart from the credentials and labels |
 | v16 | Config #5 v12 | Writes the option chain beside itself every 15 s for the dashboard (chain, option flow, liquidity), on its own thread with its own rate limit on Angel's quote endpoint. Display only: places nothing, reads no trading state | The chain came only from the retired built-in engine | Self-test 228/228; all 96 functions and classes and every setting identical to v15; the trading loop gains only the hand-off lines |
+| v17 | Config #5 v13 | Starting stop −30% of the premium paid (was −45%). Nothing else changes; sizing reads the stop, so the ₹9,000 risk cap allows more lots as the balance grows. The −45% drawdown halt is a different setting and is unchanged | Five-year study (May 2021 – May 2026, plus BANKNIFTY and SENSEX): about the same result per lot with a shallower worst run. Chosen by the owner over a lower-risk, lower-return alternative (0.1% breakout clearance) | Self-test 234 of 235 (the credentials check cannot pass on a blanked test copy; v16 the same); all 165 functions and classes identical to v16; the program's own stop, take-profit and sizing functions reproduce the backtest's 737 exits to the tick |
 
 ## Studies that changed nothing
 
@@ -34,6 +35,10 @@ record) and *minute-close* (optimistic). A change goes in only if it helps under
 | Entry filters (quiet market, 30-minute momentum, channel edge, later start, breakout confirmation) | Not proven; entries left alone |
 | Tighter trail, all-day fixed target, stop at 35/40%, cutting losers early or by the clock, index-reversal exits | Worse |
 | Selling one of two lots early (scale-out at +20% to +100%) | Worse at every level under both fill models; better in at most 3 of 6 years |
+| Delta exits, five families (delta trail, delta targets, delta-sized index stops, theta/stagnation, delta- and volatility-scaled widths), about 2,000 variants | The two that passed 2024–26 lost on the held-back 2021–24 years |
+| Other Greeks (gamma fade, IV spike, charm, elasticity) | None beat today's exits chosen in advance (walk-forward) or on BANKNIFTY and SENSEX |
+| Exit packs from the live log (stop −25% with 90/120-minute time stops, +1% lock at +12%, 10% or stepped trail) and fixed take-profits | Helped the 35 live trades of Sep–Nov 2026; far worse over five years. Every time stop from 60 to 240 minutes is worse |
+| Breakout confirmation (1, 2 or 5-minute hold; with the day's open; with the 20-day average) and put trend filters | Less in total on NIFTY; a 0.1% clearance is better per trade in all three markets but trades about one day in five (kept as an option) |
 
 ## Before a version trades real money
 
