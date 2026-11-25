@@ -17,3 +17,18 @@ test("uptime is judged against market hours", () => {
   assert.equal(uptimeTone(76.4), "critical", "21 Oct 2026's crash loop");
   assert.equal(uptimeTone(null), "neutral");
 });
+
+test("feed disagreements after the 15:10 close are told apart from those in trading hours", async () => {
+  const { splitDivergences, isAfterClose } = await import("../lib/reliability.ts");
+  const events = [
+    { ts: "2026-11-23T15:24:42", pts: 510.6 },
+    { ts: "2026-11-12T11:20:00", pts: 4.2 },
+    { ts: "2026-11-11T15:25:00", pts: 484.9, after_close: true },
+  ];
+  const got = splitDivergences(events);
+  assert.equal(got.live.length, 1);
+  assert.equal(got.after.length, 2);
+  assert.equal(got.liveMax, 4.2);
+  assert.equal(isAfterClose({ ts: "2026-11-23T15:09:59" }), false);
+  assert.equal(splitDivergences(events.filter((e) => e.pts > 100)).liveMax, null);
+});

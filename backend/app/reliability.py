@@ -41,6 +41,13 @@ TIMEOUT = re.compile(r"timed?[ -]?out|ReadTimeout|ConnectTimeout|timeout", re.I)
 RATE_LIMIT = re.compile(r"exceed\w* access rate|too many requests|\b429\b|rate[ -]?limit", re.I)
 UPSTREAM = re.compile(r"invalid response from upstream|upstream server|bad gateway|service unavailable|"
                       r"gateway time-?out|\b50[234]\b", re.I)
+# The Angel SDK's own line for a request that failed below HTTP (connection reset, pool exhausted, DNS): it was
+# "other errors" on the page, though every one of them is Angel's API not answering.
+CONNECTION = re.compile(r"HTTPSConnectionPool|Max retries exceeded|Connection (?:aborted|reset|refused)|"
+                        r"RemoteDisconnected|NameResolutionError|Error occurred while making a (?:GET|POST|PUT|DELETE) request",
+                        re.I)
+# The program is flat by 15:10; what its feed check reports after that touches no trade.
+AFTER_CLOSE = "15:10"
 DIVERGENCE = re.compile(r"price stream vs Angel'?s candles:.*?differ by up to\s+([\d.]+)\s*pts", re.I)
 # The desk's own housekeeping is not the engine talking to Angel.
 _EXCLUDED_SOURCES = ("api", "supervisor")
@@ -121,40 +128,67 @@ def _window(day: date) -> tuple[datetime, datetime]:
             datetime.combine(day, datetime.min.time()).replace(hour=MARKET_CLOSE[0], minute=MARKET_CLOSE[1]))
 
 
+def _merge(spans: list[tuple[datetime, datetime]]) -> list[list[datetime]]:
+    merged: list[list[datetime]] = []
+    for a, b in sorted(spans):
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    return merged
+
+
+def _overlap(a: list[list[datetime]], b: list[list[datetime]]) -> float:
+    return sum(max(0.0, (min(y1, y2) - max(x1, x2)).total_seconds()) for x1, y1 in a for x2, y2 in b)
+
+
 def uptime(runs: list[dict], algo_id: str, now: datetime | None = None) -> dict:
-    """Each day the algorithm ran: the share of market hours (09:15-15:30) a process was up."""
+    """Each day the algorithm ran: the share of market hours (09:15-15:30) a process was up when it was meant
+    to be. After a stop that was asked for (the operator's, or the schedule's at the session's end) the engine is
+    meant to be down until it is started again, so that time is not counted against it; a crash still is.
+    25 Nov 2026: a manual stop at 11:01 after the day's one trade, and the 15:25 session end every day, made the
+    page say 88.3% and red."""
     now = now or _now()
     spans: dict[date, list[tuple[datetime, datetime]]] = {}
-    for r in runs:
-        if (r.get("algo_id") or "") != algo_id:
-            continue
-        start = _ts(r.get("started_ts"))
-        if start is None:
-            continue
-        stop = _ts(r.get("stopped_ts")) or now
+    off: dict[date, list[tuple[datetime, datetime]]] = {}
+
+    def clip(store, start, stop):
         day = start.date()
         while day <= stop.date():
             lo, hi = _window(day)
             a, b = max(start, lo), min(stop, hi, now)
             if b > a:
-                spans.setdefault(day, []).append((a, b))
+                store.setdefault(day, []).append((a, b))
             day += timedelta(days=1)
+
+    mine = sorted((r for r in runs if (r.get("algo_id") or "") == algo_id and _ts(r.get("started_ts"))),
+                  key=lambda r: _ts(r.get("started_ts")))
+    for i, r in enumerate(mine):
+        start = _ts(r.get("started_ts"))
+        stop = _ts(r.get("stopped_ts")) or now
+        clip(spans, start, stop)
+        if r.get("stopped_ts") and str(r.get("reason") or "").startswith("stopped on request"):
+            nxt = _ts(mine[i + 1].get("started_ts")) if i + 1 < len(mine) else None
+            end = min(nxt, now) if nxt else now
+            end = min(end, datetime.combine(stop.date(), datetime.min.time()).replace(
+                hour=MARKET_CLOSE[0], minute=MARKET_CLOSE[1]))                  # an asked-for stop covers its own day
+            if end > stop:
+                clip(off, stop, end)
     daily = []
     for day in sorted(spans):
         lo, hi = _window(day)
         hi = min(hi, now)
         if hi <= lo:
             continue
-        merged: list[list[datetime]] = []
-        for a, b in sorted(spans[day]):
-            if merged and a <= merged[-1][1]:
-                merged[-1][1] = max(merged[-1][1], b)
-            else:
-                merged.append([a, b])
+        merged = _merge(spans[day])
         up = sum((b - a).total_seconds() for a, b in merged)
-        total = (hi - lo).total_seconds()
-        daily.append({"date": day.isoformat(), "pct": round(100 * up / total, 1),
-                      "down_min": round((total - up) / 60, 1)})
+        stopped = _merge(off.get(day, []))
+        meant_off = sum((b - a).total_seconds() for a, b in stopped) - _overlap(stopped, merged)
+        total = (hi - lo).total_seconds() - max(0.0, meant_off)
+        if total <= 0:
+            continue
+        daily.append({"date": day.isoformat(), "pct": round(min(100.0, 100 * up / total), 1),
+                      "down_min": round(max(0.0, total - up) / 60, 1), "off_min": round(max(0.0, meant_off) / 60, 1)})
     overall = round(sum(d["pct"] for d in daily) / len(daily), 1) if daily else None
     return {"daily": daily, "overall_pct": overall}
 
@@ -169,6 +203,8 @@ def classify_api(message: str) -> str | None:
         return "upstream"
     if TIMEOUT.search(message):
         return "timeouts"
+    if CONNECTION.search(message):
+        return "connection"
     return None
 
 
@@ -184,7 +220,7 @@ def journal_since(db, since: str, algo_id: str | None = None) -> list[dict]:
 
 
 def api_errors(events: list[dict], days: list[str]) -> dict:
-    blank = {"timeouts": 0, "rate_limits": 0, "upstream": 0, "other_errors": 0}
+    blank = {"timeouts": 0, "rate_limits": 0, "upstream": 0, "connection": 0, "other_errors": 0}
     per_day = {d: dict(blank) for d in days}
     for e in events:
         if e.get("source") in _EXCLUDED_SOURCES:
@@ -219,12 +255,18 @@ def api_errors(events: list[dict], days: list[str]) -> dict:
 
 
 def divergences(events: list[dict]) -> dict:
+    """Every stream-vs-candle disagreement, marked when it came after the 15:10 close. Every one logged up to
+    26 Nov 2026 came between 15:21 and 15:25, with the program flat: the feed's last minutes, never a trade's."""
     out = []
     for e in events:
         m = DIVERGENCE.search(e.get("message") or "")
         if m:
-            out.append({"ts": e.get("ts"), "pts": float(m.group(1)), "algo_id": e.get("algo_id")})
-    return {"events": out, "count": len(out), "max_pts": max((x["pts"] for x in out), default=None)}
+            ts = str(e.get("ts") or "")
+            out.append({"ts": e.get("ts"), "pts": float(m.group(1)), "algo_id": e.get("algo_id"),
+                        "after_close": ts[11:16] >= AFTER_CLOSE})
+    live = [x for x in out if not x["after_close"]]
+    return {"events": out, "count": len(out), "max_pts": max((x["pts"] for x in out), default=None),
+            "in_session_count": len(live), "in_session_max_pts": max((x["pts"] for x in live), default=None)}
 
 
 # ── the report and the banner ────────────────────────────────────────────────

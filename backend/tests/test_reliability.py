@@ -151,3 +151,52 @@ def test_a_requested_stop_is_recorded_as_one(tmp_db, tmp_path):
     [r] = tmp_db.recent_runs(1, algo_id="og-test")
     assert r["reason"].startswith("stopped on request (operator stop)")
     assert reliability.abnormal(r) is False
+
+
+def test_a_stop_you_asked_for_is_not_downtime(tmp_db):
+    """25 Nov 2026: one trade, sold by hand at 11:01, program stopped on request. The page said uptime fell;
+    nothing failed. Time after an asked-for stop (and after the schedule's 15:25 session end) is not counted."""
+    def run_(start, stop, code, reason):
+        rid = tmp_db.start_run(1, "live", "scheduler", algo_id=ALGO)
+        with tmp_db.conn() as c:
+            c.execute("UPDATE engine_runs SET started_ts=?, stopped_ts=?, exit_code=?, reason=? WHERE id=?",
+                      (start, stop, code, reason, rid))
+    run_("2026-11-25T09:05:01", "2026-11-25T11:01:17", 0, "stopped on request (manual:owner); process exited")
+    run_("2026-11-24T09:05:01", "2026-11-24T15:25:09", 0, "stopped on request (session ended); process exited")
+    up = reliability.uptime(reliability.runs_since(tmp_db, "2026-11-01"), ALGO, now=datetime(2026, 11, 26, 9, 0))
+    days = {d["date"]: d for d in up["daily"]}
+    assert days["2026-11-25"]["pct"] == 100.0 and days["2026-11-25"]["off_min"] > 260
+    assert days["2026-11-24"]["pct"] == 100.0 and days["2026-11-24"]["off_min"] == pytest.approx(4.85, abs=0.1)
+    assert up["overall_pct"] == 100.0
+
+
+def test_a_crash_is_still_downtime_until_the_restart(tmp_db):
+    def run_(start, stop, code, reason):
+        rid = tmp_db.start_run(1, "live", "scheduler", algo_id=ALGO)
+        with tmp_db.conn() as c:
+            c.execute("UPDATE engine_runs SET started_ts=?, stopped_ts=?, exit_code=?, reason=? WHERE id=?",
+                      (start, stop, code, reason, rid))
+    run_("2026-11-20T09:05:00", "2026-11-20T10:00:00", 1, "process exited")                  # a crash
+    run_("2026-11-20T11:00:00", "2026-11-20T15:25:00", 0, "stopped on request (session ended)")
+    [day] = reliability.uptime(reliability.runs_since(tmp_db, "2026-11-01"), ALGO, now=datetime(2026, 11, 21, 9, 0))["daily"]
+    assert day["down_min"] == pytest.approx(60.0, abs=0.1) and day["pct"] < 85
+
+
+def test_feed_disagreements_after_the_close_are_marked(tmp_db):
+    def ev(ts, msg):
+        eid = tmp_db.add_event("warn", msg, source="program", algo_id=ALGO)
+        with tmp_db.conn() as c:
+            c.execute("UPDATE events SET ts=? WHERE id=?", (ts, eid))
+    ev("2026-11-23T15:24:42", "[15:24:40] price stream vs Angel's candles: closes differ by up to 510.6 pts in the last 15 min — Angel's are used")
+    ev("2026-11-12T11:20:00", "[11:20:00] price stream vs Angel's candles: closes differ by up to 4.2 pts in the last 15 min — Angel's are used")
+    got = reliability.divergences(reliability.journal_since(tmp_db, "2000-01-01"))
+    assert got["count"] == 2 and got["in_session_count"] == 1 and got["in_session_max_pts"] == 4.2
+    assert [e["after_close"] for e in got["events"]] == [False, True] or [e["after_close"] for e in got["events"]] == [True, False]
+
+
+def test_an_angel_request_that_failed_below_http_is_a_connection_error():
+    line = ("[E 261125 04:52:24 smartConnect:221] Error occurred while making a POST request to "
+            "https://apiconnect.angelone.in/rest/secure/angelbroking/order/v1/getLtpData. Headers: {...}, Request: {}, "
+            "Response: HTTPSConnectionPool(host='apiconnect.angelone.in', port=443): Max retries exceeded")
+    assert reliability.classify_api(line) == "connection"
+    assert reliability.classify_api("Error occurred while making a GET request ... Read timed out") == "timeouts"

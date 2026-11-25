@@ -72,6 +72,13 @@ export function ServerCard() {
               ))}
             </ol>
           )}
+          {worst !== "good" && (
+            <p className="mt-3 break-words rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-2xs leading-relaxed text-warning">
+              The outside monitor, phone alerts, backups off the VM and Angel's books for this check are switched on with
+              one guided command on the VM, outside market hours (it asks for each value, hides the secret ones and tests
+              them): <code className="break-all font-mono">sudo bash ~/meridiancapital/backend/deploy/configure.sh</code>
+            </p>
+          )}
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <Button onClick={() => void runCheck()} disabled={busy}>{busy ? "Checking…" : "Run the after-close check now"}</Button>
             {note && <span className="min-w-0 break-words text-2xs text-ink-secondary">{note}</span>}

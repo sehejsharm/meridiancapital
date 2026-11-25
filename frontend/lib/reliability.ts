@@ -22,5 +22,23 @@ export const API_KINDS = [
   { key: "timeouts", label: "Timeouts", className: "bg-warning" },
   { key: "rate_limits", label: "Rate limits", className: "bg-serious" },
   { key: "upstream", label: "Upstream errors", className: "bg-critical" },
+  { key: "connection", label: "Angel not answering", className: "bg-ink-muted" },
   { key: "other_errors", label: "Other errors", className: "bg-series" },
 ] as const;
+
+/** A feed check after the 15:10 close touches no trade: the program is flat by then. */
+export function isAfterClose(e: { ts: string; after_close?: boolean }): boolean {
+  if (typeof e.after_close === "boolean") return e.after_close;
+  return String(e.ts ?? "").slice(11, 16) >= "15:10";
+}
+
+/** The stream-vs-candle disagreements split into those inside trading hours and those after the close. */
+export function splitDivergences(events: { ts: string; pts: number; after_close?: boolean }[]) {
+  const live = events.filter((e) => !isAfterClose(e));
+  const after = events.filter((e) => isAfterClose(e));
+  return {
+    live,
+    after,
+    liveMax: live.length ? Math.max(...live.map((e) => e.pts)) : null,
+  };
+}

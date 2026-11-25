@@ -208,6 +208,8 @@ export interface ApiErrorDay {
   timeouts: number;
   rate_limits: number;
   upstream: number;
+  /** Angel's API not answering at all (connection reset, pool exhausted); older servers do not send it. */
+  connection?: number;
   other_errors: number;
   total: number;
 }
@@ -223,9 +225,15 @@ export interface ReliabilityReport {
     totals: Omit<ApiErrorDay, "date">;
     trend: { this_week: number; last_week: number; change_pct: number | null } | null;
   };
-  divergence: { events: { ts: string; pts: number; algo_id: string }[]; count: number; max_pts: number | null };
+  divergence: {
+    events: { ts: string; pts: number; algo_id: string; after_close?: boolean }[];
+    count: number;
+    max_pts: number | null;
+    in_session_count?: number;
+    in_session_max_pts?: number | null;
+  };
   runs: { loops: CrashEpisode[]; crashes: CrashEpisode[]; abnormal_exits: number; total_runs: number };
-  uptime: { daily: { date: string; pct: number; down_min: number }[]; overall_pct: number | null };
+  uptime: { daily: { date: string; pct: number; down_min: number; off_min?: number }[]; overall_pct: number | null };
   alerts: CrashAlert[];
   thresholds: { loop_gap_min: number; loop_threshold: number };
 }

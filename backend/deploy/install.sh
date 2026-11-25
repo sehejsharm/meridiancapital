@@ -206,6 +206,12 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 systemctl --no-pager --lines=5 status meridian-api || true
+# The restore test otherwise first runs on the 1st of the month: until then the Reliability page says "not run
+# yet". Run it once now, in the background, whenever there is a backup and no result yet.
+if [[ ! -f "$DATA_DIR/backups/last-restore-test.json" ]] && ls "$DATA_DIR"/backups/*.db* >/dev/null 2>&1; then
+    systemctl start --no-block meridian-restore-test.service \
+        && echo "    restore test started in the background (result on the Reliability page in a minute or two)" || true
+fi
 if [[ -n "$healthy" ]]; then
     echo "API healthy: $(curl -fsS http://127.0.0.1:8080/health)"
 else
@@ -223,6 +229,8 @@ Installed. On a FIRST install only, the remaining steps are:
   4. Add TCP 80 and 443 ingress in the OCI console Security List.
   5. Check the NSE holiday calendar on the dashboard's Controls page (it loads itself).
   6. Leave MERIDIAN_TRADING_MODE=paper until a full session has run clean.
+  7. Outside monitor, phone alerts, backups off the VM, Angel for the after-close check:
+     sudo bash $APP_DIR/backend/deploy/configure.sh   (guided; secrets typed hidden)
 
 Logs:    journalctl -u meridian-api -f
 Engine:  journalctl -t meridian-api -f   (engine events also land in the DB)

@@ -10,7 +10,7 @@ import { apiGet, apiPost } from "@/lib/client-api";
 import { useLiveFeed } from "@/lib/LiveContext";
 import { dayLabel } from "@/lib/format";
 import { recordedAt } from "@/lib/recorded";
-import { API_KINDS, trendText, uptimeTone } from "@/lib/reliability";
+import { API_KINDS, isAfterClose, splitDivergences, trendText, uptimeTone } from "@/lib/reliability";
 import type { ReliabilityReport } from "@/lib/types";
 import { pollWhileVisible } from "@/lib/pollWhileVisible";
 
@@ -94,7 +94,7 @@ export default function ReliabilityPage() {
             <TileWithSpark
               label="Engine uptime, market hours"
               value={data.uptime.overall_pct != null ? `${data.uptime.overall_pct.toFixed(1)}%` : "—"}
-              hint={`${data.uptime.daily.length} trading day${data.uptime.daily.length === 1 ? "" : "s"} with a run`}
+              hint={`${data.uptime.daily.length} trading day${data.uptime.daily.length === 1 ? "" : "s"} with a run · stops you or the schedule asked for are not counted`}
               spark={data.uptime.daily.map((d) => d.pct)}
               tone={uptimeTone(data.uptime.overall_pct)}
             />
@@ -108,7 +108,7 @@ export default function ReliabilityPage() {
             <TileWithSpark
               label="Rate-limit incidents"
               value={String(data.api.totals.rate_limits)}
-              hint={`${data.api.totals.timeouts} timeouts · ${data.api.totals.upstream} upstream errors`}
+              hint={`${data.api.totals.timeouts} timeouts · ${data.api.totals.upstream} upstream errors · ${data.api.totals.connection ?? 0} not answering`}
               spark={data.api.daily.map((d) => d.rate_limits)}
               tone={data.api.totals.rate_limits ? "warning" : "good"}
             />
@@ -121,36 +121,12 @@ export default function ReliabilityPage() {
             />
           </div>
 
-          <Card title="Angel API errors per day" subtitle="Read timeouts, rate limits and upstream errors the engines logged, by kind">
+          <Card title="Angel API errors per day" subtitle="Angel's API failing to answer the engine, by kind. The program retries each one; none of them is a trade going wrong">
             <ApiBars report={data} />
           </Card>
 
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            <Card
-              title="Price feed vs Angel's candles"
-              subtitle={
-                data.divergence.count
-                  ? `${data.divergence.count} time${data.divergence.count === 1 ? "" : "s"} the live stream and Angel's candles disagreed; Angel's were used each time`
-                  : "The live stream and Angel's candles agreed throughout"
-              }
-              action={data.divergence.max_pts != null ? <Badge tone="warning">max {data.divergence.max_pts.toFixed(1)} pts</Badge> : undefined}
-            >
-              {data.divergence.count === 0 ? (
-                <Empty>No divergence logged in this period.</Empty>
-              ) : (
-                <>
-                  <Sparkline values={data.divergence.events.map((e) => e.pts)} height={48} className="text-warning" label="Divergence size, oldest to newest" />
-                  <ol className="mt-3 max-h-56 space-y-1 overflow-y-auto break-words text-xs">
-                    {[...data.divergence.events].reverse().map((e, i) => (
-                      <li key={`${e.ts}-${i}`} className="flex justify-between gap-3 border-b border-hairline pb-1 last:border-0">
-                        <span className="tabular-nums text-ink-secondary">{recordedAt(e.ts)} IST</span>
-                        <span className={`tabular-nums ${e.pts >= 100 ? "text-critical" : "text-warning"}`}>{e.pts.toFixed(1)} pts</span>
-                      </li>
-                    ))}
-                  </ol>
-                </>
-              )}
-            </Card>
+            <FeedCard events={data.divergence.events} />
 
             <Card title="Crashes" subtitle="Exits the engine was not asked for, newest first">
               {!data.runs.loops.length && !data.runs.crashes.length ? (
@@ -182,13 +158,13 @@ export default function ReliabilityPage() {
 
           <AlertChannels />
 
-          <Card title="Uptime by trading day" subtitle="Share of 09:15–15:30 a process was running, for each day it ran">
+          <Card title="Uptime by trading day" subtitle="Share of 09:15–15:30 a process was running when it was meant to be: time after a stop you or the schedule asked for is not counted; a crash is">
             {!data.uptime.daily.length ? (
               <Empty>No runs in this period.</Empty>
             ) : (
               <div className="flex h-28 items-end gap-1" role="img" aria-label="Uptime per trading day">
                 {data.uptime.daily.map((d) => (
-                  <div key={d.date} className="group relative flex h-full min-w-0 flex-1 items-end" title={`${dayLabel(d.date)}: ${d.pct}% · ${d.down_min} min down`}>
+                  <div key={d.date} className="group relative flex h-full min-w-0 flex-1 items-end" title={`${dayLabel(d.date)}: ${d.pct}% · ${d.down_min} min down${d.off_min ? ` · ${d.off_min} min stopped on request` : ""}`}>
                     <div
                       className={`w-full rounded-t-sm ${{ good: "bg-good/70", warning: "bg-warning/80", critical: "bg-critical/80", neutral: "bg-series" }[uptimeTone(d.pct)]}`}
                       style={{ height: `${Math.max(2, d.pct)}%` }}
@@ -218,15 +194,55 @@ function TileWithSpark({
   );
 }
 
+/**
+ * The live stream against Angel's candles. Only a disagreement inside trading hours can touch a trade; every one
+ * logged up to 26 Nov 2026 came at 15:21–15:25, with the program already flat, and Angel's candles were used.
+ */
+function FeedCard({ events }: { events: ReliabilityReport["divergence"]["events"] }) {
+  const { live, after, liveMax } = splitDivergences(events);
+  const subtitle = live.length
+    ? `${live.length} time${live.length === 1 ? "" : "s"} during trading hours the live stream and Angel's candles disagreed; Angel's were used each time`
+    : after.length
+      ? `They agreed throughout trading hours. ${after.length} disagreement${after.length === 1 ? "" : "s"} after the 15:10 close, with no position open: no trade was affected, and Angel's candles were used`
+      : "The live stream and Angel's candles agreed throughout";
+  return (
+    <Card
+      title="Price feed vs Angel's candles"
+      subtitle={subtitle}
+      action={liveMax != null ? <Badge tone="warning">max {liveMax.toFixed(1)} pts in hours</Badge> : <Badge tone="good">none in trading hours</Badge>}
+    >
+      {events.length === 0 ? (
+        <Empty>No divergence logged in this period.</Empty>
+      ) : (
+        <ol className="max-h-56 space-y-1 overflow-y-auto break-words text-xs">
+          {[...events].reverse().map((e, i) => {
+            const late = isAfterClose(e);
+            return (
+              <li key={`${e.ts}-${i}`} className="flex justify-between gap-3 border-b border-hairline pb-1 last:border-0">
+                <span className="tabular-nums text-ink-secondary">
+                  {recordedAt(e.ts)} IST{late ? " · after the close, no position" : ""}
+                </span>
+                <span className={`tabular-nums ${late ? "text-ink-muted" : e.pts >= 100 ? "text-critical" : "text-warning"}`}>
+                  {e.pts.toFixed(1)} pts
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </Card>
+  );
+}
+
 function ApiBars({ report }: { report: ReliabilityReport }) {
   const max = Math.max(1, ...report.api.daily.map((d) => d.total));
   return (
     <div>
       <div className="flex h-40 items-end gap-[3px]" role="img" aria-label="Angel API errors per day, stacked by kind">
         {report.api.daily.map((d) => (
-          <div key={d.date} className="flex h-full min-w-0 flex-1 flex-col-reverse" title={`${dayLabel(d.date)}: ${d.timeouts} timeouts, ${d.rate_limits} rate limits, ${d.upstream} upstream, ${d.other_errors} other`}>
+          <div key={d.date} className="flex h-full min-w-0 flex-1 flex-col-reverse" title={`${dayLabel(d.date)}: ${d.timeouts} timeouts, ${d.rate_limits} rate limits, ${d.upstream} upstream, ${d.connection ?? 0} not answering, ${d.other_errors} other`}>
             {API_KINDS.map((k) => {
-              const n = d[k.key];
+              const n = d[k.key] ?? 0;
               return n ? <div key={k.key} className={`${k.className} w-full opacity-80`} style={{ height: `${(100 * n) / max}%` }} /> : null;
             })}
           </div>
@@ -238,7 +254,7 @@ function ApiBars({ report }: { report: ReliabilityReport }) {
           {API_KINDS.map((k) => (
             <span key={k.key} className="inline-flex items-center gap-1.5">
               <span className={`h-2 w-2 rounded-sm ${k.className}`} aria-hidden="true" />
-              {k.label} {report.api.totals[k.key]}
+              {k.label} {report.api.totals[k.key] ?? 0}
             </span>
           ))}
         </span>
