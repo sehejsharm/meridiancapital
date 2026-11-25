@@ -37,7 +37,6 @@ def outfile_for(algo_id: str) -> Path:
     return DATA_DIR / f"engine-{algo_id}.out"
 
 
-PIDFILE = pidfile_for(DEFAULT_ALGO)
 STOP_GRACE_SEC = 25.0
 # A program squares off on Ctrl-C before it exits: cancel its resting exit
 # orders, confirm, sell, book. On a slow broker day that takes longer than an
@@ -394,10 +393,6 @@ class Supervisor:
         from app.programs import is_program_cmdline
 
         return bool(pid) and is_program_cmdline(_cmdline(pid))
-
-    def restart(self, trigger: str = "manual") -> dict:
-        self.stop(reason="restart", force=True, trigger=trigger)
-        return self.start(trigger=trigger)
 
     def note_crash(self) -> None:
         self.state.restarts_this_session += 1

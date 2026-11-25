@@ -398,13 +398,6 @@ class Database:
             ).fetchall()
         return [_event_row(r) for r in rows]
 
-    def prune_events(self, keep: int = 50_000) -> int:
-        with self.conn() as c:
-            cur = c.execute(
-                "DELETE FROM events WHERE id <= (SELECT MAX(id) - ? FROM events)", (keep,)
-            )
-        return cur.rowcount or 0
-
     def events_before(self, cutoff: str, limit: int = 5000) -> list[dict]:
         """Journal lines dated before ``cutoff`` (an ISO date or timestamp), oldest first."""
         with self.conn() as c:
@@ -483,25 +476,6 @@ class Database:
         with self.conn() as c:
             rows = c.execute(sql, args).fetchall()
         return [dict(r) for r in rows]
-
-    def trade_stats(self) -> dict:
-        with self.conn() as c:
-            row = c.execute(
-                """SELECT COUNT(*) n,
-                          SUM(CASE WHEN net > 0 THEN 1 ELSE 0 END) wins,
-                          COALESCE(SUM(net), 0) net,
-                          COALESCE(SUM(gross), 0) gross,
-                          COALESCE(SUM(charges), 0) charges,
-                          COALESCE(MAX(net), 0) best,
-                          COALESCE(MIN(net), 0) worst,
-                          COALESCE(AVG(hold_min), 0) avg_hold
-                   FROM trades WHERE exit_ts IS NOT NULL"""
-            ).fetchone()
-        d = dict(row)
-        d["wins"] = d["wins"] or 0
-        d["losses"] = (d["n"] or 0) - d["wins"]
-        d["win_rate"] = (d["wins"] / d["n"]) if d["n"] else 0.0
-        return d
 
     # ── equity curve ─────────────────────────────────────────────────────────
     def add_equity_sample(self, session_date: str, equity: float, realised_today: float | None,
@@ -652,17 +626,6 @@ class Database:
         args.append(limit)
         with self.conn() as c:
             rows = c.execute(sql, args).fetchall()
-        return [dict(r) for r in reversed(rows)]
-
-    def daily_equity(self, days: int = 180) -> list[dict]:
-        """Last equity reading of each session — the daily curve."""
-        with self.conn() as c:
-            rows = c.execute(
-                """SELECT session_date, equity, day_pl FROM equity_samples e
-                   WHERE id = (SELECT MAX(id) FROM equity_samples WHERE session_date = e.session_date)
-                   ORDER BY session_date DESC LIMIT ?""",
-                (days,),
-            ).fetchall()
         return [dict(r) for r in reversed(rows)]
 
     # ── commands (API writes, engine consumes) ───────────────────────────────

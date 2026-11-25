@@ -199,9 +199,6 @@ class Fleet:
             sup.state.manual_override = True
         return res
 
-    def stop_all(self, reason: str = "fleet stop") -> list[dict]:
-        return [self.stop(a, reason=reason) for a in self.all()]
-
     def refresh(self) -> None:
         for sup in self.all().values():
             sup.refresh()

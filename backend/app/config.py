@@ -39,8 +39,6 @@ class Settings:
     cors_origins: list[str] = field(
         default_factory=lambda: _csv_env("MERIDIAN_CORS_ORIGINS", "http://localhost:3000")
     )
-    bind_host: str = field(default_factory=lambda: os.environ.get("MERIDIAN_BIND_HOST", "127.0.0.1"))
-    bind_port: int = int(os.environ.get("MERIDIAN_BIND_PORT", "8080"))
 
     # engine supervision
     python_bin: str = field(default_factory=lambda: os.environ.get("MERIDIAN_PYTHON", ""))

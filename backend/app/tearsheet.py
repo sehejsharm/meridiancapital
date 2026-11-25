@@ -16,7 +16,6 @@ from datetime import date, timedelta
 
 from app import pdf, reports
 
-PERIODS = ("week", "month")
 TRADING_DAYS = 252
 # Below this many sessions the ratios are printed with a warning beside them.
 RATIO_MIN_DAYS = 20

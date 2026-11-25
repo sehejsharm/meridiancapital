@@ -59,40 +59,10 @@ def test_stale_commands_expire_instead_of_replaying(tmp_db):
     assert tmp_db.claim_commands() == []
 
 
-def test_trade_stats_summarise_closed_trades(tmp_db):
-    base = {
-        "entry_ts": "2026-09-10 10:20", "session_date": "2026-09-10", "mode": "paper",
-        "lots": 2, "qty": 50, "entry_prem": 140.0, "exit_prem": 160.0, "hold_min": 30,
-    }
-    tmp_db.add_trade({**base, "exit_ts": "2026-09-10 11:00", "net": 900.0, "gross": 1000.0, "charges": 100.0})
-    tmp_db.add_trade({**base, "exit_ts": "2026-09-11 11:00", "net": -400.0, "gross": -300.0, "charges": 100.0})
-    stats = tmp_db.trade_stats()
-    assert stats["n"] == 2 and stats["wins"] == 1 and stats["losses"] == 1
-    assert stats["net"] == 500.0
-    assert stats["win_rate"] == 0.5
-    assert stats["best"] == 900.0 and stats["worst"] == -400.0
-
-
-def test_open_trade_is_excluded_from_stats(tmp_db):
-    tmp_db.add_trade({"entry_ts": "2026-09-10 10:20", "session_date": "2026-09-10", "mode": "paper"})
-    assert tmp_db.trade_stats()["n"] == 0
-
-
 def test_equity_curve_is_chronological(tmp_db):
     for eq in (100.0, 200.0, 300.0):
         tmp_db.add_equity_sample("2026-09-10", eq, 0.0, eq, 0.0)
     assert [p["equity"] for p in tmp_db.equity_curve()] == [100.0, 200.0, 300.0]
-
-
-def test_daily_equity_keeps_last_reading_per_session(tmp_db):
-    tmp_db.add_equity_sample("2026-09-10", 100.0, 0.0, 100.0, 0.0)
-    tmp_db.add_equity_sample("2026-09-10", 150.0, 0.0, 150.0, 50.0)
-    tmp_db.add_equity_sample("2026-09-11", 180.0, 0.0, 180.0, 30.0)
-    daily = tmp_db.daily_equity()
-    assert [(d["session_date"], d["equity"]) for d in daily] == [
-        ("2026-09-10", 150.0),
-        ("2026-09-11", 180.0),
-    ]
 
 
 def test_holidays_upsert_and_delete(tmp_db):

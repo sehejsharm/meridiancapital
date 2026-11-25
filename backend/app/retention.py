@@ -1,8 +1,7 @@
 """Journal retention: lines older than a year are archived to a file, then removed.
 
 The journal (the ``events`` table) grows by a few thousand lines every trading
-day and nothing ever removed any. ``Database.prune_events`` existed and was
-never called. Reports, tax figures and tear sheets read the trades table, which
+day and, before this module, nothing ever removed any. Reports, tax figures and tear sheets read the trades table, which
 is never touched here; only the journal's old lines move.
 
 Nothing is deleted until it is safely on disk: each batch is appended to

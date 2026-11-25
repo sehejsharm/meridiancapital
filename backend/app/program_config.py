@@ -50,15 +50,6 @@ LABELS.update({"LATE_TP_AFTER_MIN": "Late take-profit after (min)", "LATE_TP_FRA
                # v19: sell a loser when NIFTY closes back past the channel's far edge, or this many IV-sigmas
                # x sqrt(minutes held) against the breakout level
                "FAILED_BRK_K": "Failed-breakout exit, σ multiple (v19)"})
-# A key the program is known to print at startup; the rest come from its code only.
-LOGGED = (
-    "TARGET_PTS", "BE_TRIGGER", "TRAIL_FRAC", "TRAIL_START", "TRAIL_NARROW_MIN",
-    "LATE_TP_AFTER_MIN", "LATE_TP_FRAC", "RUNNER_AT", "RUNNER_FRAC", "STOP_FRAC", "FAILED_BRK_K",
-    "PER_TRADE_RISK_RS", "DAILY_LOSS_LIMIT_RS", "WEEKLY_LOSS_LIMIT_RS", "CONSEC_LOSS_HALT",
-    "DAILY_PROFIT_LOCK_RS", "MAX_TRADES_DAY", "MAX_DRAWDOWN_STOP", "DEPLOY_FRACTION",
-    "PER_TRADE_EQUITY_CAP", "MAX_LOTS", "ENTRY_START", "ENTRY_CUTOFF", "FORCE_CLOSE",
-    "MIN_DTE", "MAX_DTE",
-)
 _TIMES = ("ENTRY_START", "ENTRY_CUTOFF", "FORCE_CLOSE")
 
 _PREFIX = re.compile(r"^\[\d{2}:\d{2}(?::\d{2})?\]\s*")
