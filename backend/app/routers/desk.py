@@ -97,7 +97,8 @@ async def market_expiry_outlook(algo: str | None = Query(None, max_length=80)) -
     row = c.db.algo(algo_id) if algo_id else None
     if not row or row.get("kind") == "builtin":
         return {"available": False, "reason": "no uploaded program to read the expiry window from"}
-    running = program_config.running_config(c.db, algo_id) if c.fleet.is_running(algo_id) else None
+    running = (program_config.running_config(c.db, algo_id, since=program_config.run_started(c.fleet, algo_id))
+               if c.fleet.is_running(algo_id) else None)
     code = program_config.code_config(c.db, row)
     values = {**((code or {}).get("values") or {}), **((running or {}).get("values") or {})}
     lo, hi = values.get("MIN_DTE"), values.get("MAX_DTE")

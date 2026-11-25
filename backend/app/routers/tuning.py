@@ -78,7 +78,8 @@ async def get_tuning() -> dict:
 async def program_configs() -> dict:
     """Each uploaded program's configuration: what it logged at its last startup,
     what its active code says, and where the two (or the built-in's) disagree."""
-    return {"programs": program_config.all_reports(ctx().db),
+    c = ctx()
+    return {"programs": program_config.all_reports(c.db, getattr(c, "fleet", None)),
             "builtin": {"name": C.BUILD_NAME, "version": C.BUILD_VERSION}}
 
 

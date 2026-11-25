@@ -401,17 +401,20 @@ class ProgramOutput:
         """The exit rules the running process printed at startup (else its code's), read once per run."""
         algo_id = algo.get("id") or ""
         hit = self._rules.get(algo_id)
-        if hit and hit["pid"] == pid and (hit["rs"] is not None or time.time() - hit["at"] < self.RULES_RETRY_SEC):
+        if hit and hit["pid"] == pid and (hit["final"] or time.time() - hit["at"] < self.RULES_RETRY_SEC):
             return hit["rs"]
-        rs = None
+        rs, final = None, False
         try:
-            running = program_config.running_config(self.db, algo_id)
+            # Only this run's startup block counts: an earlier run's would describe older code.
+            running = program_config.running_config(self.db, algo_id, since=program_config.run_started(self.fleet, algo_id))
             code = program_config.code_config(self.db, algo) if algo.get("active_version") else None
             values = {**((code or {}).get("values") or {}), **((running or {}).get("values") or {})}
             rs = exit_rules.from_config(values, name="the running program's rules")
+            # Final once this run has printed its settings; until then the code's, read again shortly.
+            final = rs is not None and running is not None
         except Exception:
             rs = None
-        self._rules[algo_id] = {"pid": pid, "rs": rs, "at": time.time()}
+        self._rules[algo_id] = {"pid": pid, "rs": rs, "at": time.time(), "final": final}
         return rs
 
     def _attach_exit_plan(self, algo: dict, pid, snap: dict) -> None:

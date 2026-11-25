@@ -418,10 +418,14 @@ export interface ProgramConfigReport {
   name: string;
   mode: "paper" | "live" | null;
   running: { logged_ts: string | null; event_id: number } | null;
+  /** Is the process running now? false: "running" is what it ran at its last start, and nothing is drift. */
+  running_now?: boolean | null;
   code: { version: number | null; sha256: string } | null;
   rows: ProgramConfigRow[];
   drift: string[];
   differs_from_builtin: string[];
+  /** Settings new or changed in the active upload (against the one before) that have no row in the table. */
+  unlisted?: { key: string; value: number | boolean | null; was: number | boolean | null; change: "new" | "changed" }[];
 }
 
 // ── fleet ────────────────────────────────────────────────────────────────────

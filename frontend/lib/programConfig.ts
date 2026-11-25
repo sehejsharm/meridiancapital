@@ -19,6 +19,15 @@ export function formatParam(kind: TuningKind, value: number | string | null | un
   return String(n);
 }
 
+/** One line naming the settings an upload added or changed that the table has no row for, or null. */
+export function unlistedSummary(report: ProgramConfigReport): string | null {
+  const u = report.unlisted ?? [];
+  if (!u.length) return null;
+  const v = (x: number | boolean | null) => (x === null ? "none" : String(x));
+  const items = u.map((x) => (x.change === "new" ? `${x.key} = ${v(x.value)} (new)` : `${x.key} ${v(x.was)} → ${v(x.value)}`));
+  return `New or changed in this upload and not in the table above: ${items.join("; ")}.`;
+}
+
 /** What the program is using: its startup log if it has started, else its code. */
 export function effectiveValue(row: ProgramConfigRow): number | string | null | undefined {
   if (row.running_known) return row.running;

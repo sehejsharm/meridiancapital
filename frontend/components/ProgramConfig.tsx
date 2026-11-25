@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { Badge, Card } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
-import { builtinDifferences, driftSummary, effectiveValue, formatParam } from "@/lib/programConfig";
+import { builtinDifferences, driftSummary, effectiveValue, formatParam, unlistedSummary } from "@/lib/programConfig";
 import { recordedAt } from "@/lib/recorded";
 import type { ProgramConfigReport } from "@/lib/types";
 import { pollWhileVisible } from "@/lib/pollWhileVisible";
@@ -69,11 +69,16 @@ export function ProgramConfigCard({
   showBuiltin?: boolean;
 }) {
   const diffs = builtinDifferences(report);
+  const stopped = report.running_now === false;
   return (
     <Card
       title={`${report.name} — what it is running`}
       subtitle={
-        report.running
+        report.running && stopped
+          ? `Not running. Left: what it ran at its last start, ${recordedAt(report.running.logged_ts)} IST. Its next start runs the code${
+              report.code ? ` (v${report.code.version ?? "?"})` : ""
+            }.`
+          : report.running
           ? `As it logged at its last startup, ${recordedAt(report.running.logged_ts)} IST${
               report.code ? ` · code v${report.code.version ?? "?"}` : ""
             }`
@@ -82,6 +87,8 @@ export function ProgramConfigCard({
       action={
         report.drift.length ? (
           <Badge tone="critical">Drift: {report.drift.length}</Badge>
+        ) : stopped ? (
+          <Badge tone="neutral">Not running</Badge>
         ) : (
           <Badge tone="good">Runs its code</Badge>
         )
@@ -105,7 +112,7 @@ export function ProgramConfigCard({
           <thead>
             <tr className="border-b border-hairline text-left text-2xs uppercase tracking-[0.12em] text-ink-muted">
               <th className="py-1.5 pr-3 font-medium">Parameter</th>
-              <th className="py-1.5 pr-3 text-right font-medium">Running</th>
+              <th className="py-1.5 pr-3 text-right font-medium">{stopped ? "Last start" : "Running"}</th>
               <th className="py-1.5 pr-3 text-right font-medium">In its code</th>
               {showBuiltin && <th className="py-1.5 text-right font-medium">Built-in form</th>}
             </tr>
@@ -135,6 +142,11 @@ export function ProgramConfigCard({
             ))}
           </tbody>
         </table>
+        {unlistedSummary(report) && (
+          <p className="mt-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-2xs leading-relaxed text-warning">
+            {unlistedSummary(report)} Their meaning is in the program&apos;s change log.
+          </p>
+        )}
       </div>
     </Card>
   );

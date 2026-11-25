@@ -204,3 +204,71 @@ def test_v19s_failed_breakout_setting_is_read_and_shown(tmp_db):
 def test_a_v18_process_running_against_v19_code_is_flagged(tmp_db):
     report = program_config.config_report(tmp_db, register(tmp_db, source=V19_SOURCE, block=V18_BLOCK))
     assert report["drift"] == ["FAILED_BRK_K"]
+
+
+def test_a_stopped_program_with_a_newer_upload_is_not_called_drift(tmp_db):
+    """26 Nov 2026: v19 uploaded after the close, the program stopped since the morning's v18 run. The deck said
+    the running configuration did not match: nothing was running. Drift is for a process that is running."""
+    algo = register(tmp_db, source=V19_SOURCE, block=V18_BLOCK)
+    stopped = program_config.config_report(tmp_db, algo, running_now=False)
+    assert stopped["drift"] == [] and stopped["running_now"] is False
+    assert not any(r["drift"] for r in stopped["rows"])
+    assert next(r for r in stopped["rows"] if r["key"] == "FAILED_BRK_K")["code"] == 1.0   # still shown
+    assert program_config.config_report(tmp_db, algo, running_now=True)["drift"] == ["FAILED_BRK_K"]
+
+
+def test_all_reports_asks_the_fleet_whether_each_program_is_running(tmp_db):
+    register(tmp_db, source=V19_SOURCE, block=V18_BLOCK)
+
+    class Fleet:
+        def __init__(self, on): self.on = on
+        def is_running(self, algo_id): return self.on
+
+    assert program_config.all_reports(tmp_db, Fleet(False))[0]["drift"] == []
+    assert program_config.all_reports(tmp_db, Fleet(True))[0]["drift"] == ["FAILED_BRK_K"]
+
+
+def test_a_setting_new_in_an_upload_that_the_table_does_not_know_is_listed(tmp_db):
+    """25 Nov 2026: v18's 27.5% trail start lived only in its code. Any setting new or changed in an upload that
+    has no row of its own is now named under the table; strings (credentials, addresses) are never read."""
+    tmp_db.upsert_algo("og", "ganesh_kavach_og_real (3)")
+    tmp_db.add_version("og", V18_SOURCE, sha256(V18_SOURCE), "test")
+    newer = V19_SOURCE + "SOME_NEW_SETTING = 0.4\nPOLL_SECONDS = 15\nANOTHER_FLAG = True\nPUBLIC_IP = \"1.2.3.4\"\n"
+    vid = tmp_db.add_version("og", newer, sha256(newer), "test")
+    tmp_db.set_algo_fields("og", active_version=vid, mode="live")
+    got = {u["key"]: u for u in program_config.config_report(tmp_db, tmp_db.algo("og"))["unlisted"]}
+    assert got["SOME_NEW_SETTING"] == {"key": "SOME_NEW_SETTING", "value": 0.4, "was": None, "change": "new"}
+    assert got["ANOTHER_FLAG"]["value"] is True and "FAILED_BRK_ON" in got
+    assert "FAILED_BRK_K" not in got, "a setting with its own row is not repeated"
+    assert not any("ANGEL" in k or k == "PUBLIC_IP" for k in got), "no strings, no credentials"
+
+
+def test_one_upload_only_lists_nothing(tmp_db):
+    assert program_config.config_report(tmp_db, register(tmp_db))["unlisted"] == []
+
+
+def test_just_after_a_start_the_last_runs_settings_are_not_read_as_this_runs(tmp_db):
+    """In the seconds after a start, before the new process prints its settings, the newest startup block is the
+    previous run's. It must not be set against the new code."""
+    algo = register(tmp_db, source=V19_SOURCE, block=V18_BLOCK)        # the morning's v18 block
+    fresh = program_config.config_report(tmp_db, algo, running_now=True, since="2999-01-01T09:05:00")
+    assert fresh["running"] is None and fresh["drift"] == []
+    same_run = program_config.config_report(tmp_db, algo, running_now=True, since="2000-01-01T09:05:00")
+    assert same_run["drift"] == ["FAILED_BRK_K"]                       # a real mismatch inside one run still shows
+
+
+def test_run_started_is_the_processes_start_in_ist_a_little_early():
+    from datetime import datetime, timedelta, timezone
+
+    class Sup:
+        def __init__(self, running, ts):
+            self.state = type("S", (), {"running": running, "started_ts": ts})()
+
+    class Fleet:
+        def __init__(self, sup): self.sup = sup
+        def get(self, algo_id): return self.sup
+
+    ts = datetime(2026, 11, 26, 9, 5, 1, tzinfo=timezone(timedelta(hours=5, minutes=30))).timestamp()
+    assert program_config.run_started(Fleet(Sup(True, ts)), "og") == "2026-11-26T09:04:56"
+    assert program_config.run_started(Fleet(Sup(False, ts)), "og") is None
+    assert program_config.run_started(Fleet(None), "og") is None and program_config.run_started(None, "og") is None

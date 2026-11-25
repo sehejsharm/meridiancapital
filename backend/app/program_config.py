@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import ast
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from engine import tuning
@@ -165,6 +166,62 @@ def parse_source_constants(source: str) -> dict[str, Any]:
     return out
 
 
+# Names that are never settings worth showing (and could sit near credentials); strings are skipped anyway.
+_NOT_SETTINGS = re.compile(r"ANGEL|KEY|SECRET|TOKEN|PASS|PIN|TOTP|CLIENT|_IP$|^IP_|MAC|URL|PATH|FILE|DIR")
+
+
+def parse_source_numbers(source: str) -> dict[str, Any]:
+    """Every module-level UPPERCASE constant set to a plain number, True/False or None. Never a string, so no
+    credential or address is ever read. Parsed, never run."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {}
+    out: dict[str, Any] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        t = node.targets[0]
+        pairs = [(t, node.value)] if isinstance(t, ast.Name) else (
+            list(zip(t.elts, node.value.elts)) if isinstance(t, ast.Tuple) and isinstance(node.value, ast.Tuple)
+            and len(t.elts) == len(node.value.elts) else [])
+        for name, value in pairs:
+            if not isinstance(name, ast.Name) or not name.id.isupper() or _NOT_SETTINGS.search(name.id):
+                continue
+            v = _literal(value)
+            if v is None or isinstance(v, (bool, int, float)):
+                out[name.id] = v
+    return out
+
+
+def unlisted_changes(db, algo: dict) -> list[dict]:
+    """Settings new or changed in the active upload, against the upload before it, that the table has no row
+    for. 25 Nov 2026: v18's TRAIL_START (27.5%) existed only in its code; the page showed nothing of it."""
+    from app.programs import cached_fact
+
+    try:
+        vid = algo.get("active_version")
+        cur = db.version_meta(int(vid)) if vid else None
+        if not cur:
+            return []
+        prev = next((v for v in db.versions(algo["id"]) if (v.get("version") or 0) < (cur.get("version") or 0)), None)
+        if not prev:
+            return []
+        now = cached_fact(db, cur, "numbers", parse_source_numbers) or {}
+        was = cached_fact(db, prev, "numbers", parse_source_numbers) or {}
+    except Exception:
+        return []
+    out = []
+    for k, v in now.items():
+        if k in KINDS:
+            continue
+        if k not in was:
+            out.append({"key": k, "value": v, "was": None, "change": "new"})
+        elif was[k] != v:
+            out.append({"key": k, "value": v, "was": was[k], "change": "changed"})
+    return out
+
+
 def _same(key: str, a: Any, b: Any) -> bool:
     if a is None or b is None:
         return a is b
@@ -173,12 +230,34 @@ def _same(key: str, a: Any, b: Any) -> bool:
     return a == b
 
 
-def running_config(db, algo_id: str) -> dict | None:
-    """What the program printed at its latest startup, or None if it never has."""
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def run_started(fleet, algo_id: str) -> str | None:
+    """When the running process started, in the events' own form (naive IST ISO), a few seconds early; None
+    when it is not running or the time is unknown. An adopted process keeps its original start (pid file)."""
+    try:
+        sup = fleet.get(algo_id) if fleet is not None else None
+        st = sup.state if sup is not None else None
+        if st is None or not st.running or not st.started_ts:
+            return None
+        return datetime.fromtimestamp(float(st.started_ts) - 5.0, _IST).replace(tzinfo=None).isoformat(timespec="seconds")
+    except Exception:
+        return None
+
+
+def running_config(db, algo_id: str, since: str | None = None) -> dict | None:
+    """What the program printed at its latest startup, or None if it never has.
+
+    ``since``: the current run's start (``run_started``). A startup block older than that belongs to an earlier
+    run: in the seconds after a start, before the process prints its own, the last run's numbers would be read
+    as this run's and set against newer code (a false "does not match")."""
     hits = db.find_events(algo_id, BLOCK_START, limit=1)
     if not hits:
         return None
     header = hits[0]
+    if since and str(header.get("ts") or "") < since:
+        return None
     following = db.events_following(algo_id, header["id"], limit=MAX_BLOCK_LINES)
     values = parse_startup_block([e.get("message") or "" for e in following])
     if not values:
@@ -201,9 +280,13 @@ def code_config(db, algo: dict) -> dict | None:
     return {"version": ver.get("version"), "sha256": (ver.get("sha256") or "")[:12], "values": values}
 
 
-def config_report(db, algo: dict) -> dict:
-    """Running vs code for one uploaded program, with every disagreement named."""
-    running = running_config(db, algo["id"])
+def config_report(db, algo: dict, running_now: bool | None = None, since: str | None = None) -> dict:
+    """Running vs code for one uploaded program, with every disagreement named.
+
+    ``running_now`` False: the process is stopped. Its last startup block is still shown (what it ran last),
+    but nothing is flagged as drift: a newer upload waiting for the next start is not a mismatch (26 Nov 2026:
+    the deck called v19, uploaded after the close, "not what is running" against that morning's v18 log)."""
+    running = running_config(db, algo["id"], since=since)
     code = code_config(db, algo)
     builtin = tuning.defaults()
     rows = []
@@ -229,7 +312,7 @@ def config_report(db, algo: dict) -> dict:
             "code": None if c is _MISSING else c, "code_known": c is not _MISSING,
             "builtin": builtin.get(k), "builtin_known": k in builtin,
         }
-        row["drift"] = row["running_known"] and row["code_known"] and not _same(k, r, c)
+        row["drift"] = running_now is not False and row["running_known"] and row["code_known"] and not _same(k, r, c)
         effective = r if r is not _MISSING else c
         row["differs_from_builtin"] = row["builtin_known"] and effective is not _MISSING \
             and not _same(k, effective, builtin[k])
@@ -241,12 +324,24 @@ def config_report(db, algo: dict) -> dict:
         "name": algo.get("name") or algo["id"],
         "mode": algo.get("mode"),
         "running": running and {k: v for k, v in running.items() if k != "values"},
+        "running_now": running_now,
         "code": code and {k: v for k, v in code.items() if k != "values"},
         "rows": rows,
         "drift": drift,
         "differs_from_builtin": [r["key"] for r in rows if r["differs_from_builtin"]],
+        "unlisted": unlisted_changes(db, algo),
     }
 
 
-def all_reports(db) -> list[dict]:
-    return [config_report(db, a) for a in db.algos() if a.get("kind") != "builtin"]
+def all_reports(db, fleet=None) -> list[dict]:
+    """Every uploaded program's report; with ``fleet``, drift is only flagged for a program that is running."""
+    out = []
+    for a in db.algos():
+        if a.get("kind") == "builtin":
+            continue
+        try:
+            now = fleet.is_running(a["id"]) if fleet is not None else None
+        except Exception:
+            now = None
+        out.append(config_report(db, a, running_now=now, since=run_started(fleet, a["id"]) if now else None))
+    return out

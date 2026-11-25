@@ -61,3 +61,16 @@ test("drift names what the process runs against what its code says", () => {
     "ganesh_kavach_og_real (3): Break-even trigger 20% running vs 25% in its code",
   );
 });
+
+test("an upload's settings the table has no row for are named, never silently dropped", async () => {
+  const { unlistedSummary } = await import("../lib/programConfig.ts");
+  const base = report([row({})]);
+  assert.equal(unlistedSummary(base), null);
+  assert.equal(
+    unlistedSummary({ ...base, unlisted: [
+      { key: "TRAIL_START", value: 0.275, was: null, change: "new" },
+      { key: "POLL_SECONDS", value: 15, was: 20, change: "changed" },
+    ] }),
+    "New or changed in this upload and not in the table above: TRAIL_START = 0.275 (new); POLL_SECONDS 20 → 15.",
+  );
+});
