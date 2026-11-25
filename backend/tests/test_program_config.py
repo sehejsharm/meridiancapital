@@ -183,3 +183,24 @@ def test_a_v17_process_running_against_v18_code_is_flagged(tmp_db):
 def test_a_program_before_v18_shows_no_trail_rows(tmp_db):
     report = program_config.config_report(tmp_db, register(tmp_db))
     assert not {"TRAIL_START", "TRAIL_NARROW_MIN"} & {r["key"] for r in report["rows"]}
+
+
+# v19 adds one setting: the failed-breakout exit's sigma multiple, printed on its startup STOP LADDER.
+V19_LINE = ("[09:05:21]   failed brk : v19: sell when NIFTY closes back past the channel's far edge, or 1 x "
+            "IV-sigma x sqrt(min held) against the breakout level")
+V19_BLOCK = V18_BLOCK[:7] + [V19_LINE] + V18_BLOCK[7:]
+V19_SOURCE = V18_SOURCE.replace("STOP_FRAC    = 0.30\n", "STOP_FRAC    = 0.30\nFAILED_BRK_ON = True\nFAILED_BRK_K  = 1.0\n")
+
+
+def test_v19s_failed_breakout_setting_is_read_and_shown(tmp_db):
+    assert program_config.parse_startup_block([V19_LINE]) == {"FAILED_BRK_K": 1.0}
+    assert program_config.parse_startup_block(["  failed brk : off (v19 exit disabled)"]) == {"FAILED_BRK_K": None}
+    report = program_config.config_report(tmp_db, register(tmp_db, source=V19_SOURCE, block=V19_BLOCK))
+    assert report["drift"] == []
+    row = next(r for r in report["rows"] if r["key"] == "FAILED_BRK_K")
+    assert (row["running"], row["code"], row["label"]) == (1.0, 1.0, "Failed-breakout exit, σ multiple (v19)")
+
+
+def test_a_v18_process_running_against_v19_code_is_flagged(tmp_db):
+    report = program_config.config_report(tmp_db, register(tmp_db, source=V19_SOURCE, block=V18_BLOCK))
+    assert report["drift"] == ["FAILED_BRK_K"]

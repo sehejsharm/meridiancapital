@@ -36,7 +36,8 @@ for _p in tuning.PARAMS:
     KINDS[_p.key] = _p.kind
     if _p.key == "TRAIL_FRAC":
         KINDS.update({"TRAIL_START": "pct", "TRAIL_NARROW_MIN": "int"})
-KINDS.update({"LATE_TP_AFTER_MIN": "int", "LATE_TP_FRAC": "pct", "RUNNER_AT": "pct", "RUNNER_FRAC": "pct"})
+KINDS.update({"LATE_TP_AFTER_MIN": "int", "LATE_TP_FRAC": "pct", "RUNNER_AT": "pct", "RUNNER_FRAC": "pct",
+              "FAILED_BRK_K": "float"})
 LABELS: dict[str, str] = {p.key: p.label for p in tuning.PARAMS}
 LABELS.update({"LATE_TP_AFTER_MIN": "Late take-profit after (min)", "LATE_TP_FRAC": "Late take-profit level",
                "RUNNER_AT": "Runner lock from", "RUNNER_FRAC": "Runner lock trail",
@@ -44,11 +45,14 @@ LABELS.update({"LATE_TP_AFTER_MIN": "Late take-profit after (min)", "LATE_TP_FRA
                # the best price (from v18: the distance it narrows to). "Trail start" read as v18's 27.5%.
                "TRAIL_FRAC": "Trail switches on at · final distance",
                "TRAIL_START": "Trail distance at entry (v18)",
-               "TRAIL_NARROW_MIN": "Trail narrows to final by (min)"})
+               "TRAIL_NARROW_MIN": "Trail narrows to final by (min)",
+               # v19: sell a loser when NIFTY closes back past the channel's far edge, or this many IV-sigmas
+               # x sqrt(minutes held) against the breakout level
+               "FAILED_BRK_K": "Failed-breakout exit, σ multiple (v19)"})
 # A key the program is known to print at startup; the rest come from its code only.
 LOGGED = (
     "TARGET_PTS", "BE_TRIGGER", "TRAIL_FRAC", "TRAIL_START", "TRAIL_NARROW_MIN",
-    "LATE_TP_AFTER_MIN", "LATE_TP_FRAC", "RUNNER_AT", "RUNNER_FRAC", "STOP_FRAC",
+    "LATE_TP_AFTER_MIN", "LATE_TP_FRAC", "RUNNER_AT", "RUNNER_FRAC", "STOP_FRAC", "FAILED_BRK_K",
     "PER_TRADE_RISK_RS", "DAILY_LOSS_LIMIT_RS", "WEEKLY_LOSS_LIMIT_RS", "CONSEC_LOSS_HALT",
     "DAILY_PROFIT_LOCK_RS", "MAX_TRADES_DAY", "MAX_DRAWDOWN_STOP", "DEPLOY_FRACTION",
     "PER_TRADE_EQUITY_CAP", "MAX_LOTS", "ENTRY_START", "ENTRY_CUTOFF", "FORCE_CLOSE",
@@ -79,6 +83,9 @@ _LOG_RULES: list[tuple[re.Pattern, Any]] = [
     (re.compile(r"runner lock\s*:\s*past \+(\d+(?:\.\d+)?)% gain, stop rides (\d+(?:\.\d+)?)%"),
      lambda m: {"RUNNER_AT": float(m.group(1)) / 100, "RUNNER_FRAC": float(m.group(2)) / 100}),
     (re.compile(r"hard stop\s*:\s*-(\d+(?:\.\d+)?)%"), lambda m: {"STOP_FRAC": float(m.group(1)) / 100}),
+    # v19: "failed brk : v19: sell when NIFTY closes back past the channel's far edge, or 1 x IV-sigma x ..."
+    (re.compile(r"failed brk\s*:\s*v19:.*?or (\d+(?:\.\d+)?) x IV-sigma"), lambda m: {"FAILED_BRK_K": float(m.group(1))}),
+    (re.compile(r"failed brk\s*:\s*off"), lambda m: {"FAILED_BRK_K": None}),
     (re.compile(r"rupee cap\s*:.*?Rs ([\d,]+(?:\.\d+)?)"), lambda m: {"PER_TRADE_RISK_RS": _rs(m.group(1))}),
     (re.compile(r"daily kill\s*:.*?Rs ([\d,]+(?:\.\d+)?)"), lambda m: {"DAILY_LOSS_LIMIT_RS": _rs(m.group(1))}),
     (re.compile(r"weekly kill\s*:.*?Rs ([\d,]+(?:\.\d+)?)"), lambda m: {"WEEKLY_LOSS_LIMIT_RS": _rs(m.group(1))}),
@@ -202,12 +209,18 @@ def config_report(db, algo: dict) -> dict:
     rows = []
     keys = [k for k in KINDS if (running and k in running["values"]) or (code and k in code["values"])]
     drift = []
-    # A process started from code before v18 prints its trail line without the narrowing: it runs a fixed
-    # trail, so against v18 code that is a disagreement to flag, not a value it never logged.
-    fixed_trail = bool(running and "TRAIL_FRAC" in running["values"] and "TRAIL_START" not in running["values"])
+    # A process started from older code prints no line for a later version's setting: it runs without it
+    # (v18's narrowing trail, v19's failed-breakout exit), so against newer code that is a disagreement to
+    # flag, not a value it never logged.
+    rv = running["values"] if running else {}
+    absent = set()
+    if "TRAIL_FRAC" in rv and "TRAIL_START" not in rv:
+        absent |= {"TRAIL_START", "TRAIL_NARROW_MIN"}
+    if "STOP_FRAC" in rv and "FAILED_BRK_K" not in rv:
+        absent.add("FAILED_BRK_K")
     for k in keys:
         r = running["values"].get(k, _MISSING) if running else _MISSING
-        if r is _MISSING and fixed_trail and k in ("TRAIL_START", "TRAIL_NARROW_MIN"):
+        if r is _MISSING and k in absent:
             r = None
         c = code["values"].get(k, _MISSING) if code else _MISSING
         row = {
