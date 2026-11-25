@@ -33,7 +33,10 @@ class RuleSet:
     stop: float = 0.45                 # the starting stop, below the entry price
     arm: float = 0.20                  # gain at which the stop goes to the entry price
     trail_from: float = 0.20           # gain at which the trail starts
-    trail: float = 0.20                # the trail's distance behind the best gain (of entry)
+    trail: float = 0.20                # the trail's distance behind the best gain (of entry); with
+                                       # trail_start set, the distance it narrows to
+    trail_start: float | None = None   # v18: the trail's distance at entry (TRAIL_START, 27.5%) ...
+    narrow_min: int | None = None      # ... narrowing in a straight line to `trail` over these minutes held
     late_after_min: int | None = None  # late take-profit: minutes held before it switches on
     late_frac: float | None = None     # ... and the gain it sells at
     runner_at: float | None = None     # runner lock: from this gain ...
@@ -41,21 +44,33 @@ class RuleSet:
     target_pts: float | None = None    # all-day index-point target (v6 and earlier; display only)
     force_close: str = "15:10"
 
-    def level(self, peak: float) -> float:
-        """The stop as a gain on the entry price (negative: below it) once the best gain is ``peak``."""
+    def width(self, held_min: float | None = None) -> float:
+        """The trail's distance behind the best price after ``held_min`` minutes held, as the program's
+        ``trail_width``: ``trail_start`` at entry narrowing to ``trail`` at ``narrow_min``. Without a
+        time (or for a program before v18) it is ``trail``."""
+        if self.trail_start is None or not self.narrow_min or held_min is None:
+            return self.trail
+        start = max(self.trail_start, self.trail)
+        f = min(1.0, max(0.0, float(held_min) / self.narrow_min))
+        return start + (self.trail - start) * f
+
+    def level(self, peak: float, held_min: float | None = None) -> float:
+        """The stop as a gain on the entry price (negative: below it) once the best gain is ``peak``,
+        ``held_min`` minutes after entry (it only matters for v18's narrowing trail)."""
+        w = self.width(held_min)
         lv = -self.stop
         if peak >= self.arm:
             lv = max(lv, 0.0)
         if peak >= self.trail_from:
-            lv = max(lv, peak - self.trail)
+            lv = max(lv, peak - w)
         if self.runner_at is not None and self.runner_gap is not None and peak >= self.runner_at:
-            lv = max(lv, peak - min(self.runner_gap, self.trail))
+            lv = max(lv, peak - min(self.runner_gap, w))
         return lv
 
-    def stage(self, peak: float) -> str:
+    def stage(self, peak: float, held_min: float | None = None) -> str:
         if self.runner_at is not None and peak >= self.runner_at:
             return "runner lock"
-        if peak >= self.trail_from and peak - self.trail > 0:
+        if peak >= self.trail_from and peak - self.width(held_min) > 0:
             return "trailing"
         if peak >= self.arm:
             return "break-even"
@@ -80,8 +95,11 @@ def from_config(values: dict, name: str = "running program") -> RuleSet | None:
         return None
     late_min, late_frac = values.get("LATE_TP_AFTER_MIN"), values.get("LATE_TP_FRAC")
     runner_at, runner_gap = values.get("RUNNER_AT"), values.get("RUNNER_FRAC")
+    t_start, t_min = values.get("TRAIL_START"), values.get("TRAIL_NARROW_MIN")
+    narrowing = t_start is not None and t_min is not None
     return RuleSet(
         name, stop=stop, arm=be, trail_from=trail, trail=trail,
+        trail_start=float(t_start) if narrowing else None, narrow_min=int(t_min) if narrowing else None,
         late_after_min=int(late_min) if late_min is not None and late_frac is not None else None,
         late_frac=float(late_frac) if late_min is not None and late_frac is not None else None,
         runner_at=float(runner_at) if runner_at is not None and runner_gap is not None else None,
@@ -134,7 +152,7 @@ def replay(rs: RuleSet, entry: float, entry_hhmm: str, bars: list[tuple[str, flo
         prev_level, prev_gain = level, g
         if level is not None and not at_market and g >= level:
             return _result(rs, entry, hhmm, entry * (1.0 + level), "LATE_TP", peak, held)
-        stop = max(stop, rs.level(peak))
+        stop = max(stop, rs.level(peak, held))
         if g <= stop:
             return _result(rs, entry, hhmm, price, _stop_name(stop), peak, held)
         if at_market:
@@ -157,10 +175,16 @@ def plan(rs: RuleSet, entry: float, peak: float, held_min: float) -> dict:
 
     ``peak`` is the best gain so far as a fraction (the program's own figure).
     """
-    level = rs.level(peak)
-    follows = f"follows {rs.trail * 100:.0f}% of the entry price behind the best price"
+    level = rs.level(peak, held_min)
+    w = rs.width(held_min)
+    if rs.trail_start is not None and rs.narrow_min:
+        follows = (f"follows the best price, {w * 100:.1f}% of the entry price behind it now "
+                   f"({max(rs.trail_start, rs.trail) * 100:.1f}% at entry, narrowing to {rs.trail * 100:.0f}% "
+                   f"by {rs.narrow_min} min held)")
+    else:
+        follows = f"follows {rs.trail * 100:.0f}% of the entry price behind the best price"
     if abs(rs.trail_from - rs.arm) < 1e-9:
-        lock = max(0.0, rs.arm - rs.trail)
+        lock = max(0.0, rs.arm - w)
         to = "the entry price" if lock <= 1e-9 else f"{lock * 100:.0f}% above the entry price"
         steps = [{"key": "break_even", "label": "Break-even", "at_gain": rs.arm,
                   "effect": f"the stop moves up to {to}, then {follows}"}]
@@ -172,7 +196,7 @@ def plan(rs: RuleSet, entry: float, peak: float, held_min: float) -> dict:
         ], key=lambda s: s["at_gain"])
     if rs.runner_at is not None and rs.runner_gap is not None:
         steps.append({"key": "runner", "label": "Runner lock", "at_gain": rs.runner_at,
-                      "effect": f"the stop tightens to {min(rs.runner_gap, rs.trail) * 100:.0f}% behind the best price"})
+                      "effect": f"the stop tightens to {min(rs.runner_gap, w) * 100:.0f}% behind the best price"})
     for s in steps:
         s["at_price"] = round(entry * (1.0 + s["at_gain"]), 2)
         s["reached"] = peak >= s["at_gain"] - 1e-12
@@ -185,7 +209,8 @@ def plan(rs: RuleSet, entry: float, peak: float, held_min: float) -> dict:
                 "minutes_left": round(left, 0), "on": left <= 0}
     return {
         "rule": {k: v for k, v in asdict(rs).items() if v is not None},
-        "stage": rs.stage(peak),
+        "stage": rs.stage(peak, held_min),
+        "trail_now": round(w, 4),
         "stop_gain": round(level, 4),
         "stop_price": round(entry * (1.0 + level), 2),
         "locked_in": round(level, 4) if level > 0 else 0.0,

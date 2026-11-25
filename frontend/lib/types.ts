@@ -931,6 +931,10 @@ export interface ExitPlan {
   late_tp: { after_min: number; at_gain: number; at_price: number; minutes_left: number; on: boolean } | null;
   index_target_pts?: number | null;
   force_close: string;
+  /** The trail's distance behind the best price right now, of the entry price (v18: narrows with time). */
+  trail_now?: number;
+  /** The program's exit settings as the API restated them (v18 adds trail_start and narrow_min). */
+  rule?: { trail?: number; trail_start?: number; narrow_min?: number };
 }
 
 export interface ServerProblem { kind: string; level: string; text: string }

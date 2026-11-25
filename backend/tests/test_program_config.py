@@ -139,3 +139,47 @@ def test_a_program_that_never_started_has_only_its_code(tmp_db):
     assert report["running"] is None
     assert report["drift"] == []
     assert sorted(report["differs_from_builtin"]) == ["BE_TRIGGER", "TARGET_PTS", "TRAIL_FRAC"]
+
+
+# 25 Nov 2026: the page showed v18 as "Trail start 20%" with no sign of its 27.5% trail. v18's two trail
+# settings are now rows of their own, beside TRAIL_FRAC, read from its code and its startup line.
+V18_TRAIL_LINE = ("[09:06:41]   trail      : past +20% gain, stop rides 20% behind peak (locks profit); "
+                  "v18: 27.5% at entry, narrowing to 20% by 180 min held")
+V18_BLOCK = [V18_TRAIL_LINE if "trail      :" in line else line.replace("-45% of premium", "-30% of premium")
+             for line in V8_BLOCK]
+V18_SOURCE = V8_SOURCE.replace("STOP_FRAC    = 0.45", "STOP_FRAC    = 0.30").replace(
+    "TRAIL_FRAC   = 0.20\n", "TRAIL_FRAC   = 0.20\nTRAIL_START      = 0.275\nTRAIL_NARROW_MIN = 180\n")
+
+
+def test_v18s_trail_is_read_from_its_startup_line_and_its_code():
+    got = program_config.parse_startup_block([V18_TRAIL_LINE])
+    assert (got["TRAIL_FRAC"], got["TRAIL_START"], got["TRAIL_NARROW_MIN"]) == (0.20, 0.275, 180)
+    code = program_config.parse_source_constants(V18_SOURCE)
+    assert (code["TRAIL_START"], code["TRAIL_NARROW_MIN"], code["STOP_FRAC"]) == (0.275, 180, 0.30)
+
+
+def test_v18s_trail_rows_sit_beside_the_trail_and_say_what_they_are(tmp_db):
+    report = program_config.config_report(tmp_db, register(tmp_db, source=V18_SOURCE, block=V18_BLOCK))
+    assert report["drift"] == []
+    keys = [r["key"] for r in report["rows"]]
+    i = keys.index("TRAIL_FRAC")
+    assert keys[i + 1:i + 3] == ["TRAIL_START", "TRAIL_NARROW_MIN"]
+    rows = {r["key"]: r for r in report["rows"]}
+    assert (rows["TRAIL_START"]["running"], rows["TRAIL_START"]["code"]) == (0.275, 0.275)
+    assert (rows["TRAIL_NARROW_MIN"]["running"], rows["TRAIL_NARROW_MIN"]["code"]) == (180, 180)
+    assert rows["TRAIL_START"]["label"] == "Trail distance at entry (v18)"
+    assert rows["TRAIL_FRAC"]["label"] == "Trail switches on at · final distance"   # not "Trail start"
+
+
+def test_a_v17_process_running_against_v18_code_is_flagged(tmp_db):
+    """v17 prints its trail line without the narrowing: it runs a fixed 20% trail, not v18's."""
+    v17_block = [line.replace("-45% of premium", "-30% of premium") for line in V8_BLOCK]
+    report = program_config.config_report(tmp_db, register(tmp_db, source=V18_SOURCE, block=v17_block))
+    assert sorted(report["drift"]) == ["TRAIL_NARROW_MIN", "TRAIL_START"]
+    row = next(r for r in report["rows"] if r["key"] == "TRAIL_START")
+    assert (row["running"], row["running_known"], row["code"]) == (None, True, 0.275)
+
+
+def test_a_program_before_v18_shows_no_trail_rows(tmp_db):
+    report = program_config.config_report(tmp_db, register(tmp_db))
+    assert not {"TRAIL_START", "TRAIL_NARROW_MIN"} & {r["key"] for r in report["rows"]}

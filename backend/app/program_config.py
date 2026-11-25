@@ -29,15 +29,26 @@ from typing import Any
 
 from engine import tuning
 
-# Keys a program's configuration is described by, with how to show each.
-KINDS: dict[str, str] = {p.key: p.kind for p in tuning.PARAMS}
+# Keys a program's configuration is described by, with how to show each. v18's two trail settings sit
+# right after TRAIL_FRAC so the page reads the trail as one block.
+KINDS: dict[str, str] = {}
+for _p in tuning.PARAMS:
+    KINDS[_p.key] = _p.kind
+    if _p.key == "TRAIL_FRAC":
+        KINDS.update({"TRAIL_START": "pct", "TRAIL_NARROW_MIN": "int"})
 KINDS.update({"LATE_TP_AFTER_MIN": "int", "LATE_TP_FRAC": "pct", "RUNNER_AT": "pct", "RUNNER_FRAC": "pct"})
 LABELS: dict[str, str] = {p.key: p.label for p in tuning.PARAMS}
 LABELS.update({"LATE_TP_AFTER_MIN": "Late take-profit after (min)", "LATE_TP_FRAC": "Late take-profit level",
-               "RUNNER_AT": "Runner lock from", "RUNNER_FRAC": "Runner lock trail"})
+               "RUNNER_AT": "Runner lock from", "RUNNER_FRAC": "Runner lock trail",
+               # In the programs TRAIL_FRAC is the gain at which the trail switches on AND its distance behind
+               # the best price (from v18: the distance it narrows to). "Trail start" read as v18's 27.5%.
+               "TRAIL_FRAC": "Trail switches on at · final distance",
+               "TRAIL_START": "Trail distance at entry (v18)",
+               "TRAIL_NARROW_MIN": "Trail narrows to final by (min)"})
 # A key the program is known to print at startup; the rest come from its code only.
 LOGGED = (
-    "TARGET_PTS", "BE_TRIGGER", "TRAIL_FRAC", "LATE_TP_AFTER_MIN", "LATE_TP_FRAC", "RUNNER_AT", "RUNNER_FRAC", "STOP_FRAC",
+    "TARGET_PTS", "BE_TRIGGER", "TRAIL_FRAC", "TRAIL_START", "TRAIL_NARROW_MIN",
+    "LATE_TP_AFTER_MIN", "LATE_TP_FRAC", "RUNNER_AT", "RUNNER_FRAC", "STOP_FRAC",
     "PER_TRADE_RISK_RS", "DAILY_LOSS_LIMIT_RS", "WEEKLY_LOSS_LIMIT_RS", "CONSEC_LOSS_HALT",
     "DAILY_PROFIT_LOCK_RS", "MAX_TRADES_DAY", "MAX_DRAWDOWN_STOP", "DEPLOY_FRACTION",
     "PER_TRADE_EQUITY_CAP", "MAX_LOTS", "ENTRY_START", "ENTRY_CUTOFF", "FORCE_CLOSE",
@@ -59,6 +70,9 @@ _LOG_RULES: list[tuple[re.Pattern, Any]] = [
     (re.compile(r"take-profit:\s*(none|no all-day target)"), lambda m: {"TARGET_PTS": None}),
     (re.compile(r"break-even\s*:\s*at \+(\d+(?:\.\d+)?)%"), lambda m: {"BE_TRIGGER": float(m.group(1)) / 100}),
     (re.compile(r"trail\s*:\s*past \+(\d+(?:\.\d+)?)% gain"), lambda m: {"TRAIL_FRAC": float(m.group(1)) / 100}),
+    # v18, same line: "...; v18: 27.5% at entry, narrowing to 20% by 180 min held"
+    (re.compile(r"(\d+(?:\.\d+)?)% at entry, narrowing to \d+(?:\.\d+)?% by (\d+) min held"),
+     lambda m: {"TRAIL_START": float(m.group(1)) / 100, "TRAIL_NARROW_MIN": int(m.group(2))}),
     (re.compile(r"late TP\s*:\s*from (\d+) min after entry, sell at \+(\d+(?:\.\d+)?)%"),
      lambda m: {"LATE_TP_AFTER_MIN": int(m.group(1)), "LATE_TP_FRAC": float(m.group(2)) / 100}),
     # v10: "runner lock: past +90% gain, stop rides 10% behind peak"
@@ -188,8 +202,13 @@ def config_report(db, algo: dict) -> dict:
     rows = []
     keys = [k for k in KINDS if (running and k in running["values"]) or (code and k in code["values"])]
     drift = []
+    # A process started from code before v18 prints its trail line without the narrowing: it runs a fixed
+    # trail, so against v18 code that is a disagreement to flag, not a value it never logged.
+    fixed_trail = bool(running and "TRAIL_FRAC" in running["values"] and "TRAIL_START" not in running["values"])
     for k in keys:
         r = running["values"].get(k, _MISSING) if running else _MISSING
+        if r is _MISSING and fixed_trail and k in ("TRAIL_START", "TRAIL_NARROW_MIN"):
+            r = None
         c = code["values"].get(k, _MISSING) if code else _MISSING
         row = {
             "key": k, "label": LABELS.get(k, k), "kind": KINDS.get(k, "float"),

@@ -120,3 +120,58 @@ def test_the_plan_after_break_even_and_in_the_runner_lock():
     assert p["stage"] == "runner lock" and p["stop_price"] == 380.0 and p["next"] is None
     v8 = X.plan(X.V8, entry=200.0, peak=1.0, held_min=60)
     assert v8["stage"] == "trailing" and v8["stop_price"] == 360.0 and v8["late_tp"] is None
+
+
+# v18 (25 Nov 2026): the trail starts 27.5% of entry behind the best price and narrows to 20% by 180 minutes
+# held. The desk restated it as v17's fixed 20% and showed a tighter stop than the program used.
+V18_VALUES = {"STOP_FRAC": 0.30, "BE_TRIGGER": 0.20, "TRAIL_FRAC": 0.20, "TRAIL_START": 0.275, "TRAIL_NARROW_MIN": 180,
+              "LATE_TP_AFTER_MIN": 180, "LATE_TP_FRAC": 0.40, "RUNNER_AT": 0.90, "RUNNER_FRAC": 0.10,
+              "TARGET_PTS": None, "FORCE_CLOSE": "15:10"}
+
+
+def test_v18s_trail_width_matches_the_programs_own_self_test():
+    rs = X.from_config(V18_VALUES)
+    assert rs.trail_start == 0.275 and rs.narrow_min == 180
+    for held, w in ((0, 0.275), (60, 0.25), (120, 0.225), (180, 0.20), (400, 0.20)):
+        assert rs.width(held) == pytest.approx(w)
+    assert rs.width(None) == 0.20                                    # no time: v17's trail
+
+
+@pytest.mark.parametrize("peak,held,level", [
+    (0.50, 0, 0.225),      # program: effective_stop(0.50, held_min=0) == -0.225 (27.5% behind)
+    (0.50, 180, 0.30),     # ... and at 180 minutes -0.30 (20% behind)
+    (0.25, 0, 0.0),        # below the wider trail the stop sits at entry
+    (0.19, 0, -0.30),      # below +20% the -30% stop
+    (0.95, 0, 0.85),       # the +90% runner still rides 10% behind
+])
+def test_v18s_stop_level_is_the_programs(peak, held, level):
+    assert X.from_config(V18_VALUES).level(peak, held) == pytest.approx(level)
+
+
+def test_v18s_stop_only_tightens_with_time_and_with_the_peak():
+    rs = X.from_config(V18_VALUES)
+    for g in range(-40, 200, 5):
+        for h in range(0, 240, 10):
+            assert rs.level(g / 100, h + 10) >= rs.level(g / 100, h) - 1e-12
+            assert rs.level((g + 5) / 100, h) >= rs.level(g / 100, h) - 1e-12
+
+
+def test_v18s_plan_shows_the_wider_trail_early_in_the_trade():
+    rs = X.from_config(V18_VALUES)
+    p = X.plan(rs, entry=200.0, peak=0.50, held_min=60)                # 25% behind at 60 min
+    assert p["stop_gain"] == pytest.approx(0.25) and p["stop_price"] == 250.0 and p["trail_now"] == 0.25
+    assert p["stage"] == "trailing"
+    assert "25.0% of the entry price behind it now (27.5% at entry, narrowing to 20% by 180 min held)" \
+        in p["steps"][0]["effect"]
+    v17 = X.plan(X.from_config({k: v for k, v in V18_VALUES.items() if not k.startswith("TRAIL_") or k == "TRAIL_FRAC"}),
+                 entry=200.0, peak=0.50, held_min=60)
+    assert v17["stop_price"] == 260.0                                  # v17: 20% behind, a tighter stop
+
+
+def test_v18s_replay_uses_the_minutes_held():
+    rs = X.from_config(V18_VALUES)
+    # Up 50% in the first minute, then back to +24%: v17's 20% trail (stop +30%) sells, v18's 27.5% (+22.5%) holds.
+    bars = [("10:31", 300.0), ("10:32", 248.0), ("15:09", 260.0)]
+    assert X.replay(rs, 200.0, "10:30", bars)["reason"] == "EOD"
+    v17 = X.from_config({k: v for k, v in V18_VALUES.items() if k not in ("TRAIL_START", "TRAIL_NARROW_MIN")})
+    assert X.replay(v17, 200.0, "10:30", bars)["reason"] == "TRAIL"

@@ -1,5 +1,6 @@
 import type { Position } from "@/lib/types";
 import { minutes, money, percent, points, pnlClass, signedMoney, signedPercent } from "@/lib/format";
+import { trailSentence } from "@/lib/exitPlan";
 import { Badge, Card, Empty, Field } from "@/components/ui";
 
 /** The stop ladder is the whole risk story of an open trade, so it leads. */
@@ -90,9 +91,7 @@ export function PositionPanel({ position }: { position: Position | null }) {
 
           {target == null ? (
             <p className="mt-3 text-2xs text-ink-secondary">
-              {trail != null
-                ? `No fixed target. Once the option is up ${trail}%, the stop moves to the entry price, then follows ${trail}% of the entry price behind the best price reached.`
-                : "No fixed target. The stop follows the best price reached."}
+              {trailSentence(trail, position.exit_plan)}
             </p>
           ) : (
           <div className="mt-3">

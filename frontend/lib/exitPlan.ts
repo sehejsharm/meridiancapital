@@ -53,3 +53,23 @@ export function describePlan(plan: ExitPlan, live: number | null, restingStop: n
   }
   return { stage: plan.stage, stop: rupees(stopPrice), stopNote, next, nextDistance, late, close: `Closed at ${plan.force_close} whatever happens` };
 }
+
+/**
+ * The position panel's one line on the trail when there is no fixed target. v18's trail starts wider
+ * (27.5% of entry behind the best price) and narrows to its final distance (20%) by 180 minutes held;
+ * the program's own status only carries the final distance, so it said "follows 20%" from the start.
+ */
+export function trailSentence(trailPct: number | null, plan: ExitPlan | null | undefined): string {
+  if (trailPct == null) return "No fixed target. The stop follows the best price reached.";
+  const start = plan?.rule?.trail_start;
+  const mins = plan?.rule?.narrow_min;
+  if (start != null && mins) {
+    const at = (v: number) => {
+      const n = Math.round(v * 1000) / 10;
+      return `${Number.isInteger(n) ? n.toFixed(0) : n.toFixed(1)}%`;
+    };
+    const now = plan?.trail_now != null ? ` (${at(plan.trail_now)} now)` : "";
+    return `No fixed target. Once the option is up ${trailPct}%, the stop moves to the entry price, then follows the best price, ${at(Math.max(start, trailPct / 100))} of the entry price behind it at entry, narrowing to ${trailPct}% by ${mins} minutes held${now}.`;
+  }
+  return `No fixed target. Once the option is up ${trailPct}%, the stop moves to the entry price, then follows ${trailPct}% of the entry price behind the best price reached.`;
+}
