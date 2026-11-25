@@ -99,24 +99,27 @@ not arrive: turn it off and on again on the phone, and check the phone's own not
 With no network the dashboard shows an offline page with the last figures the phone saw, marked old. It never shows a
 stored page as if it were live. The trading program does not depend on the phone.
 
-## 10. A program without credentials in its file (v14 and later)
+## 10. Angel values in the server's settings
 
-From v14 the program file holds no Angel credentials. Before uploading one, put them in the server's
-settings with one command (nothing to edit by hand; nothing is shown on screen):
+The desk's after-close check (15:35) reads Angel's books with the four Angel values in
+`/etc/meridian/meridian.env`. A program that keeps its credentials only in the server's settings (v14) also
+needs them there; v15 and later carry their own. Set them without editing anything by hand (nothing is shown
+on screen):
 
 ```bash
 cd ~/meridiancapital && git pull
-# copy them from the program already uploaded (v13 or older still has them written in):
+sudo bash backend/deploy/configure.sh        # step 4: copy them from the uploaded program, or type them
+# or directly:
 sudo /opt/meridian/backend/.venv/bin/python backend/scripts/set_angel_credentials.py --from-program
-# or, after rotating the keys at Angel, type the new ones:
-sudo /opt/meridian/backend/.venv/bin/python backend/scripts/set_angel_credentials.py
+sudo /opt/meridian/backend/.venv/bin/python backend/scripts/set_angel_credentials.py     # type new ones after rotating
 ```
 
-It writes `ANGEL_API_KEY`, `ANGEL_CLIENT_ID`, `ANGEL_PASSWORD` and `ANGEL_TOTP_SECRET` to
-`/etc/meridian/meridian.env`, checks the TOTP seed by making a code from it, and offers to restart the API.
+It writes `ANGEL_API_KEY`, `ANGEL_CLIENT_ID`, `ANGEL_PASSWORD` and `ANGEL_TOTP_SECRET`, checks the TOTP seed
+by making a code from it, and restarts the API (configure.sh does so at its end; the tool offers to).
+After rotating keys at Angel, update both the program file and these settings.
 
-Reliability → Server shows whether they are set. With any missing, a v14 program stops at start-up and names what is
-missing; it places no order. Keep the previous version until one paper session has logged in and run.
+Reliability → Server shows whether they are set. A v14 program with any missing stops at start-up and names
+what is missing; it places no order. Keep the previous version until one paper session has logged in and run.
 
 ## 11. Exit settings (v14 and later)
 

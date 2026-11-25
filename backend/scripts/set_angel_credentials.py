@@ -5,8 +5,8 @@
         asks for each value (nothing is shown as you type, nothing goes in shell history)
 
     sudo /opt/meridian/backend/.venv/bin/python backend/scripts/set_angel_credentials.py --from-program
-        copies them from the newest uploaded program that still has them written in
-        (v13 and older); nothing to type. Use this before switching to v14.
+        copies them from the newest uploaded program that has them written in
+        (v13 and older, v15 onward); nothing to type.
 
 Then restart the API (it does this for you if you answer yes):  sudo systemctl restart meridian-api
 

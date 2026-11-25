@@ -332,8 +332,9 @@ page, which is more useful than the journal — it carries the structured payloa
 ### Disk
 
 Always Free gives 200 GB of block storage for the whole tenancy, boot volumes included
-(see *Storage* in section 1). Events are pruned via `prune_events()`; the scrip cache is
-refreshed every 12 hours. Nothing here grows unbounded, but `du -sh /var/lib/meridian`
+(see *Storage* in section 1). Journal lines older than `MERIDIAN_JOURNAL_KEEP_DAYS` (a year by default) are moved to
+`/var/lib/meridian/archive/` as compressed monthly files; the scrip cache is refreshed every
+12 hours. Nothing here grows unbounded, but `du -sh /var/lib/meridian`
 occasionally costs nothing.
 
 ### If the VM's public IP changes

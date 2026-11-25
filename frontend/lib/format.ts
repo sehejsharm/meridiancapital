@@ -100,15 +100,6 @@ export function tradeTime(ts: string | null | undefined): string {
   return dateTimeLabel(ts);
 }
 
-export function secondsSince(iso: string | null | undefined, nowIso?: string): number | null {
-  if (!iso) return null;
-  const parse = (s: string) => Date.parse(`${s.replace(" ", "T")}Z`);
-  const then = parse(iso);
-  const now = nowIso ? parse(nowIso) : Date.now();
-  if (!Number.isFinite(then) || !Number.isFinite(now)) return null;
-  return (now - then) / 1000;
-}
-
 export function pnlClass(value: number | null | undefined): string {
   if (value === null || value === undefined || value === 0) return "text-ink-secondary";
   return value > 0 ? "text-profit" : "text-loss";

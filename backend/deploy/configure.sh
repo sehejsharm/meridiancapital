@@ -156,27 +156,29 @@ unset bu pp
 echo
 echo "4/4  Angel One for the after-close check — from 15:35 the desk reads Angel's position and trade books"
 echo "     (read-only) and checks them against its own record (now: $(state ANGEL_API_KEY))."
-echo "     The same four values your trading program uses. Typed hidden, never shown."
-ask_secret a1 "     ANGEL_API_KEY (hidden, Enter to skip this step): "
-if [[ -n "$a1" ]]; then
-    ask_secret a2 "     ANGEL_CLIENT_ID — your client code (hidden): "
-    ask_secret a3 "     ANGEL_PASSWORD — your PIN (hidden): "
-    ask_secret a4 "     ANGEL_TOTP_SECRET — the base32 seed (hidden): "
-    if [[ -z "$a2" || -z "$a3" || -z "$a4" ]]; then
-        echo "     Not saved: all four are needed."
-    elif ! [[ "$a3" =~ ^[0-9]{4,6}$ ]]; then
-        echo "     Not saved: the PIN should be 4 to 6 digits."
-    elif ! [[ "$(tr -d ' ' <<<"$a4" | tr '[:lower:]' '[:upper:]')" =~ ^[A-Z2-7]+=*$ ]]; then
-        echo "     Not saved: the TOTP seed should be letters A-Z and digits 2-7."
-    else
-        VAL="$a1" set_kv ANGEL_API_KEY
-        VAL="$a2" set_kv ANGEL_CLIENT_ID
-        VAL="$a3" set_kv ANGEL_PASSWORD
-        VAL="$(tr -d ' ' <<<"$a4" | tr '[:lower:]' '[:upper:]')" set_kv ANGEL_TOTP_SECRET
-        echo "     Saved. Today's after-close check (15:35) will log in and confirm."
-    fi
-fi
-unset a1 a2 a3 a4
+echo "     The same four values your trading program uses; they are never shown."
+ask how "     [p] copy them from your uploaded program, [t] type them (hidden), Enter to skip: "
+case "${how,,}" in
+    p|t)
+        py="${MERIDIAN_VENV_PY:-/opt/meridian/backend/.venv/bin/python}"
+        tool="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../scripts/set_angel_credentials.py"
+        env_val() { grep -E "^[[:space:]]*$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true; }
+        db="$(env_val MERIDIAN_DB_PATH)"; data="$(env_val MERIDIAN_DATA_DIR)"
+        args=(--env "$ENV_FILE" --db "${db:-${data:-/var/lib/meridian}/meridian.db}" --no-restart)
+        [[ "${how,,}" == p ]] && args+=(--from-program)
+        if [[ ! -x "$py" || ! -f "$tool" ]]; then
+            echo "     Skipped: $py or $tool is missing — run install.sh first."
+        else
+            before="$(sha256sum "$ENV_FILE")"
+            # The existing tool checks each value (the TOTP seed by making a code) and never prints one.
+            "$py" -u "$tool" "${args[@]}" | sed -e '/Restart the API to use them/d' -e 's/^/     /' || echo "     Not saved."
+            if [[ "$(sha256sum "$ENV_FILE")" != "$before" ]]; then
+                changed=1
+                echo "     The API is restarted at the end of this script; today's 15:35 check will log in and confirm."
+            fi
+        fi
+        ;;
+esac
 
 chown root:"$APP_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"
