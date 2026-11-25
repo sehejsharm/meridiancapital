@@ -257,6 +257,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     )
 
 
+# tick_trades' grouping, per database and limit, with the position_ticks id range it was computed at.
+_TICK_TRADES: dict[tuple[str, int], tuple[tuple, list[dict]]] = {}
+
+
 class Database:
     """Per-call connections keep this safe across threads and processes."""
 
@@ -576,13 +580,23 @@ class Database:
         return [dict(r) for r in rows]
 
     def tick_trades(self, limit: int = 2000) -> list[dict]:
-        """Each recorded path: its algorithm, opening time, contract and how many ticks it has."""
+        """Each recorded path: its algorithm, opening time, contract and how many ticks it has.
+
+        The grouping reads every tick (230,000 in a year: about 60 ms, more on the VM's two cores) and the research
+        pages ask for it on every visit, though ticks only change while a trade is open. Kept until the table's
+        first or last row id moves (both answered from the primary key, instantly)."""
         with self.conn() as c:
-            rows = c.execute(
+            stamp = tuple(c.execute("SELECT (SELECT MIN(id) FROM position_ticks), (SELECT MAX(id) FROM position_ticks)").fetchone())
+            key = (str(getattr(self, "path", "")), limit)
+            hit = _TICK_TRADES.get(key)
+            if hit is not None and hit[0] == stamp:
+                return [dict(r) for r in hit[1]]
+            rows = [dict(r) for r in c.execute(
                 """SELECT algo_id, opened_ts, session_date, mode, tsym, COUNT(*) AS ticks,
                           MIN(ts) AS first_ts, MAX(ts) AS last_ts
                    FROM position_ticks GROUP BY algo_id, opened_ts ORDER BY MIN(id) DESC LIMIT ?""",
-                (limit,)).fetchall()
+                (limit,)).fetchall()]
+        _TICK_TRADES[key] = (stamp, rows)
         return [dict(r) for r in rows]
 
     def trade_by_id(self, trade_id: int) -> dict | None:

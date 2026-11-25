@@ -334,3 +334,25 @@ def ledger_row(db, tid):
     from app import ledger
 
     return ledger.reconcile(db, [db.trade_by_id(tid)])[0]
+
+
+def test_the_recorded_paths_summary_is_kept_until_a_tick_arrives(tmp_db):
+    """The grouping over every tick is cached; a new tick (or a removed one) is seen at once."""
+    def tick(i, opened):
+        tmp_db.add_tick({"ts": f"2026-11-25T10:{20 + i:02d}:00", "session_date": "2026-11-25", "algo_id": "og",
+                         "mode": "live", "tsym": "NIFTY01DEC2625700CE", "side": "CE", "strike": 25700,
+                         "expiry": "2026-12-01", "opened_ts": opened, "entry": 298.45, "premium": 300.0 + i,
+                         "peak_pct": 0.0, "stop_price": 208.9, "spot": 25800.0})
+    tick(0, "2026-11-25T10:19:05")
+    tick(1, "2026-11-25T10:19:05")
+    first = tmp_db.tick_trades(limit=4000)
+    assert [r["ticks"] for r in first] == [2]
+    first[0]["ticks"] = 999                                     # a caller's change does not leak into the cache
+    assert tmp_db.tick_trades(limit=4000)[0]["ticks"] == 2
+    tick(2, "2026-11-25T10:19:05")
+    tick(3, "2026-11-26T11:00:00")
+    again = {r["opened_ts"]: r["ticks"] for r in tmp_db.tick_trades(limit=4000)}
+    assert again == {"2026-11-25T10:19:05": 3, "2026-11-26T11:00:00": 1}
+    with tmp_db.conn() as c:
+        c.execute("DELETE FROM position_ticks WHERE id = (SELECT MIN(id) FROM position_ticks)")
+    assert {r["opened_ts"]: r["ticks"] for r in tmp_db.tick_trades(limit=4000)}["2026-11-25T10:19:05"] == 2
