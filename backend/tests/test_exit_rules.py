@@ -175,3 +175,9 @@ def test_v18s_replay_uses_the_minutes_held():
     assert X.replay(rs, 200.0, "10:30", bars)["reason"] == "EOD"
     v17 = X.from_config({k: v for k, v in V18_VALUES.items() if k not in ("TRAIL_START", "TRAIL_NARROW_MIN")})
     assert X.replay(v17, 200.0, "10:30", bars)["reason"] == "TRAIL"
+
+
+def test_v19s_plan_says_the_loser_exits_are_watched():
+    p = X.plan(X.from_config({**V18_VALUES, "FAILED_BRK_K": 1.0}), entry=200.0, peak=0.10, held_min=20)
+    assert p["rule"]["failed_brk_k"] == 1.0
+    assert "failed_brk_k" not in X.plan(X.from_config(V18_VALUES), entry=200.0, peak=0.10, held_min=20)["rule"]

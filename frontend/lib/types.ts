@@ -946,7 +946,7 @@ export interface ExitPlan {
   /** The trail's distance behind the best price right now, of the entry price (v18: narrows with time). */
   trail_now?: number;
   /** The program's exit settings as the API restated them (v18 adds trail_start and narrow_min). */
-  rule?: { trail?: number; trail_start?: number; narrow_min?: number };
+  rule?: { trail?: number; trail_start?: number; narrow_min?: number; failed_brk_k?: number };
 }
 
 export interface ServerProblem { kind: string; level: string; text: string }

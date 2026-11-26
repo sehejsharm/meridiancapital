@@ -35,6 +35,13 @@ export function ExitPlanCard({ position }: { position: Position | null }) {
             <dd className="mt-0.5 text-ink">{v.late}</dd>
           </div>
         )}
+        {plan.rule?.failed_brk_k != null && (
+          <div>
+            <dt className="text-2xs uppercase tracking-[0.14em] text-ink-muted">Also watching</dt>
+            <dd className="mt-0.5 text-ink">NIFTY back through the breakout · NIFTY {plan.rule.failed_brk_k}σ against the trade</dd>
+            <dd className="text-ink-secondary">Either sells at once, ahead of the stop.</dd>
+          </div>
+        )}
         <div className="border-t border-hairline pt-2 text-2xs text-ink-muted">
           Best so far {signedPercent(plan.peak_gain)} · entry {money(position.entry_premium, true)} · {v.close}
         </div>

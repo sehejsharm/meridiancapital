@@ -43,6 +43,7 @@ class RuleSet:
     runner_gap: float | None = None    # ... the stop rides this close behind the peak
     target_pts: float | None = None    # all-day index-point target (v6 and earlier; display only)
     force_close: str = "15:10"
+    failed_brk_k: float | None = None   # v19 loser exits (NIFTY back through the breakout, or k x IV-sigma against)
 
     def width(self, held_min: float | None = None) -> float:
         """The trail's distance behind the best price after ``held_min`` minutes held, as the program's
@@ -106,6 +107,7 @@ def from_config(values: dict, name: str = "running program") -> RuleSet | None:
         runner_gap=float(runner_gap) if runner_at is not None and runner_gap is not None else None,
         target_pts=float(values["TARGET_PTS"]) if values.get("TARGET_PTS") is not None else None,
         force_close=str(values.get("FORCE_CLOSE") or "15:10"),
+        failed_brk_k=float(values["FAILED_BRK_K"]) if values.get("FAILED_BRK_K") is not None else None,
     )
 
 
