@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DevicesCard } from "@/components/DevicesCard";
 import { EmergencyStop } from "@/components/EmergencyStop";
 import { RunModeDialog } from "@/components/RunModeDialog";
 import { ExitSettingsCard } from "@/components/ExitSettingsCard";
@@ -355,6 +356,7 @@ export default function ControlsPage() {
 
       <SpecialSessions onNotice={setNotice} today={schedule?.now_ist?.slice(0, 10)} onChange={refresh} />
       <HolidayCalendar onNotice={setNotice} today={schedule?.now_ist?.slice(0, 10)} />
+      <DevicesCard />
     </div>
   );
 }

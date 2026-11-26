@@ -1,15 +1,28 @@
 /**
  * Server-only access to the Oracle control plane.
  *
- * The browser never learns the API origin or holds a bearer token: the session
- * JWT lives in an httpOnly cookie, and every call is relayed through a Next
- * route handler that attaches it server-side.
+ * The browser never learns the API origin or holds a readable token: the session
+ * lives sealed in an httpOnly cookie (lib/session-cookie.ts), and every call is
+ * relayed through a Next route handler that opens it and attaches the token
+ * server-side, together with the relay secret the control plane requires.
  */
 
 import "server-only";
 import { cookies } from "next/headers";
+import type { NextRequest, NextResponse } from "next/server";
 
-export const SESSION_COOKIE = "meridian_session";
+import { deviceLabel } from "./request-guard";
+import {
+  deviceCookieName,
+  deviceCookieOptions,
+  newDeviceSecret,
+  openSession,
+  sealSession,
+  sessionCookieName,
+  sessionCookieOptions,
+  staleSessionCookieNames,
+  validDeviceSecret,
+} from "./session-cookie";
 
 /**
  * Raised when the deployment is misconfigured, as opposed to the control plane
@@ -64,9 +77,36 @@ export function websocketUrl(ticket: string): string {
   return `${base}/ws/live?ticket=${encodeURIComponent(ticket)}`;
 }
 
+/** The control plane's token from this request's session cookie, if it is genuine and current. */
 export async function sessionToken(): Promise<string | null> {
   const store = await cookies();
-  return store.get(SESSION_COOKIE)?.value ?? null;
+  return openSession(store.get(sessionCookieName())?.value);
+}
+
+/**
+ * The secret shared with the control plane. With it set there, the control plane
+ * answers nothing that does not carry it: only this relay can reach it.
+ */
+export function relayHeaders(): Record<string, string> {
+  const secret = process.env.MERIDIAN_RELAY_SECRET?.trim();
+  return secret ? { "X-Meridian-Relay": secret } : {};
+}
+
+/**
+ * Tells the control plane who is actually signing in.
+ *
+ * Every dashboard call reaches the control plane from Vercel's servers, so
+ * without this the lockout is keyed on Vercel's address — shared by everyone —
+ * and the audit log names Vercel instead of the visitor. Vercel overwrites
+ * x-forwarded-for with the real client address, so it cannot be spoofed from a
+ * browser; the control plane only believes the forwarded value alongside the
+ * relay secret, so it cannot be spoofed by a script calling the API directly.
+ */
+export function clientIpHeaders(request: Request): Record<string, string> {
+  const relay = relayHeaders();
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  if (!relay["X-Meridian-Relay"] || !ip) return relay;
+  return { ...relay, "X-Meridian-Client-IP": ip.slice(0, 64) };
 }
 
 export class ApiError extends Error {
@@ -78,92 +118,87 @@ export class ApiError extends Error {
   }
 }
 
+/** A raw call to the control plane with the relay secret attached. */
+export async function controlPlane(path: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(`${apiBase()}${path}`, {
+    ...init,
+    headers: { ...relayHeaders(), ...((init.headers as Record<string, string> | undefined) ?? {}) },
+    cache: "no-store",
+  });
+}
+
 interface CallOptions {
   method?: string;
   body?: unknown;
-  /** Seconds to cache; omitted means always fresh, which is the default for live data. */
-  revalidate?: number;
 }
 
 export async function callApi<T>(path: string, options: CallOptions = {}): Promise<T> {
   const token = await sessionToken();
   if (!token) throw new ApiError(401, "not signed in");
 
-  const res = await fetch(`${apiBase()}${path}`, {
+  const res = await controlPlane(path, {
     method: options.method ?? "GET",
     headers: {
       Authorization: `Bearer ${token}`,
       ...(options.body ? { "Content-Type": "application/json" } : {}),
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
-    cache: options.revalidate ? undefined : "no-store",
-    next: options.revalidate ? { revalidate: options.revalidate } : undefined,
   });
 
   if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const parsed = (await res.json()) as { detail?: string };
-      if (parsed.detail) detail = parsed.detail;
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, await detailOf(res, res.statusText));
   }
   return (await res.json()) as T;
 }
 
-/**
- * Tells the control plane who is actually signing in.
- *
- * Every dashboard sign-in reaches the control plane from Vercel's servers, so
- * without this the lockout is keyed on Vercel's address — shared by everyone —
- * and five wrong guesses from any bot on the internet lock the operator out.
- * Vercel overwrites x-forwarded-for with the real client address, so it cannot
- * be spoofed from a browser; the control plane only believes the forwarded
- * value when the shared relay secret matches, so it cannot be spoofed by a
- * script calling the API directly either. Without the secret configured on
- * both sides this sends nothing and the old behaviour stands.
- */
-export function clientIpHeaders(request: Request): Record<string, string> {
-  const secret = process.env.MERIDIAN_RELAY_SECRET?.trim();
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  if (!secret || !ip) return {};
-  return { "X-Meridian-Relay": secret, "X-Meridian-Client-IP": ip };
-}
-
-/** Unauthenticated — used by the login route only. */
-export async function login(
-  password: string,
-  extraHeaders: Record<string, string> = {},
-): Promise<{ token: string; expires_in: number }> {
-  const res = await fetch(`${apiBase()}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify({ password }),
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    let detail = "sign-in failed";
-    try {
-      const parsed = (await res.json()) as { detail?: string };
-      if (parsed.detail) detail = parsed.detail;
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new ApiError(res.status, detail);
+export async function detailOf(res: Response, fallback: string): Promise<string> {
+  try {
+    const parsed = (await res.json()) as { detail?: unknown };
+    if (typeof parsed.detail === "string" && parsed.detail) return parsed.detail;
+  } catch {
+    /* non-JSON error body */
   }
-  return (await res.json()) as { token: string; expires_in: number };
+  return fallback;
 }
 
+// ── this browser as a device ────────────────────────────────────────────────
+export interface Device {
+  secret: string;
+  /** Not yet stored in the browser: the response must set the cookie. */
+  fresh: boolean;
+}
 
-/** A fresh token for a session that is still valid (the API refuses a week after sign-in). */
-export async function renewSession(token: string): Promise<{ token: string; expires_in: number }> {
-  const res = await fetch(`${apiBase()}/api/auth/renew`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (!res.ok) throw new ApiError(res.status, res.status === 401 ? "session expired" : "could not renew the session");
-  return (await res.json()) as { token: string; expires_in: number };
+/** This browser's device secret, or a new one to store if it has none. */
+export function currentDevice(request: NextRequest): Device {
+  const held = request.cookies.get(deviceCookieName())?.value;
+  if (validDeviceSecret(held)) return { secret: held, fresh: false };
+  return { secret: newDeviceSecret(), fresh: true };
+}
+
+export function deviceHeaders(device: Device, request: Request): Record<string, string> {
+  return {
+    "X-Meridian-Device": device.secret,
+    // Percent-encoded: a header cannot carry the "·" safely.
+    "X-Meridian-Device-Label": encodeURIComponent(deviceLabel(request.headers.get("user-agent"))),
+  };
+}
+
+export function keepDevice(response: NextResponse, device: Device): void {
+  if (device.fresh) response.cookies.set({ name: deviceCookieName(), value: device.secret, ...deviceCookieOptions() });
+}
+
+// ── the session cookie ───────────────────────────────────────────────────────
+export async function setSessionCookie(response: NextResponse, token: string, expiresIn: number): Promise<void> {
+  response.cookies.set({ name: sessionCookieName(), value: await sealSession(token, expiresIn), ...sessionCookieOptions(expiresIn) });
+  for (const stale of staleSessionCookieNames()) clearCookie(response, stale);
+}
+
+export function clearSessionCookie(response: NextResponse): void {
+  clearCookie(response, sessionCookieName());
+  for (const stale of staleSessionCookieNames()) clearCookie(response, stale);
+}
+
+function clearCookie(response: NextResponse, name: string): void {
+  // A "__Host-" cookie can only be replaced by one that is Secure with Path=/.
+  response.cookies.set({ name, value: "", path: "/", maxAge: 0, httpOnly: true, secure: name.startsWith("__Host-") || sessionCookieOptions(0).secure, sameSite: "lax" });
 }

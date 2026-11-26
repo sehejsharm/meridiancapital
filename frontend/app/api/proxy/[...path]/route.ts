@@ -2,12 +2,16 @@
  * Relays dashboard calls to the control plane with the session token attached.
  *
  * Only paths under /api/ are forwarded, so a crafted path cannot reach the
- * WebSocket route or anything else the control plane exposes.
+ * WebSocket route or anything else the control plane exposes. Anything that
+ * changes something must come from the desk's own pages (no other site can make
+ * the operator's browser send it), and a session the control plane no longer
+ * honours is cleared here, so its pages stop opening too.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { ApiError, ConfigError, apiBase, sessionToken } from "@/lib/server-api";
+import { sameOrigin } from "@/lib/request-guard";
+import { ApiError, ConfigError, apiBase, clearSessionCookie, clientIpHeaders, sessionToken } from "@/lib/server-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +42,9 @@ async function relay(request: NextRequest, segments: string[]) {
   if (!ALLOWED_METHODS.has(request.method)) {
     return NextResponse.json({ detail: "method not allowed" }, { status: 405 });
   }
+  if (request.method !== "GET" && !sameOrigin(request.headers)) {
+    return NextResponse.json({ detail: "refused: this request did not come from the desk itself" }, { status: 403 });
+  }
 
   const token = await sessionToken();
   if (!token) {
@@ -55,6 +62,10 @@ async function relay(request: NextRequest, segments: string[]) {
   let body: string | undefined;
   if (request.method === "POST") {
     body = await request.text();
+    // The largest legitimate body is an uploaded program (the control plane caps it too).
+    if (body.length > 2 * 1024 * 1024) {
+      return NextResponse.json({ detail: "request too large" }, { status: 413 });
+    }
   }
 
   const started = performance.now();
@@ -64,6 +75,9 @@ async function relay(request: NextRequest, segments: string[]) {
     const upstream = await fetch(target, {
       method: request.method,
       headers: {
+        // The relay secret (the control plane answers nothing without it) and the
+        // visitor's address for the audit log.
+        ...clientIpHeaders(request),
         Authorization: `Bearer ${token}`,
         ...(body ? { "Content-Type": "application/json" } : {}),
         ...(ifNoneMatch ? { "If-None-Match": ifNoneMatch } : {}),
@@ -102,7 +116,10 @@ async function relay(request: NextRequest, segments: string[]) {
     // a small app is the network or DNS, not the server.
     headers.set("Server-Timing", timing);
 
-    return new NextResponse(payload, { status: upstream.status, headers });
+    const response = new NextResponse(payload, { status: upstream.status, headers });
+    // Revoked, signed out elsewhere, or expired: the cookie is worthless now.
+    if (upstream.status === 401) clearSessionCookie(response);
+    return response;
   } catch (error) {
     if (error instanceof ConfigError) {
       return NextResponse.json({ detail: error.message }, { status: 503 });

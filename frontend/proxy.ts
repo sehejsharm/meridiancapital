@@ -1,28 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const SESSION_COOKIE = "meridian_session";
-// /api/session covers its /passkey child via the startsWith check below: both
-// have to answer before a session exists.
+import { openSession, sessionCookieName, staleSessionCookieNames } from "./lib/session-cookie";
+
+// /api/session covers its /passkey and /claim children via the startsWith check
+// below: they have to answer before a session exists.
 // /sw.js and /offline must answer without a session: the service worker is fetched by the
 // browser on its own schedule, and the offline page is stored before anyone is signed in.
 const PUBLIC_PATHS = ["/login", "/api/session", "/offline", "/sw.js"];
 
-export function proxy(request: NextRequest) {
+/**
+ * The door to the desk. No page, and no relayed call, is served without a
+ * session cookie this deployment sealed and that has not expired — a made-up or
+ * altered cookie is turned away here, before anything renders. (The control
+ * plane checks the token inside again on every call, along with its device.)
+ */
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     return NextResponse.next();
   }
 
-  if (request.cookies.get(SESSION_COOKIE)) {
+  const held = request.cookies.get(sessionCookieName())?.value;
+  if (await openSession(held)) {
     return NextResponse.next();
   }
 
   // API relays answer with a status the client can act on; pages redirect.
-  if (pathname.startsWith("/api/")) {
-    return NextResponse.json({ detail: "not signed in" }, { status: 401 });
+  const response = pathname.startsWith("/api/")
+    ? NextResponse.json({ detail: "not signed in" }, { status: 401 })
+    : redirectToLogin(request, pathname);
+  // A cookie that failed the check is worthless: drop it rather than send it again.
+  for (const name of [sessionCookieName(), ...staleSessionCookieNames()]) {
+    if (request.cookies.get(name)) {
+      response.cookies.set({ name, value: "", path: "/", maxAge: 0, httpOnly: true, secure: name.startsWith("__Host-") || request.nextUrl.protocol === "https:", sameSite: "lax" });
+    }
   }
+  return response;
+}
 
+function redirectToLogin(request: NextRequest, pathname: string) {
   const target = request.nextUrl.clone();
   target.pathname = "/login";
   target.search = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname)}`;
