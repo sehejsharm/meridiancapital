@@ -283,7 +283,9 @@ def test_wrong_pins_from_many_addresses_pause_new_devices_but_not_the_operator(c
 
     monkeypatch.setattr(settings, "relay_secret", "relay-" + "r" * 40)
     monkeypatch.setattr(devices, "unknown_budget", devices.UnknownDeviceBudget(max_failures=6))
-    relay = {"X-Meridian-Relay": settings.relay_secret}
+    from app.security import relay_token
+
+    relay = {"X-Meridian-Relay": relay_token(settings.relay_secret)}
     for i in range(6):
         h = {**relay, **device_headers(f"bot-{i:02d}-" + "b" * 40), "X-Meridian-Client-IP": f"203.0.113.{i}"}
         assert client.post("/api/auth/login", json={"password": f"{i:04d}"}, headers=h).status_code == 401

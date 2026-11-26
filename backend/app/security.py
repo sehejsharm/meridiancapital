@@ -185,12 +185,35 @@ def ws_ticket_claims(principal: Principal) -> dict:
     return {"piat": principal.issued_ms, "pexp": principal.expires}
 
 
+# How long a relay token is good for, either side of now. The two clocks (Vercel's
+# and this VM's) are both NTP-synced; a token copied out of a log is useless after this.
+RELAY_WINDOW_SEC = 300
+
+
+def relay_token(secret: str, now: float | None = None) -> str:
+    """What the dashboard's relay presents: proof it holds the shared secret, good
+    for a few minutes. The secret itself never travels, so nothing in a proxy log
+    or a captured request can be replayed later."""
+    ts = str(int(time.time() if now is None else now))
+    sig = hmac.new(secret.encode(), f"meridian-relay-v1:{ts}".encode(), hashlib.sha256).digest()
+    return f"v1.{ts}.{_b64u(sig)}"
+
+
 def relay_ok(request: Request) -> bool:
-    """The request came through the dashboard's relay: it presents the secret
-    shared between Vercel and this VM. False when no secret is configured."""
+    """The request came through the dashboard's relay: it presents a current token
+    signed with the secret shared between Vercel and this VM. False when no secret
+    is configured."""
     secret = settings.relay_secret
     presented = request.headers.get("x-meridian-relay", "")
-    return bool(secret) and hmac.compare_digest(presented.encode(), secret.encode())
+    if not secret or not presented or len(presented) > 200:
+        return False
+    parts = presented.split(".")
+    if len(parts) != 3 or parts[0] != "v1" or not parts[1].isdigit():
+        return False
+    ts = int(parts[1])
+    if abs(time.time() - ts) > RELAY_WINDOW_SEC:
+        return False
+    return hmac.compare_digest(presented.encode(), relay_token(secret, ts).encode())
 
 
 def client_ip(request: Request) -> str:
@@ -204,9 +227,7 @@ def client_ip(request: Request) -> str:
     this API directly cannot mint its own address to dodge the lockout.
     """
     forwarded = request.headers.get("x-meridian-client-ip", "").strip()
-    presented = request.headers.get("x-meridian-relay", "")
-    secret = settings.relay_secret
-    if forwarded and secret and hmac.compare_digest(presented.encode(), secret.encode()):
+    if forwarded and relay_ok(request):
         return forwarded[:64]
 
     fwd = request.headers.get("x-forwarded-for")

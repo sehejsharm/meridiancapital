@@ -8,6 +8,7 @@
  */
 
 import "server-only";
+import { createHmac } from "node:crypto";
 import { cookies } from "next/headers";
 import type { NextRequest, NextResponse } from "next/server";
 
@@ -84,12 +85,22 @@ export async function sessionToken(): Promise<string | null> {
 }
 
 /**
- * The secret shared with the control plane. With it set there, the control plane
- * answers nothing that does not carry it: only this relay can reach it.
+ * Proof that a call comes from this relay. With the shared secret set on the
+ * control plane, it answers nothing without this. The secret itself never
+ * travels: each call carries a signature over the current time, good for a few
+ * minutes, so nothing copied out of a proxy log can be replayed later.
  */
 export function relayHeaders(): Record<string, string> {
   const secret = process.env.MERIDIAN_RELAY_SECRET?.trim();
-  return secret ? { "X-Meridian-Relay": secret } : {};
+  if (!secret) return {};
+  return { "X-Meridian-Relay": relayToken(secret) };
+}
+
+/** Must match app/security.py relay_token on the control plane. */
+export function relayToken(secret: string, nowMs: number = Date.now()): string {
+  const ts = String(Math.floor(nowMs / 1000));
+  const sig = createHmac("sha256", secret).update(`meridian-relay-v1:${ts}`).digest("base64url");
+  return `v1.${ts}.${sig}`;
 }
 
 /**

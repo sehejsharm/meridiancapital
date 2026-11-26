@@ -36,7 +36,9 @@ def client(monkeypatch, tmp_path):
 def via_relay(ip: str, secret: str = SECRET) -> dict:
     # What the dashboard's relay sends. Every call shares one connecting address
     # (the TestClient's), exactly as every Vercel call shares Vercel's.
-    return {"X-Meridian-Relay": secret, "X-Meridian-Client-IP": ip}
+    from app.security import relay_token
+
+    return {"X-Meridian-Relay": relay_token(secret) if secret else "", "X-Meridian-Client-IP": ip}
 
 
 def login(client, password, headers):
@@ -110,3 +112,21 @@ def test_a_path_smuggled_in_the_host_header_does_not_open_the_lock(client):
     the router actually dispatches, or "Host: x/health?" would walk past it."""
     r = client.get("/api/status", headers={"Host": "testserver/health?"})
     assert r.status_code == 403
+
+
+def test_the_secret_itself_never_opens_the_lock(client):
+    """The relay presents a short-lived signature, never the secret: a secret that
+    leaked into a log, or a token copied out of one, opens nothing."""
+    import time as _t
+
+    from app.security import relay_token
+
+    assert client.get("/api/status", headers={"X-Meridian-Relay": SECRET}).status_code == 403
+    stale = relay_token(SECRET, _t.time() - 301)
+    assert client.get("/api/status", headers={"X-Meridian-Relay": stale}).status_code == 403
+    early = relay_token(SECRET, _t.time() + 301)
+    assert client.get("/api/status", headers={"X-Meridian-Relay": early}).status_code == 403
+    other = relay_token("another-" + "s" * 40)
+    assert client.get("/api/status", headers={"X-Meridian-Relay": other}).status_code == 403
+    # A current token passes the lock (and then needs a session, as always).
+    assert client.get("/api/status", headers={"X-Meridian-Relay": relay_token(SECRET)}).status_code == 401

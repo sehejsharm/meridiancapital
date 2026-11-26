@@ -44,13 +44,13 @@ cd "${APP_DIR}/backend" || exit 1
 "${APP_DIR}/backend/.venv/bin/python" - "${API}" <<'PY'
 import json, sqlite3, sys, time, urllib.request
 from app.config import settings
-from app.security import issue_token
+from app.security import issue_token, relay_token
 
 api = sys.argv[1]
 # A console token (app/devices.py CONSOLE_DEVICE): only a holder of the signing key
 # on this VM can mint one. The relay secret too, when the API answers only the relay.
 token = issue_token("diagnose", 300, device="console")
-relay = {"X-Meridian-Relay": settings.relay_secret} if settings.relay_secret else {}
+relay = {"X-Meridian-Relay": relay_token(settings.relay_secret)} if settings.relay_secret else {}
 paths = ["/health", "/api/status", "/api/algos", "/api/snapshot", "/api/trades?limit=500", "/api/equity",
          "/api/equity?limit=600&daily=0", "/api/events?limit=200", "/api/health/detail", "/api/ticker",
          "/api/market/chain", "/api/market/nifty", "/api/news", "/api/control/holidays"]

@@ -100,9 +100,11 @@ position has no stop-loss watcher. Flatten first, or square off in the Angel One
 ## Network exposure
 
 The API binds to `127.0.0.1` only. Caddy terminates TLS and is the sole public listener.
-With `MERIDIAN_RELAY_SECRET` set, the API answers no REST call that does not carry it —
-only the dashboard's server-side relay holds it — so the sign-in route cannot even be
-reached from the internet. `/health` stays open for monitoring and says only that the
+With `MERIDIAN_RELAY_SECRET` set, the API answers no REST call that does not prove it
+holds that secret — only the dashboard's server-side relay does — so the sign-in route
+cannot even be reached from the internet. The secret itself never travels: each call
+carries an HMAC over the current time, valid for five minutes, so nothing copied out of
+a proxy log can be replayed later. `/health` stays open for monitoring and says only that the
 service is up; the live WebSocket stays reachable and requires a valid ticket.
 
 The dashboard serves a strict Content-Security-Policy: no third-party script, frame,

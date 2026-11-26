@@ -33,7 +33,7 @@ class Settings:
 
     # Shared with the dashboard's relay so it can say who is really signing in.
     # Empty disables the feature; see security.client_ip.
-    relay_secret: str = field(default_factory=lambda: os.environ.get("MERIDIAN_RELAY_SECRET", ""))
+    relay_secret: str = field(default_factory=lambda: os.environ.get("MERIDIAN_RELAY_SECRET", "").strip())
 
     # network
     cors_origins: list[str] = field(
