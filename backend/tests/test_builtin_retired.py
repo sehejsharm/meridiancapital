@@ -113,7 +113,9 @@ def api(monkeypatch, tmp_path):
     from app.main import app
 
     with TestClient(app) as c:
-        token = c.post("/api/auth/login", json={"password": PASSWORD}).json()["token"]
+        from tests.auth_helpers import token as sign_in
+
+        token = sign_in(c, PASSWORD)
         yield c, {"Authorization": f"Bearer {token}"}
 
 

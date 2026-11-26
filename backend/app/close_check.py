@@ -33,6 +33,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from app import child_env
 from app.notify import RULES
 from engine.clock import now_ist
 from shared.db import snapshot_key
@@ -171,7 +172,7 @@ def ask_angel(db, day: str) -> dict:
     except OSError as e:
         return {"ok": False, "reason": f"cannot write to {work}: {type(e).__name__}"}
     backend = Path(__file__).resolve().parent.parent
-    env = os.environ.copy()
+    env = child_env.for_program()       # the Angel credentials, not the dashboard's secrets
     env["PYTHONPATH"] = str(backend) + os.pathsep + env.get("PYTHONPATH", "")
     try:
         proc = subprocess.run(  # noqa: S603 - our own module, fixed arguments

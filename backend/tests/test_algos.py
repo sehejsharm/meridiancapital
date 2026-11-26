@@ -102,7 +102,9 @@ def client(monkeypatch, tmp_path):
 
 @pytest.fixture
 def auth(client):
-    r = client.post("/api/auth/login", json={"password": PASSWORD})
+    from tests.auth_helpers import login
+
+    r = login(client, PASSWORD)
     assert r.status_code == 200
     return {"Authorization": f"Bearer {r.json()['token']}"}
 

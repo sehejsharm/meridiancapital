@@ -33,7 +33,9 @@ def client(monkeypatch, tmp_path):
 
 @pytest.fixture
 def auth(client):
-    return {"Authorization": f"Bearer {client.post('/api/auth/login', json={'password': PASSWORD}).json()['token']}"}
+    from tests.auth_helpers import bearer
+
+    return bearer(client, PASSWORD)
 
 
 # ── rate limiter gauges ──────────────────────────────────────────────────────

@@ -76,6 +76,11 @@ def _load_nse_holidays(db: Database) -> None:
 def build_context() -> Context:
     global _ctx
     db = Database(settings.db_path)
+    # Device approval for sign-in is required from the first start of this code;
+    # sessions issued before then keep working until they expire or renew.
+    from app import devices
+
+    devices.devices_since(db)
     _seed_builtin(db)
     if db.builtin_retired():
         # Removed from the desk: disarmed, so nothing can bring it back at the open.

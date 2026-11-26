@@ -16,6 +16,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app import child_env
 from app.config import settings
 from app.program_output import redact
 from engine.config import DATA_DIR
@@ -264,7 +265,10 @@ class Supervisor:
             return {"ok": False, "detail": f"restart backoff active, {wait}s remaining"}
 
         mode = self.desired_mode()
-        env = os.environ.copy()
+        # Everything the program had before, minus the API's own secrets (the
+        # dashboard's signing key, PIN hash, relay and backup secrets): it never
+        # needed them. Broker credentials are untouched.
+        env = child_env.for_program()
         env["MERIDIAN_TRADING_MODE"] = mode
         env["PYTHONUNBUFFERED"] = "1"
         python = settings.python_bin or sys.executable

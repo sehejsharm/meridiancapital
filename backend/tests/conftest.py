@@ -39,12 +39,17 @@ def _reset_login_throttle():
     anything — so a test that deliberately triggers a lockout would otherwise
     lock out every test that logs in afterwards.
     """
+    from app import devices
     from app.security import login_throttle
 
-    login_throttle._hits.clear()
-    login_throttle._locked.clear()
-    login_throttle._strikes.clear()
+    def reset() -> None:
+        login_throttle._hits.clear()
+        login_throttle._locked.clear()
+        login_throttle._strikes.clear()
+        devices.unknown_budget.reset()
+        devices.alert_gate.reset()
+        devices._forget()
+
+    reset()
     yield
-    login_throttle._hits.clear()
-    login_throttle._locked.clear()
-    login_throttle._strikes.clear()
+    reset()

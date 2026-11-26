@@ -193,6 +193,28 @@ CREATE TABLE IF NOT EXISTS audit_log (
     detail  TEXT,
     ip      TEXT
 );
+
+-- Devices an operator approved for sign-in, and those still waiting (app/devices.py).
+-- A device is known only by the SHA-256 of the random secret in its httpOnly cookie.
+-- Times are epoch milliseconds: session cut-offs are compared with token issue times.
+CREATE TABLE IF NOT EXISTS devices (
+    id               TEXT PRIMARY KEY,
+    secret_hash      TEXT NOT NULL UNIQUE,
+    label            TEXT NOT NULL DEFAULT '',
+    status           TEXT NOT NULL,
+    created_ms       INTEGER NOT NULL,
+    first_ip         TEXT,
+    last_ip          TEXT,
+    last_seen_ms     INTEGER,
+    approved_ms      INTEGER,
+    approved_by      TEXT,
+    approved_via     TEXT,
+    code_hash        TEXT,
+    code_expires_ms  INTEGER,
+    code_attempts    INTEGER NOT NULL DEFAULT 0,
+    pin_ok_ms        INTEGER,
+    sessions_after_ms INTEGER NOT NULL DEFAULT 0
+);
 """
 
 # Everything written before multi-algo belongs to the built-in build.

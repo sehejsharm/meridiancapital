@@ -24,6 +24,7 @@ from app.notify import Notifier
 from app.program_output import ProgramOutput
 from app.replay import Archiver
 from app.routers import algos, auth, control, data, desk, push, reliability, tuning, ws
+from app.security import relay_ok
 from app.supervisor import StagingOnly
 from app.upkeep import Upkeep
 from engine.clock import now_ist
@@ -119,6 +120,25 @@ async def _not_modified(request: Request, response):
     return Response(content=body, status_code=200, headers=headers, media_type=response.media_type)
 
 
+# Paths a caller other than the dashboard's relay may reach. /health is the
+# outside monitor's; the live WebSocket (not HTTP middleware) is ticket-gated.
+OPEN_PATHS = frozenset({"/health"})
+
+
+@app.middleware("http")
+async def relay_lock(request: Request, call_next):
+    """With MERIDIAN_RELAY_SECRET set, the API answers only the dashboard's relay.
+
+    Every REST call the dashboard makes goes through its server-side relay on
+    Vercel, which presents the secret. Anything else on the internet — a script, a
+    scanner, someone holding a stolen session token — is refused before any route
+    runs, so the sign-in route cannot even be reached to guess at.
+    """
+    if settings.relay_secret and request.url.path not in OPEN_PATHS and not relay_ok(request):
+        return JSONResponse(status_code=403, content={"detail": "forbidden"})
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     started = time.perf_counter()
@@ -131,6 +151,9 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Cache-Control"] = "no-store"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
     return response
 
 
@@ -145,9 +168,23 @@ app.include_router(push.router)
 app.include_router(ws.router)
 
 
+def _local_or_relay(request: Request) -> bool:
+    """A call made on the VM itself (the install script's check), or by the dashboard."""
+    if relay_ok(request):
+        return True
+    host = request.client.host if request.client else ""
+    # Through Caddy, uvicorn rewrites the client to the visitor's address from
+    # X-Forwarded-For, which Caddy always sets; only a direct local call has neither.
+    return host in ("127.0.0.1", "::1") and "x-forwarded-for" not in request.headers
+
+
 @app.get("/health", tags=["meta"])
-async def health() -> dict:
-    """Unauthenticated liveness probe — deliberately exposes no trading data."""
+async def health(request: Request) -> dict:
+    """Unauthenticated liveness probe — deliberately exposes no trading data. To
+    the internet it says only that the service is up; whether anything is running
+    is for the VM itself and the dashboard."""
+    if not _local_or_relay(request):
+        return {"ok": True, "service": "meridian-api"}
     try:
         running = ctx().sup.state.running
     except RuntimeError:

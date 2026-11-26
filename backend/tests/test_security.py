@@ -60,8 +60,17 @@ def test_dashboard_token_cannot_open_a_websocket():
         authenticate_ws_ticket(issue_token("sehej", 60))
 
 
-def test_ws_ticket_is_accepted():
-    assert authenticate_ws_ticket(issue_token("sehej", 60, scope="ws")).subject == "sehej"
+def test_ws_ticket_is_accepted(client, auth):  # noqa: F811
+    from app.config import settings
+
+    ticket = client.post("/api/auth/ws-ticket", headers=auth).json()["ticket"]
+    principal = authenticate_ws_ticket(ticket)
+    assert principal.subject == settings.operator and principal.device
+
+
+def test_a_ws_ticket_without_an_approved_device_is_refused(client, auth):  # noqa: F811
+    with pytest.raises(ValueError, match="approved device"):
+        authenticate_ws_ticket(issue_token("sehej", 60, scope="ws"))
 
 
 def test_throttle_locks_out_after_repeated_failures():

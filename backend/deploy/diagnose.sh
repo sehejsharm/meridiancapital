@@ -47,14 +47,17 @@ from app.config import settings
 from app.security import issue_token
 
 api = sys.argv[1]
-token = issue_token("diagnose", 300)
+# A console token (app/devices.py CONSOLE_DEVICE): only a holder of the signing key
+# on this VM can mint one. The relay secret too, when the API answers only the relay.
+token = issue_token("diagnose", 300, device="console")
+relay = {"X-Meridian-Relay": settings.relay_secret} if settings.relay_secret else {}
 paths = ["/health", "/api/status", "/api/algos", "/api/snapshot", "/api/trades?limit=500", "/api/equity",
          "/api/equity?limit=600&daily=0", "/api/events?limit=200", "/api/health/detail", "/api/ticker",
          "/api/market/chain", "/api/market/nifty", "/api/news", "/api/control/holidays"]
 for path in paths:
     times, size, status = [], 0, None
     for _ in range(3):
-        req = urllib.request.Request(api + path, headers={"Authorization": f"Bearer {token}"})
+        req = urllib.request.Request(api + path, headers={"Authorization": f"Bearer {token}", **relay})
         start = time.perf_counter()
         try:
             with urllib.request.urlopen(req, timeout=60) as r:

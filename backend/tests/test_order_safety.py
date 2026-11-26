@@ -393,7 +393,9 @@ def test_the_start_dialog_choice_reaches_the_builtin_engine():
         from app.main import app
 
         with TestClient(app) as c:
-            tok = c.post("/api/auth/login", json={"password": PASSWORD}).json()["token"]
+            from tests.auth_helpers import token as sign_in
+
+            tok = sign_in(c, PASSWORD)
             h = {"Authorization": f"Bearer {tok}"}
             r = c.post("/api/algos/gk50k/start", json={"mode": "live"}, headers=h)
             assert r.status_code == 200, r.json()

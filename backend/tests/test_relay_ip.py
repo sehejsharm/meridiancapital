@@ -40,7 +40,9 @@ def via_relay(ip: str, secret: str = SECRET) -> dict:
 
 
 def login(client, password, headers):
-    return client.post("/api/auth/login", json={"password": password}, headers=headers)
+    # A device not yet approved, as a bot's would be: the lockout is per address.
+    return client.post("/api/auth/login", json={"password": password},
+                       headers={**headers, "X-Meridian-Device": "unapproved-" + "u" * 40})
 
 
 def test_a_bot_locking_itself_out_does_not_lock_out_the_operator(client):
@@ -48,9 +50,14 @@ def test_a_bot_locking_itself_out_does_not_lock_out_the_operator(client):
         assert login(client, "guess", via_relay("203.0.113.9")).status_code == 401
     assert login(client, "guess", via_relay("203.0.113.9")).status_code == 429
 
-    # Same connecting address, different real visitor: still gets in.
+    # Same connecting address, different real visitor: not locked out. The right
+    # PIN from a device nobody approved gets an approval request, not a session.
     r = login(client, PASSWORD, via_relay("198.51.100.4"))
-    assert r.status_code == 200, r.json()
+    assert r.status_code == 403 and r.json()["pending"] is True, r.json()
+    # And the operator's approved device signs straight in.
+    from tests.auth_helpers import login as approved_login
+
+    assert approved_login(client, PASSWORD, headers=via_relay("198.51.100.4")).status_code == 200
 
 
 def test_the_locked_out_bot_stays_locked_out_even_with_the_right_password(client):
@@ -59,19 +66,24 @@ def test_the_locked_out_bot_stays_locked_out_even_with_the_right_password(client
     assert login(client, PASSWORD, via_relay("203.0.113.9")).status_code == 429
 
 
-def test_a_forged_address_without_the_secret_is_ignored(client):
-    """A script calling the API directly must not be able to rotate a made-up
-    address on every attempt and never hit the lockout."""
-    for i in range(5):
-        login(client, "guess", via_relay(f"10.0.0.{i}", secret="not-the-secret"))
-    # All five counted against the real connecting address, so it is locked.
-    assert login(client, "guess", via_relay("10.0.0.99", secret="not-the-secret")).status_code == 429
+def test_without_the_relay_secret_the_api_refuses_everything(client):
+    """With the secret set, only the dashboard's relay is answered: a script
+    calling the API directly cannot reach the sign-in route at all, let alone
+    rotate made-up addresses to dodge the lockout."""
+    for i in range(8):
+        r = login(client, "guess", via_relay(f"10.0.0.{i}", secret="not-the-secret"))
+        assert r.status_code == 403 and r.json() == {"detail": "forbidden"}
+    assert login(client, PASSWORD, {"X-Meridian-Client-IP": "10.0.1.1"}).status_code == 403
+    assert client.get("/api/status").status_code == 403
+    # Nothing was even counted against the lockout: the route never ran.
+    assert login(client, "guess", via_relay("10.0.0.1")).status_code == 401
 
 
-def test_a_forged_address_with_no_secret_header_is_ignored(client):
-    for i in range(5):
-        login(client, "guess", {"X-Meridian-Client-IP": f"10.0.1.{i}"})
-    assert login(client, "guess", {"X-Meridian-Client-IP": "10.0.1.99"}).status_code == 429
+def test_the_health_check_stays_open_but_says_almost_nothing(client):
+    r = client.get("/health")
+    assert r.status_code == 200 and r.json() == {"ok": True, "service": "meridian-api"}
+    full = client.get("/health", headers=via_relay("10.0.0.1")).json()
+    assert full["ok"] is True and "engine_running" in full
 
 
 def test_with_no_secret_configured_the_forwarded_address_is_never_trusted(client, monkeypatch):

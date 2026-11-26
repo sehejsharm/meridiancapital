@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.security import LoginThrottle, hash_password, verify_password
+from tests.auth_helpers import bearer, login
 
 PIN = "3579"
 # Deliberately NOT written to the environment: other test modules read
@@ -44,13 +45,13 @@ def test_the_pin_hashes_and_verifies():
 
 
 def test_signing_in_with_the_pin_works(client):
-    r = client.post("/api/auth/login", json={"password": PIN})
+    r = login(client, PIN)
     assert r.status_code == 200
     assert r.json()["token"]
 
 
 def test_a_wrong_pin_is_refused(client):
-    assert client.post("/api/auth/login", json={"password": "0000"}).status_code == 401
+    assert login(client, "0000").status_code == 401
 
 
 # ── throttle: what actually protects a 4-digit keyspace ──────────────────────
@@ -94,14 +95,19 @@ def test_a_successful_sign_in_clears_the_record():
     assert "ip" not in t._hits and "ip" not in t._strikes
 
 
+STRANGER = {"X-Meridian-Device": "stranger-" + "s" * 40}
+
+
 def test_brute_forcing_the_pin_is_throttled_end_to_end(client):
     codes = [
-        client.post("/api/auth/login", json={"password": f"{i:04d}"}).status_code
+        client.post("/api/auth/login", json={"password": f"{i:04d}"}, headers=STRANGER).status_code
         for i in range(8)
     ]
     assert 429 in codes, "an unthrottled 4-digit PIN would be walked in minutes"
     # The real PIN is refused too while locked out — the lock is not bypassable.
-    assert client.post("/api/auth/login", json={"password": PIN}).status_code == 429
+    assert client.post("/api/auth/login", json={"password": PIN}, headers=STRANGER).status_code == 429
+    # And the flood did not lock out the operator's approved device.
+    assert login(client, PIN).status_code == 200
 
 
 # ── passkeys ─────────────────────────────────────────────────────────────────
@@ -109,7 +115,8 @@ def test_availability_is_answerable_without_a_session(client):
     r = client.get("/api/auth/passkeys/available")
     assert r.status_code == 200
     body = r.json()
-    assert body["enrolled"] == 0 and body["available"] is False
+    assert body["available"] is False
+    assert "enrolled" not in body, "how many devices are enrolled is nobody's business before sign-in"
 
 
 def test_passkey_registration_requires_a_session(client):
@@ -120,8 +127,7 @@ def test_passkey_registration_requires_a_session(client):
 def test_registration_options_need_the_rp_configured(client, monkeypatch):
     from app.config import settings
 
-    token = client.post("/api/auth/login", json={"password": PIN}).json()["token"]
-    auth = {"Authorization": f"Bearer {token}"}
+    auth = bearer(client, PIN)
 
     monkeypatch.setattr(settings, "rp_id", "")
     r = client.post("/api/auth/passkeys/register/options", headers=auth)
@@ -131,8 +137,7 @@ def test_registration_options_need_the_rp_configured(client, monkeypatch):
 def test_registration_options_are_issued_once_configured(client, monkeypatch):
     from app.config import settings
 
-    token = client.post("/api/auth/login", json={"password": PIN}).json()["token"]
-    auth = {"Authorization": f"Bearer {token}"}
+    auth = bearer(client, PIN)
 
     monkeypatch.setattr(settings, "rp_id", "desk.example.com")
     monkeypatch.setattr(settings, "rp_origin", "https://desk.example.com")
@@ -168,6 +173,7 @@ def test_a_forged_assertion_is_rejected(client, monkeypatch):
     r = client.post(
         "/api/auth/passkeys/authenticate",
         json={"handle": "never-issued", "credential": {"id": "fake-id"}},
+        headers=STRANGER,
     )
     assert r.status_code == 401
 
@@ -185,8 +191,11 @@ def test_a_failed_passkey_attempt_counts_against_the_same_limiter(client, monkey
         client.post(
             "/api/auth/passkeys/authenticate",
             json={"handle": "nope", "credential": {"id": "fake-id"}},
+            headers=STRANGER,
         )
-    assert client.post("/api/auth/login", json={"password": PIN}).status_code == 429
+    assert client.post("/api/auth/login", json={"password": PIN}, headers=STRANGER).status_code == 429
+    # The operator's approved device has a lockout of its own.
+    assert login(client, PIN).status_code == 200
 
 
 # ── challenge store ──────────────────────────────────────────────────────────

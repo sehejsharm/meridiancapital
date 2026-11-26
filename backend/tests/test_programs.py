@@ -294,7 +294,9 @@ def test_an_uploaded_program_is_labelled_not_gated(tmp_path, monkeypatch):
     from app.main import app
 
     with TestClient(app) as c:
-        tok = c.post("/api/auth/login", json={"password": PASSWORD}).json()["token"]
+        from tests.auth_helpers import token as sign_in
+
+        tok = sign_in(c, PASSWORD)
         h = {"Authorization": f"Bearer {tok}"}
         body = c.post("/api/algos", json={"name": "OG Real", "source": PROGRAM}, headers=h).json()
         assert body["kind"] == "program"

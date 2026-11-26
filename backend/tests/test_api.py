@@ -91,7 +91,9 @@ def client(monkeypatch, tmp_path):
 
 @pytest.fixture
 def auth(client):
-    r = client.post("/api/auth/login", json={"password": PASSWORD})
+    from tests.auth_helpers import login
+
+    r = login(client, PASSWORD)
     assert r.status_code == 200
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
@@ -109,7 +111,9 @@ def test_health_leaks_no_trading_data(client):
 
 
 def test_login_with_wrong_password_is_rejected(client):
-    assert client.post("/api/auth/login", json={"password": "nope"}).status_code == 401
+    from tests.auth_helpers import login
+
+    assert login(client, "nope").status_code == 401
 
 
 def test_status_without_a_token_is_rejected(client):

@@ -60,16 +60,20 @@ def _b64u_dec(s: str) -> bytes:
 MAX_SESSION_SEC = 7 * 24 * 3600
 
 
-def issue_token(subject: str, ttl_seconds: int, scope: str = "dashboard", auth_time: int | None = None) -> str:
-    now = int(time.time())
+def issue_token(subject: str, ttl_seconds: int, scope: str = "dashboard", auth_time: int | None = None,
+                device: str | None = None, extra: dict | None = None) -> str:
+    """A signed token. ``device`` ties a dashboard session to an approved device
+    (app/devices.py): revoking the device, or signing it out, ends the session."""
+    now_f = time.time()
+    now = int(now_f)
+    claims = {"sub": subject, "scope": scope, "iat": now, "iatms": int(now_f * 1000), "exp": now + ttl_seconds,
+              "at": int(auth_time if auth_time is not None else now), "jti": secrets.token_hex(8)}
+    if device:
+        claims["dev"] = device
+    if extra:
+        claims.update({k: v for k, v in extra.items() if k not in claims})
     header = _b64u(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
-    payload = _b64u(
-        json.dumps(
-            {"sub": subject, "scope": scope, "iat": now, "exp": now + ttl_seconds,
-             "at": int(auth_time if auth_time is not None else now), "jti": secrets.token_hex(8)},
-            separators=(",", ":"),
-        ).encode()
-    )
+    payload = _b64u(json.dumps(claims, separators=(",", ":")).encode())
     signing_input = f"{header}.{payload}".encode()
     sig = hmac.new(settings.jwt_secret.encode(), signing_input, hashlib.sha256).digest()
     return f"{header}.{payload}.{_b64u(sig)}"
@@ -80,12 +84,23 @@ def decode_token(token: str) -> dict:
         header_b64, payload_b64, sig_b64 = token.split(".")
     except ValueError:
         raise ValueError("malformed token")
+    if len(token) > 4096:
+        raise ValueError("malformed token")
     expected = hmac.new(
         settings.jwt_secret.encode(), f"{header_b64}.{payload_b64}".encode(), hashlib.sha256
     ).digest()
-    if not hmac.compare_digest(expected, _b64u_dec(sig_b64)):
+    try:
+        presented = _b64u_dec(sig_b64)
+    except (ValueError, TypeError):
+        raise ValueError("malformed token")
+    if not hmac.compare_digest(expected, presented):
         raise ValueError("bad signature")
-    payload = json.loads(_b64u_dec(payload_b64))
+    try:
+        payload = json.loads(_b64u_dec(payload_b64))
+    except (ValueError, TypeError):
+        raise ValueError("malformed token")
+    if not isinstance(payload, dict):
+        raise ValueError("malformed token")
     if int(payload.get("exp", 0)) < int(time.time()):
         raise ValueError("token expired")
     return payload
@@ -97,6 +112,12 @@ class Principal:
     scope: str
     # When the operator last proved who they are (password or passkey), epoch seconds.
     auth_time: int | None = None
+    # The approved device the session is tied to (app/devices.py); None for a
+    # session from before approval was required.
+    device: str | None = None
+    # When this session's token was issued, epoch milliseconds, and when it expires.
+    issued_ms: int | None = None
+    expires: int | None = None
 
 
 def _unauthorised(detail: str) -> HTTPException:
@@ -118,16 +139,58 @@ async def require_auth(
         raise _unauthorised(str(e))
     if payload.get("scope") != "dashboard":
         raise _unauthorised("token is not valid for this endpoint")
+    problem = _session_problem(payload)
+    if problem:
+        raise _unauthorised(problem)
     at = payload.get("at", payload.get("iat"))
+    from app import devices
+
     return Principal(subject=str(payload.get("sub", "?")), scope=str(payload.get("scope")),
-                     auth_time=int(at) if at is not None else None)
+                     auth_time=int(at) if at is not None else None,
+                     device=str(payload["dev"]) if payload.get("dev") else None,
+                     issued_ms=devices.issued_ms(payload), expires=int(payload.get("exp", 0)))
+
+
+def _session_problem(payload: dict) -> str | None:
+    """A signed, unexpired token can still be dead: its device revoked or signed
+    out, or every session ended. The database says which."""
+    from app import devices
+    from app.deps import ctx
+
+    try:
+        db = ctx().db
+    except RuntimeError:
+        return "the control plane is starting — try again"
+    return devices.session_problem(db, payload)
 
 
 def authenticate_ws_ticket(ticket: str) -> Principal:
     payload = decode_token(ticket)
     if payload.get("scope") != "ws":
         raise ValueError("not a websocket ticket")
-    return Principal(subject=str(payload.get("sub", "?")), scope="ws")
+    problem = _session_problem(payload)
+    if problem:
+        raise ValueError(problem)
+    from app import devices
+
+    return Principal(subject=str(payload.get("sub", "?")), scope="ws",
+                     device=str(payload["dev"]) if payload.get("dev") else None,
+                     issued_ms=devices.issued_ms(payload),
+                     expires=int(payload.get("pexp") or payload.get("exp", 0)))
+
+
+def ws_ticket_claims(principal: Principal) -> dict:
+    """What a WebSocket ticket carries from the session it was minted from, so a
+    socket can be closed when that session ends (revoked, signed out, expired)."""
+    return {"piat": principal.issued_ms, "pexp": principal.expires}
+
+
+def relay_ok(request: Request) -> bool:
+    """The request came through the dashboard's relay: it presents the secret
+    shared between Vercel and this VM. False when no secret is configured."""
+    secret = settings.relay_secret
+    presented = request.headers.get("x-meridian-relay", "")
+    return bool(secret) and hmac.compare_digest(presented.encode(), secret.encode())
 
 
 def client_ip(request: Request) -> str:

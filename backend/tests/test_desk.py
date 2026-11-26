@@ -32,8 +32,9 @@ def client(monkeypatch, tmp_path):
 
 @pytest.fixture
 def auth(client):
-    r = client.post("/api/auth/login", json={"password": PASSWORD})
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+    from tests.auth_helpers import bearer
+
+    return bearer(client, PASSWORD)
 
 
 @pytest.fixture

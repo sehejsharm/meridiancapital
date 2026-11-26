@@ -15,6 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from app import child_env
 from engine.config import DATA_DIR
 
 GATE_TIMEOUT_SEC = 90
@@ -48,6 +49,9 @@ def run_gate(source: str, backend_dir: Path | None = None) -> dict:
             text=True,
             cwd=str(cwd),
             timeout=GATE_TIMEOUT_SEC,
+            # Untrusted code is imported in there: it gets no secret at all,
+            # broker credentials included.
+            env=child_env.for_gate(),
         )
     except subprocess.TimeoutExpired:
         return {

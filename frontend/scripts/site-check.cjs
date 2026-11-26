@@ -17,7 +17,9 @@ const PAGES = ["/", "/metrics", "/today", "/algos", "/algos/check", "/trades", `
 const WIDTHS = [[390, 844], [1366, 900]];
 
 (async () => {
-  const login = await fetch(`${API}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" },
+  // From the device the check API approved up front (backend/scripts/site_check_server.py).
+  const login = await fetch(`${API}/api/auth/login`, { method: "POST",
+    headers: { "Content-Type": "application/json", "X-Meridian-Device": "site-check-device-" + "c".repeat(32) },
     body: JSON.stringify({ password: "site-check" }) });
   if (!login.ok) { console.error("sign-in to the check API failed:", login.status); process.exit(1); }
   const { token } = await login.json();

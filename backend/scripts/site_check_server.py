@@ -27,6 +27,11 @@ from engine.clock import now_ist  # noqa: E402
 from shared.db import Database  # noqa: E402
 
 db = Database(os.environ["MERIDIAN_DB_PATH"])
+# The browser check signs in from this device (scripts/site-check.cjs), approved
+# up front as an operator would approve it from Controls.
+from app import devices  # noqa: E402
+
+devices.approve_secret(db, "site-check-device-" + "c" * 32, "Site check", "127.0.0.1", by="site-check", via="site check")
 db.upsert_algo("check", "site check program")
 vid = db.add_version("check", "import sys\nMIN_DTE, MAX_DTE = 2, 6\nif __name__ == '__main__':\n    live = '--live' in sys.argv or '--paper' in sys.argv\n",
                      "0" * 64, "site-check")
