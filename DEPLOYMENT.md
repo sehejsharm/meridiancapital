@@ -241,7 +241,7 @@ One random value, set in Vercel and on the VM, that turns three things on:
 - **Lockouts and the audit log name the real visitor**, not Vercel.
 
 Set it in this order — Vercel first, so the dashboard already sends it when the VM
-starts requiring it:
+starts requiring it. If the VM already has a value, use that one; otherwise make one:
 
 ```bash
 openssl rand -hex 32        # on the VM; copy the value
@@ -249,15 +249,16 @@ openssl rand -hex 32        # on the VM; copy the value
 
 1. Vercel → Settings → Environment Variables → add `MERIDIAN_RELAY_SECRET` with that
    value (not `NEXT_PUBLIC_`), then redeploy. Everyone signs in once more.
-2. On the VM:
+2. On the VM (replacing any line already there):
 
 ```bash
+sudo sed -i '/^MERIDIAN_RELAY_SECRET=/d' /etc/meridian/meridian.env
 echo "MERIDIAN_RELAY_SECRET=<the value>" | sudo tee -a /etc/meridian/meridian.env >/dev/null
 sudo systemctl restart meridian-api
 ```
 
-Until both are set, every desk page shows a warning saying so. If the dashboard shows
-"forbidden" after step 2, the two values differ.
+Until it is set in Vercel, every desk page shows a warning saying so. If the dashboard
+shows "forbidden" after step 2, the two values differ.
 
 > Vercel gives each preview deployment its own URL. If you want previews to work, add
 > them to `MERIDIAN_CORS_ORIGINS` as a comma-separated list — or just use production.
