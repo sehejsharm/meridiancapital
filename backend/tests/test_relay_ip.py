@@ -103,3 +103,10 @@ def test_the_audit_log_records_the_real_visitor(client):
     login(client, "guess", via_relay("203.0.113.77"))
     failed = [r for r in ctx().db.audit_tail(20) if r["action"] == "login.failed"]
     assert failed and failed[0]["ip"] == "203.0.113.77"
+
+
+def test_a_path_smuggled_in_the_host_header_does_not_open_the_lock(client):
+    """request.url is rebuilt from the Host header; the lock must judge the path
+    the router actually dispatches, or "Host: x/health?" would walk past it."""
+    r = client.get("/api/status", headers={"Host": "testserver/health?"})
+    assert r.status_code == 403

@@ -134,7 +134,9 @@ async def relay_lock(request: Request, call_next):
     scanner, someone holding a stolen session token — is refused before any route
     runs, so the sign-in route cannot even be reached to guess at.
     """
-    if settings.relay_secret and request.url.path not in OPEN_PATHS and not relay_ok(request):
+    # scope["path"] is what the router dispatches on; request.url is rebuilt from
+    # the Host header and must never decide what is let through.
+    if settings.relay_secret and request.scope.get("path") not in OPEN_PATHS and not relay_ok(request):
         return JSONResponse(status_code=403, content={"detail": "forbidden"})
     return await call_next(request)
 

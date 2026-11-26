@@ -128,3 +128,22 @@ program is stopped, only inside the ranges shown, with the phrase typed; the cha
 is written to the journal and the audit log. **Back to built-in** removes every change. Only the built-in values have a
 backtest behind them. If the program finds the file damaged it ignores all of it, uses the built-in values and says so
 in red at start-up.
+
+## 12. A new phone, a lost phone, a request you did not make
+
+**A new phone or browser.** Open the desk on it and enter the PIN: it shows a code
+(ABCD-EFGH). On a device that is already signed in, Controls → Devices and sessions →
+type the code → Approve. No signed-in device at hand: on the VM,
+
+    sudo bash ~/meridiancapital/backend/deploy/devices.sh approve ABCD-EFGH
+
+The new device signs itself in within a few seconds. A code lasts ten minutes.
+
+**A lost or stolen device.** Controls → Devices and sessions → Remove it (or on the VM:
+`devices.sh` to list, `devices.sh revoke <id>`). Its sessions end at once. Then change the
+PIN (`sudo python3 backend/scripts/bootstrap_secrets.py --write` and restart
+meridian-api). Unsure which device it was: Sign out everywhere, then change the PIN.
+
+**An approval request you did not make.** Someone entered the right PIN. Refuse the
+request, change the PIN now, and read the Journal's audit log for the address it came
+from. They cannot get in without you typing the code from their screen.

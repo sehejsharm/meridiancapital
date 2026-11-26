@@ -39,22 +39,51 @@ source default again.
 
 ## Dashboard authentication
 
-Single operator, so there is no user table — one password hash and one signing key.
+Getting in takes two things: the operator's PIN, and a device an operator approved.
 
-- **Password** — PBKDF2-HMAC-SHA256, 320,000 rounds, per-hash random salt. Generate with
-  `scripts/bootstrap_secrets.py`, which prompts without echoing so the password never
+- **PIN** — PBKDF2-HMAC-SHA256, 320,000 rounds, per-hash random salt. Generate with
+  `scripts/bootstrap_secrets.py`, which prompts without echoing so the PIN never
   enters shell history.
-- **Sessions** — HS256 JWT, 12-hour expiry, stored in an `httpOnly` `SameSite=Lax`
-  cookie set by a Next route handler. The browser never holds a bearer token and never
-  learns the API origin; every call is relayed server-side.
+- **Approved devices** (`app/devices.py`) — each browser holds a random 256-bit secret
+  in an httpOnly, SameSite=Strict cookie the page's script cannot read; the server
+  stores only its SHA-256. The right PIN on a device nobody approved does not sign in:
+  the device is shown an 8-character code and the operator is alerted. An operator
+  approves it by typing that code on a signed-in device or on the VM
+  (`deploy/devices.sh`). Requiring the code means approval cannot be given by
+  accident or to a request the operator never saw. A passkey sign-in approves the
+  device it is used on (passkeys are enrolled only from a signed-in session).
+- **Sessions** — HS256 tokens, 12-hour expiry, renewed while the desk is open but never
+  past a week from the last PIN. Every token names its device, and the server checks
+  that device on every call: removing a device, signing out, or "sign out everywhere"
+  ends sessions on the server immediately, open live feeds included.
+- **The cookie** — the token is sealed with AES-256-GCM under a key only the dashboard
+  deployment holds, in an httpOnly, Secure, `__Host-` cookie. `proxy.ts` opens it
+  before serving any page or relaying any call, so a forged or altered cookie never
+  reaches a page. The browser never sees the token in readable form and never learns
+  the API origin; every REST call is relayed server-side.
 - **WebSocket** — a browser cannot send an `Authorization` header on a WS handshake, and
   putting a session token in a URL leaves it in proxy logs. Instead the dashboard mints a
   ~60-second, single-purpose ticket over authenticated HTTP. A captured socket URL is
-  worthless within the minute and can never be replayed against the REST API.
-- **Login throttling** — 8 failures from one IP within 5 minutes locks that IP out for
-  15 minutes.
-- **Audit log** — every control action is recorded with operator, action, detail and IP
-  before it takes effect, readable at `/api/audit` and on the Journal page.
+  worthless within the minute, can never be replayed against the REST API, and the
+  socket closes when the session behind it ends.
+- **Login throttling** — five wrong PINs from an address lock it out, doubling to an
+  hour. An approved device has a lockout of its own, so guesses from elsewhere never
+  lock the operator out. Wrong PINs from unapproved devices are also capped across all
+  addresses together: past the cap, PIN sign-in from new devices pauses for an hour.
+- **Requests from other sites** — every state-changing route refuses a request whose
+  `Origin` / `Sec-Fetch-Site` says it did not come from the desk's own pages.
+- **Audit log** — every sign-in, failed attempt, device approval or removal and control
+  action is recorded with operator, action, detail and the visitor's address, readable
+  at `/api/audit` and on the Journal page.
+
+## Secrets the processes do not get
+
+The API starts trading programs, the after-close check and the acceptance gate. None
+of them is given the API's own secrets (the dashboard's signing key, PIN hash, relay
+secret, backup passphrase and upload address): a program that prints its environment
+cannot leak a way into the dashboard. The acceptance gate, which imports uploaded code
+before it is trusted, gets no secret at all — broker credentials included
+(`app/child_env.py`).
 
 ## Guarded actions
 
@@ -71,12 +100,25 @@ position has no stop-loss watcher. Flatten first, or square off in the Angel One
 ## Network exposure
 
 The API binds to `127.0.0.1` only. Caddy terminates TLS and is the sole public listener.
-CORS is restricted to your Vercel origin, and `/health` is the only unauthenticated route
-— it deliberately returns no trading data.
+With `MERIDIAN_RELAY_SECRET` set, the API answers no REST call that does not carry it —
+only the dashboard's server-side relay holds it — so the sign-in route cannot even be
+reached from the internet. `/health` stays open for monitoring and says only that the
+service is up; the live WebSocket stays reachable and requires a valid ticket.
+
+The dashboard serves a strict Content-Security-Policy: no third-party script, frame,
+font or image, and connections only to itself and the live feed, so even an injected
+script would have nowhere to send what it read. Responses carry HSTS, `nosniff`,
+`frame-ancestors 'none'`, COOP/CORP same-origin and `noindex`.
 
 Two separate gates control inbound traffic on Oracle Cloud and traffic needs both: the OCI
 Security List in the console, and the VM's own iptables rules. `deploy/install.sh` handles
 the second; the first is a manual step in the console.
+
+## What CI checks
+
+Besides the tests: every tracked file is scanned for credential-shaped text
+(`tests/test_repo_secrets.py`) and the build fails on a high or critical advisory in the
+dashboard's runtime dependencies. The workflow's token is read-only.
 
 ## If something looks wrong
 
@@ -85,5 +127,8 @@ the second; the first is a manual step in the console.
 3. Switch the mode back to **paper** before investigating.
 4. Read the Journal page — engine runs, control commands, and the audit log are all there.
 
-If you suspect the dashboard password leaked, rotate `MERIDIAN_JWT_SECRET` as well as the
-password: changing the secret invalidates every issued session token immediately.
+If you suspect the PIN leaked or a device was lost: Controls → Devices and sessions →
+remove the device (or "sign out everywhere"), then change the PIN with
+`scripts/bootstrap_secrets.py --write`, which also rotates `MERIDIAN_JWT_SECRET` and so
+invalidates every issued token. A stranger with the PIN still cannot sign in without an
+approval you would have to type their code for.

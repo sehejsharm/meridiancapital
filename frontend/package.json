@@ -2,7 +2,7 @@
   "name": "meridian-dashboard",
   "version": "1.0.0",
   "private": true,
-  "description": "Meridian Capital \u2014 trading desk dashboard",
+  "description": "Meridian Capital — trading desk dashboard",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "lightweight-charts": "^5.2.1",
-    "next": "16.3.4",
+    "next": "16.4.6",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },
@@ -23,8 +23,11 @@
     "@types/react-dom": "19.0.3",
     "autoprefixer": "10.4.20",
     "postcss": "8.5.28",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "tailwindcss": "3.4.17",
     "typescript": "5.7.3"
+  },
+  "overrides": {
+    "source-map-js": "1.2.2"
   }
 }

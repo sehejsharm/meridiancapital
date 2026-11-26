@@ -11,6 +11,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The workflow's token can read the code and nothing else: no job here writes to
+# the repository, its releases or its settings, so a compromised step cannot either.
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend — lint and tests
@@ -20,6 +25,8 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -31,6 +38,11 @@ jobs:
 
       - name: Install
         run: pip install -q -r requirements-dev.txt
+
+      # A published advisory in anything the VM installs fails the build, so it is
+      # seen the same day rather than at the next audit.
+      - name: Known vulnerabilities in what the VM installs
+        run: pip install -q pip-audit && pip-audit -r requirements.txt --progress-spinner off
 
       - name: Lint
         run: ruff check .
@@ -51,6 +63,8 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -60,6 +74,11 @@ jobs:
 
       - name: Install
         run: npm ci
+
+      # What ships to the browser and the Vercel functions: a published advisory
+      # rated high or critical fails the build so it is seen the same day.
+      - name: Known vulnerabilities in what ships
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Typecheck
         run: npx tsc --noEmit
@@ -84,6 +103,8 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -113,6 +134,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

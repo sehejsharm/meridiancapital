@@ -103,10 +103,35 @@ session, which is what you want after a credential change.
 Only the hash is stored, so there is no way to recover a forgotten PIN; run the
 script again.
 
-> A 4-digit PIN is 10,000 combinations. What makes that survivable is the login
-> limiter: five attempts, then a lockout that doubles to an hour, applied to the
-> Face ID route as well so it cannot be used to sidestep the lock. Enrol Face ID
-> and treat the PIN as the fallback.
+> The PIN is never enough on its own: it signs in only on a device an operator has
+> approved (below). A 6-digit PIN is still worth having — the lockout is five
+> attempts per address, doubling to an hour, and wrong PINs from unapproved devices
+> are capped across all addresses together.
+
+### Devices: who can sign in
+
+A browser the desk has not seen before can enter the right PIN and still not get in.
+It is shown a code instead, and every alert channel is told a device is asking. An
+operator lets it in by typing that code:
+
+- **on a signed-in device:** Controls → Devices and sessions → type the code → Approve;
+- **on the VM:** `sudo bash ~/meridiancapital/backend/deploy/devices.sh approve ABCD-EFGH`.
+
+The waiting device then signs itself in. Codes last ten minutes; a request nobody
+approves simply runs out. The same card lists every approved device with where and
+when it was last seen, removes one (its sessions end at once, open live feeds
+included), and signs out every device at once. On the VM:
+
+```bash
+sudo bash ~/meridiancapital/backend/deploy/devices.sh            # list
+sudo bash ~/meridiancapital/backend/deploy/devices.sh revoke <id>
+sudo bash ~/meridiancapital/backend/deploy/devices.sh signout-all
+```
+
+The first time the server runs this, a device that is already signed in is approved
+on its next renewal (within a minute of opening the desk), so nobody at the desk is
+turned out. Any other device — including the first one after a fresh install — is
+approved on the VM with the command above.
 
 ### Face ID / Touch ID
 
@@ -202,22 +227,37 @@ it would ship your API origin to every browser.
 Deploy, then go back and make sure `MERIDIAN_CORS_ORIGINS` on the VM matches the Vercel
 URL you were assigned, and `systemctl restart meridian-api`.
 
-### Recommended: the relay secret
+### Required: the relay secret
 
-Every sign-in through the dashboard reaches the VM from Vercel's servers, so without
-this the login lockout is keyed on Vercel's address — shared by everyone — and a bot's
-five wrong guesses lock you out too. With a shared secret the dashboard forwards the
-real visitor's address and the lockout lands on whoever is guessing. On the VM:
+One random value, set in Vercel and on the VM, that turns three things on:
+
+- **The API answers only the dashboard.** Every REST call without the secret is
+  refused before any route runs — the sign-in route included — so nobody on the
+  internet can even reach it to guess, and a stolen session token is useless
+  outside the dashboard. (`/health` and the ticket-gated live feed stay reachable.)
+- **The session cookie is sealed.** The dashboard encrypts it under a key derived
+  from the secret and checks it before serving any page: a made-up or altered
+  cookie never gets past the door.
+- **Lockouts and the audit log name the real visitor**, not Vercel.
+
+Set it in this order — Vercel first, so the dashboard already sends it when the VM
+starts requiring it:
 
 ```bash
-S=$(openssl rand -hex 32)
-echo "MERIDIAN_RELAY_SECRET=$S" | sudo tee -a /etc/meridian/meridian.env >/dev/null
-sudo systemctl restart meridian-api
-echo "$S"        # copy this
+openssl rand -hex 32        # on the VM; copy the value
 ```
 
-Then in Vercel add `MERIDIAN_RELAY_SECRET` with that value (not `NEXT_PUBLIC_`), and
-redeploy. Unset on either side, the old behaviour stands; nothing breaks.
+1. Vercel → Settings → Environment Variables → add `MERIDIAN_RELAY_SECRET` with that
+   value (not `NEXT_PUBLIC_`), then redeploy. Everyone signs in once more.
+2. On the VM:
+
+```bash
+echo "MERIDIAN_RELAY_SECRET=<the value>" | sudo tee -a /etc/meridian/meridian.env >/dev/null
+sudo systemctl restart meridian-api
+```
+
+Until both are set, every desk page shows a warning saying so. If the dashboard shows
+"forbidden" after step 2, the two values differ.
 
 > Vercel gives each preview deployment its own URL. If you want previews to work, add
 > them to `MERIDIAN_CORS_ORIGINS` as a comma-separated list — or just use production.
